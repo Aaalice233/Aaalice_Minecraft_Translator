@@ -6,7 +6,7 @@
 
 ## 目标用户
 
-- 整合包作者：需要快速给大量 mod 做 `zh_cn` 汉化。
+- 整合包作者：需要快速给大量 mod 做目标语言汉化。
 - 玩家：希望给自己正在玩的整合包补充汉化。
 - 汉化维护者：需要复用已有词典、人工纠错、导入导出翻译记忆。
 - Agent/自动化开发者：需要全自动验证扫描、翻译、打包、UI 操作流程。
@@ -38,12 +38,12 @@
 
 扫描 `mods/*.jar`，读取常见语言文件：
 
-- `assets/<modid>/lang/en_us.json`
-- `assets/<modid>/lang/en_us.lang`
-- `assets/<modid>/lang/zh_cn.json`
-- `assets/<modid>/lang/zh_cn.lang`
+- `assets/<modid>/lang/<source_lang>.json`
+- `assets/<modid>/lang/<source_lang>.lang`
+- `assets/<modid>/lang/<target_lang>.json`
+- `assets/<modid>/lang/<target_lang>.lang`
 
-首期以 `en_us` 到 `zh_cn` 为主。程序记录：
+首期默认以 `auto` 来源语言到 `zh_cn` 为主；来源语言默认自动，目标语言可在设置中选择。程序记录：
 
 - `modid`
 - jar 文件路径
@@ -52,14 +52,15 @@
 - 原始文本
 - 原始文本 hash
 - 语言文件格式
-- 是否已有 `zh_cn`
+- 来源语言、实际来源语言和目标语言。
+- 是否已有目标语言。
 
 ### 资源包识别与复用
 
 扫描实例 `resourcepacks/`，识别已有汉化资源包作为补充来源。识别策略：
 
 - 检查 `pack.mcmeta`。
-- 检查 `assets/*/lang/zh_cn.json` 或 `zh_cn.lang`。
+- 检查 `assets/*/lang/<target_lang>.json` 或 `<target_lang>.lang`。
 - 检查资源包文件名、目录结构和语言文件覆盖关系。
 - 对 i18n 汉化资源包和 VM 汉化资源包做来源标记。
 
@@ -150,16 +151,16 @@
 输出结构：
 
 ```text
-build/output/Aaalice-MC-Translator-zh_cn/
+build/output/Aaalice-MC-Translator-<target_lang>/
   pack.mcmeta
   pack.png
-  assets/<modid>/lang/zh_cn.json
+  assets/<modid>/lang/<target_lang>.json
 ```
 
 最终 zip：
 
 ```text
-build/output/Aaalice-MC-Translator-zh_cn.zip
+build/output/Aaalice-MC-Translator-<target_lang>.zip
 ```
 
 用户确认后可执行：

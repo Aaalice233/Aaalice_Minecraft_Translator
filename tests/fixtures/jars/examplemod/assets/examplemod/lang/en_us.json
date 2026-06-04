@@ -1,0 +1,7 @@
+{
+  "item.examplemod.copper_gear": "Copper Gear",
+  "item.examplemod.energy_cell": "Energy Cell",
+  "message.examplemod.open": "Hold %s to open the %s GUI",
+  "message.examplemod.indexed": "%1$s has made the advancement [%2$s]",
+  "message.examplemod.colored": "§aEnabled\nReady"
+}

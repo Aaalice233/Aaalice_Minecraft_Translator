@@ -1,0 +1,3 @@
+item.placeholdermod.wrench=Placeholder Wrench
+message.placeholdermod.player={player} joined the network
+tooltip.placeholdermod.energy=Energy: %d FE/t

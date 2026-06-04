@@ -23,6 +23,29 @@
 - UI 风格对齐文档：`docs/03-ui-style-guide.md`
 - 面向 agent 的自动化测试框架：`docs/04-agent-test-plan.md`
 
+## 项目结构
+
+- `src/`：React + TypeScript 前端，包含应用壳、页面、Tauri API 封装、i18n 字典和样式。
+- `src/app/`：全局布局、左侧导航、当前页面切换和全局设置读取。
+- `src/pages/`：总览、设置、日志和后续功能入口页面。
+- `src/api/`：前端调用 Tauri command 的薄封装；浏览器预览模式只保留必要 mock。
+- `src/i18n/`：应用自身多语言文案和语言选项，不要把新的 UI 文案散落硬编码到页面里。
+- `src/styles/`：全局样式，保持现有桌面工具风格和 6px 圆角控件。
+- `src-tauri/`：Tauri 2 + Rust 后端，负责设置持久化、实例扫描、日志、LLM 模型拉取和后续翻译/打包流水线。
+- `src-tauri/src/core/`：后端核心逻辑模块，当前包含 `settings`、`scanner`、`logging`、`paths`、`models`。
+- `src-tauri/src/commands.rs`：Tauri command 暴露层，只做参数转发和错误字符串化，业务逻辑放到 `core/`。
+- `tests/`：前端单元测试和 Minecraft fixture；新增行为优先补最小 fixture 测试。
+- `docs/`：产品规格、架构计划、UI 风格和 agent 测试计划。
+- `scripts/`：Windows 打包脚本。
+- `data/`：运行期本地数据目录，例如 `settings.json`；不要把用户本地设置当成源码常量。
+- `assets/`：应用图标源和后续可复用静态资产。
+
+## 参考项目
+
+- MineAI-Modpack-Translator：`https://github.com/Thedrezik/MineAI-Modpack-Translator`
+- mc-autotranslator：`https://gitee.com/li27744/mc-autotranslator`
+- 参考项目只用于对照扫描、翻译、资源包生成和异常兼容思路；具体实现仍以本项目规格、当前代码和用户最新要求为准。
+
 ## UI 参考图
 
 - UI 参考图说明：`docs/ui-reference/README.md`
@@ -40,6 +63,33 @@
 - `08-ftb-quests.png`
 - `09-hardcoded-lab.png`
 
+## 打包流程
+
+### 常用命令
+
+- 开发期前端构建验证：`npm run build`
+- 前端单元测试：`npm run test:unit`
+- Rust 后端测试：`cargo test`（在 `src-tauri/` 下执行）
+- 生成 Windows 安装器：`npm run package:exe`
+- 生成未打包的 release 主程序：`npm run package:app`
+- 双击一键打包：`scripts/package-exe.bat`
+
+### 产物路径
+
+- 直接运行版 exe：`src-tauri/target/release/aaalice_mc_translator.exe`
+- NSIS 安装器：`src-tauri/target/release/bundle/nsis/Aaalice MC Translator_0.1.0_x64-setup.exe`
+- 应用图标源：`assets/app-icon-source.png`
+- Tauri 全套图标：`src-tauri/icons/`
+
+### 注意点
+
+- 本项目使用 Tauri 2 打包；Windows 安装器目标为 `nsis`，配置在 `src-tauri/tauri.conf.json`。
+- Rust 通过 `rustup` 安装后，新 shell 才可能自动识别 `cargo`；脚本会主动把 `%USERPROFILE%/.cargo/bin` 加入 `PATH`。
+- 首次打包 NSIS 安装器时，Tauri 可能下载 `nsis-3.11.zip` 和 `nsis_tauri_utils.dll`；如果遇到 socket、TLS 或网络权限错误，需要允许联网后重跑 `npm run package:exe`。
+- `npm run package:exe` 会先执行前端 build，再执行 Tauri release build，并生成安装器。
+- 不要手工裁 UI 参考图当应用图标；图标源应使用独立生成的正方形图标 `assets/app-icon-source.png`，再通过 `npm run tauri icon assets/app-icon-source.png` 生成全套图标。
+- `npm audit fix --force` 可能升级依赖并破坏当前可打包状态；除非明确处理依赖安全问题，不要在普通打包流程里自动执行。
+
 ## 当前约定
 
 - 首期主线：模组语言文件扫描、资源包复用、词典复用、LLM 翻译、资源包打包、日志和自动化测试。
@@ -47,3 +97,10 @@
 - 硬编码汉化只进入二期实验室，不自动应用补丁。
 - 不直接修改原始 mod jar。
 - 不未经确认替换用户已有资源包。
+- 应用自身必须支持 `zh_cn`、`en_us`、`ja_jp`、`ko_kr` 四种 UI 语言，默认 `zh_cn`。
+- 应用语言在设置菜单切换并持久化；新增 UI 文案必须写入 `src/i18n/`，不要在组件里新增散落的硬编码可见文本。
+- 翻译流水线必须支持选择来源语言和目标语言；来源语言默认 `auto`，目标语言默认 `zh_cn`。
+- 翻译语言使用 Minecraft locale code，例如 `en_us`、`zh_cn`、`ja_jp`、`ko_kr`；来源语言允许 `auto`，目标语言禁止 `auto`。
+- 扫描、资源包复用、词典命中、LLM prompt、输出目录和 zip 命名都必须尊重 `sourceLanguage` / `targetLanguage`，不要重新写死 `en_us -> zh_cn`。
+- `sourceLanguage=auto` 时优先使用 `en_us`，没有 `en_us` 时再按当前扫描结果选择可用来源语言，并在结果中记录实际来源语言。
+- 生成资源包时语言文件路径应为 `assets/<modid>/lang/<targetLanguage>.json`，输出目录和 zip 名应带 `<targetLanguage>`。

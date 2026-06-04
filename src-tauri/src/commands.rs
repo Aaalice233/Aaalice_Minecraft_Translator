@@ -1,0 +1,112 @@
+use crate::core::{
+    models::{InstanceValidation, LlmModel, LlmModelsResponse, ScanSummary, Settings},
+    paths, scanner, settings,
+};
+
+#[tauri::command]
+pub fn get_settings() -> Result<Settings, String> {
+    settings::load_settings(&paths::runtime_root().map_err(to_message)?).map_err(to_message)
+}
+
+#[tauri::command]
+pub fn save_settings(settings: Settings) -> Result<(), String> {
+    settings::save_settings(&paths::runtime_root().map_err(to_message)?, &settings)
+        .map_err(to_message)
+}
+
+#[tauri::command]
+pub fn validate_instance(path: String) -> Result<InstanceValidation, String> {
+    scanner::validate_instance(path).map_err(to_message)
+}
+
+#[tauri::command]
+pub fn scan_instance(
+    path: String,
+    source_language: String,
+    target_language: String,
+) -> Result<ScanSummary, String> {
+    scanner::scan_instance(
+        &paths::runtime_root().map_err(to_message)?,
+        path,
+        source_language,
+        target_language,
+    )
+    .map_err(to_message)
+}
+
+#[tauri::command]
+pub fn open_path(path: String) -> Result<(), String> {
+    open::that(path).map_err(to_message)
+}
+
+#[tauri::command]
+pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsResponse, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .map_err(to_message)?;
+    let urls = model_urls(&base_url);
+    let mut last_error = String::new();
+
+    for url in urls {
+        let response = client
+            .get(&url)
+            .bearer_auth(&api_key)
+            .send()
+            .map_err(to_message);
+
+        let Ok(response) = response else {
+            last_error = "模型列表请求失败".to_string();
+            continue;
+        };
+
+        if !response.status().is_success() {
+            last_error = format!("模型列表请求失败：HTTP {}", response.status());
+            continue;
+        }
+
+        let body: serde_json::Value = response.json().map_err(to_message)?;
+        let models = body
+            .get("data")
+            .and_then(|value| value.as_array())
+            .map(|items| {
+                items
+                    .iter()
+                    .filter_map(|item| {
+                        let id = item.get("id")?.as_str()?.to_string();
+                        let owned_by = item
+                            .get("owned_by")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or("")
+                            .to_string();
+                        Some(LlmModel { id, owned_by })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        return Ok(LlmModelsResponse {
+            models,
+            source_url: url,
+        });
+    }
+
+    Err(if last_error.is_empty() {
+        "未能拉取模型列表".to_string()
+    } else {
+        last_error
+    })
+}
+
+fn to_message(err: impl std::fmt::Display) -> String {
+    err.to_string()
+}
+
+fn model_urls(base_url: &str) -> Vec<String> {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.ends_with("/v1") {
+        vec![format!("{trimmed}/models")]
+    } else {
+        vec![format!("{trimmed}/models"), format!("{trimmed}/v1/models")]
+    }
+}

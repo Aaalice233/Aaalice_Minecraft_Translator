@@ -99,7 +99,7 @@ ScanSummary {
 职责：
 
 - 识别已有资源包。
-- 读取 `zh_cn` 翻译。
+- 按当前 `target_lang` 读取已有翻译。
 - 标记 i18n/VM/普通资源包来源。
 - 生成复用候选。
 
@@ -159,7 +159,7 @@ idle -> scanning -> matching -> translating -> validating -> packaging -> comple
 职责：
 
 - 生成 `pack.mcmeta`。
-- 写入 `assets/<modid>/lang/zh_cn.json`。
+- 写入 `assets/<modid>/lang/<target_lang>.json`。
 - 生成 zip。
 - 生成 dry-run diff。
 - 复制到 `resourcepacks/`。
@@ -171,7 +171,7 @@ idle -> scanning -> matching -> translating -> validating -> packaging -> comple
 - 总览页：实例选择、扫描结果、开始任务。
 - 进度页：任务队列、吞吐、失败、费用、ETA。
 - 词典页：浏览、搜索、纠错、导入导出。
-- 设置页：LLM、性能、资源包复用、日志、实验功能。
+- 设置页：应用语言、翻译语言、LLM、性能、资源包复用、日志、实验功能。
 - 打包页：资源包确认、冲突处理、复制/替换。
 - 日志页：日志过滤、错误详情、导出。
 - FTB 页：任务树、任务文本预览、纠错。
@@ -206,9 +206,9 @@ idle -> scanning -> matching -> translating -> validating -> packaging -> comple
 
 - 实例目录选择。
 - 扫描 `mods/*.jar`。
-- 抽取 `en_us.json` 和 `.lang`。
-- 扫描已有 `zh_cn`。
-- 扫描资源包 `zh_cn`。
+- 按 `source_lang` 抽取来源语言 `.json` 和 `.lang`，`auto` 时优先 `en_us`。
+- 扫描已有目标语言。
+- 扫描资源包目标语言。
 
 验收：
 
@@ -244,7 +244,7 @@ idle -> scanning -> matching -> translating -> validating -> packaging -> comple
 
 ### P4：资源包生成
 
-- 生成 `zh_cn.json`。
+- 生成 `<target_lang>.json`。
 - 生成 `pack.mcmeta`。
 - 生成 zip。
 - 打包确认页。

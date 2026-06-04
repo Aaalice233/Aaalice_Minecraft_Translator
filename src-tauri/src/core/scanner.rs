@@ -1,0 +1,855 @@
+use std::{
+    collections::{BTreeSet, HashMap},
+    fs,
+    hash::{Hash, Hasher},
+    io::{self, Read},
+    path::{Path, PathBuf},
+};
+
+use zip::ZipArchive;
+
+use crate::core::{
+    logging,
+    models::{
+        InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanSummary,
+        ScanWarning,
+    },
+    paths::display_path,
+};
+
+pub fn validate_instance(path: String) -> io::Result<InstanceValidation> {
+    let instance_path = PathBuf::from(path);
+    let mods_path = instance_path.join("mods");
+    let resourcepacks_path = instance_path.join("resourcepacks");
+    let mut warnings = Vec::new();
+
+    if !mods_path.is_dir() {
+        warnings.push(warning(
+            "missing_mods",
+            "未找到 mods/，无法扫描模组语言文件",
+            &mods_path,
+        ));
+    }
+
+    for required in ["resourcepacks", "config", "saves"] {
+        let required_path = instance_path.join(required);
+        if !required_path.exists() {
+            warnings.push(warning(
+                &format!("missing_{required}"),
+                &format!("未找到 {required}/，本阶段会跳过相关扫描"),
+                &required_path,
+            ));
+        }
+    }
+
+    let options_path = instance_path.join("options.txt");
+    if !options_path.exists() {
+        warnings.push(warning(
+            "missing_options",
+            "未找到 options.txt，不影响模组语言文件扫描",
+            &options_path,
+        ));
+    }
+
+    Ok(InstanceValidation {
+        instance_path: display_path(&instance_path),
+        is_valid: mods_path.is_dir(),
+        mods_path: display_path(mods_path),
+        resourcepacks_path: display_path(resourcepacks_path),
+        warnings,
+    })
+}
+
+pub fn scan_instance(
+    root: &Path,
+    path: String,
+    source_language: String,
+    target_language: String,
+) -> io::Result<ScanSummary> {
+    let source_language = normalize_source_language(&source_language)?;
+    let target_language = normalize_target_language(&target_language)?;
+    let job_id = logging::new_job_id("scan");
+    let validation = validate_instance(path.clone())?;
+    logging::append_main(root, format!("扫描任务创建成功，任务 ID: {job_id}"))?;
+    logging::append_job(root, &job_id, format!("开始扫描实例: {}", validation.instance_path))?;
+
+    if !validation.is_valid {
+        logging::append_error(root, &job_id, "实例缺少 mods/，扫描失败")?;
+        return Err(io::Error::new(io::ErrorKind::NotFound, "实例缺少 mods/，无法扫描"));
+    }
+
+    let instance_path = PathBuf::from(&path);
+    let mods = scan_mods(&instance_path.join("mods"), &source_language, &target_language)?;
+    let resource_packs = scan_resourcepacks(&instance_path.join("resourcepacks"), &target_language)?;
+    let total_language_files = mods.iter().map(|item| item.language_file_count).sum();
+    let total_source_entries = mods.iter().map(|item| item.source_entries).sum();
+    let total_target_entries = mods.iter().map(|item| item.target_entries).sum();
+    let total_pending_entries = mods
+        .iter()
+        .map(|item| item.source_entries.saturating_sub(item.target_entries))
+        .sum();
+    let mut warnings = validation.warnings.clone();
+    warnings.extend(mods.iter().flat_map(|item| item.warnings.clone()));
+
+    logging::append_job(
+        root,
+        &job_id,
+        format!(
+            "扫描完成：模组 {} 个，语言文件 {} 个，{} {} 条，{} {} 条，资源包 {} 个",
+            mods.len(),
+            total_language_files,
+            source_language,
+            total_source_entries,
+            target_language,
+            total_target_entries,
+            resource_packs.len()
+        ),
+    )?;
+
+    Ok(ScanSummary {
+        job_id,
+        instance_path: display_path(instance_path),
+        validation,
+        mods,
+        resource_packs,
+        source_language,
+        target_language,
+        total_language_files,
+        total_source_entries,
+        total_target_entries,
+        total_pending_entries,
+        warnings,
+    })
+}
+
+pub fn scan_mods(
+    mods_path: &Path,
+    source_language: &str,
+    target_language: &str,
+) -> io::Result<Vec<ModScanResult>> {
+    let mut results = Vec::new();
+    if !mods_path.is_dir() {
+        return Ok(results);
+    }
+
+    for entry in fs::read_dir(mods_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("jar") {
+            continue;
+        }
+        results.push(scan_mod_jar(&path, source_language, target_language));
+    }
+
+    results.sort_by(|left, right| left.file_name.cmp(&right.file_name));
+    Ok(results)
+}
+
+pub fn scan_resourcepacks(
+    resourcepacks_path: &Path,
+    target_language: &str,
+) -> io::Result<Vec<ResourcePackScanResult>> {
+    let mut results = Vec::new();
+    if !resourcepacks_path.is_dir() {
+        return Ok(results);
+    }
+
+    for entry in fs::read_dir(resourcepacks_path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            results.push(scan_resourcepack_dir(&path, target_language)?);
+        } else if path.extension().and_then(|value| value.to_str()) == Some("zip") {
+            results.push(scan_resourcepack_zip(&path, target_language));
+        }
+    }
+
+    results.sort_by(|left, right| left.name.cmp(&right.name));
+    Ok(results)
+}
+
+fn scan_mod_jar(path: &Path, source_language: &str, target_language: &str) -> ModScanResult {
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let mut warnings = Vec::new();
+    let mut entries = Vec::new();
+    let mut formats = BTreeSet::new();
+    let mut language_files = BTreeSet::new();
+    let mut recovered_language_files = 0;
+    let mut failed_language_files = 0;
+    let mut target_language_file_exists = false;
+
+    match fs::File::open(path).and_then(|file| {
+        ZipArchive::new(file).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
+    }) {
+        Ok(mut archive) => {
+            for index in 0..archive.len() {
+                let Ok(mut file) = archive.by_index(index) else {
+                    continue;
+                };
+                let name = file.name().replace('\\', "/");
+                if !is_supported_lang_file(&name) {
+                    continue;
+                }
+
+                if parse_lang_path(&name).is_some_and(|(_, language)| language == target_language) {
+                    target_language_file_exists = true;
+                }
+
+                let mut bytes = Vec::new();
+                if let Err(err) = file.read_to_end(&mut bytes) {
+                    warnings.push(warning(
+                        "lang_read_failed",
+                        &format!("读取语言文件失败：{err}"),
+                        path,
+                    ));
+                    failed_language_files += 1;
+                    continue;
+                }
+                let content = String::from_utf8_lossy(&bytes);
+
+                let format = if name.ends_with(".json") { "json" } else { "lang" };
+                formats.insert(format.to_string());
+                language_files.insert(name.clone());
+                let parsed = parse_language_entries(&name, &content, format, path, &mut warnings);
+                if parsed.recovered {
+                    recovered_language_files += 1;
+                }
+                if parsed.failed {
+                    failed_language_files += 1;
+                }
+                entries.extend(parsed.entries);
+            }
+        }
+        Err(err) => warnings.push(warning(
+            "jar_open_failed",
+            &format!("打开 jar 失败：{err}"),
+            path,
+        )),
+    }
+
+    let mod_id = entries
+        .first()
+        .map(|entry| entry.mod_id.clone())
+        .or_else(|| infer_mod_id_from_file_name(&file_name))
+        .unwrap_or_else(|| "unknown".to_string());
+    let resolved_source_language = resolve_source_language(&entries, source_language, target_language);
+    let source_entries = entries
+        .iter()
+        .filter(|entry| entry.language == resolved_source_language)
+        .count();
+    let target_entries = entries
+        .iter()
+        .filter(|entry| entry.language == target_language)
+        .count();
+
+    ModScanResult {
+        mod_id,
+        file_name,
+        jar_path: display_path(path),
+        language_file_count: language_files.len(),
+        recovered_language_files,
+        failed_language_files,
+        source_language: source_language.to_string(),
+        resolved_source_language,
+        target_language: target_language.to_string(),
+        source_entries,
+        target_entries,
+        has_target_language: target_language_file_exists,
+        formats: formats.into_iter().collect(),
+        entries,
+        warnings,
+    }
+}
+
+fn scan_resourcepack_dir(path: &Path, target_language: &str) -> io::Result<ResourcePackScanResult> {
+    let mut lang_file_count = 0;
+    let mut entry_count = 0;
+    let has_pack_meta = path.join("pack.mcmeta").is_file();
+    let assets_path = path.join("assets");
+
+    if assets_path.is_dir() {
+        collect_resourcepack_lang_dir(
+            &assets_path,
+            target_language,
+            &mut lang_file_count,
+            &mut entry_count,
+        )?;
+    }
+
+    Ok(ResourcePackScanResult {
+        name: file_name(path),
+        path: display_path(path),
+        source_type: infer_pack_source_type(path),
+        is_archive: false,
+        has_pack_meta,
+        lang_file_count,
+        entry_count,
+    })
+}
+
+fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScanResult {
+    let mut lang_file_count = 0;
+    let mut entry_count = 0;
+    let mut has_pack_meta = false;
+
+    if let Ok(file) = fs::File::open(path) {
+        if let Ok(mut archive) = ZipArchive::new(file) {
+            for index in 0..archive.len() {
+                let Ok(mut file) = archive.by_index(index) else {
+                    continue;
+                };
+                let name = file.name().replace('\\', "/");
+                if name == "pack.mcmeta" || name.ends_with("/pack.mcmeta") {
+                    has_pack_meta = true;
+                }
+                if !is_target_lang_file(&name, target_language) {
+                    continue;
+                }
+                let mut content = String::new();
+                if file.read_to_string(&mut content).is_ok() {
+                    lang_file_count += 1;
+                    entry_count += parse_resourcepack_entry_count(&name, &content, target_language);
+                }
+            }
+        }
+    }
+
+    ResourcePackScanResult {
+        name: file_name(path),
+        path: display_path(path),
+        source_type: infer_pack_source_type(path),
+        is_archive: true,
+        has_pack_meta,
+        lang_file_count,
+        entry_count,
+    }
+}
+
+fn collect_resourcepack_lang_dir(
+    path: &Path,
+    target_language: &str,
+    lang_file_count: &mut usize,
+    entry_count: &mut usize,
+) -> io::Result<()> {
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let child = entry.path();
+        if child.is_dir() {
+            collect_resourcepack_lang_dir(&child, target_language, lang_file_count, entry_count)?;
+            continue;
+        }
+        if !is_target_lang_file(&display_path(&child), target_language) {
+            continue;
+        }
+        let content = fs::read_to_string(&child)?;
+        *lang_file_count += 1;
+        *entry_count += parse_resourcepack_entry_count(&display_path(child), &content, target_language);
+    }
+    Ok(())
+}
+
+fn parse_language_entries(
+    name: &str,
+    content: &str,
+    format: &str,
+    jar_path: &Path,
+    warnings: &mut Vec<ScanWarning>,
+) -> ParsedLanguageFile {
+    let Some((mod_id, language)) = parse_lang_path(name) else {
+        return ParsedLanguageFile::failed();
+    };
+
+    match format {
+        "json" => parse_json_entries(&mod_id, &language, name, content, jar_path, warnings),
+        "lang" => ParsedLanguageFile::strict(parse_lang_entries(&mod_id, &language, name, content)),
+        _ => ParsedLanguageFile::failed(),
+    }
+}
+
+struct ParsedLanguageFile {
+    entries: Vec<LanguageEntry>,
+    recovered: bool,
+    failed: bool,
+}
+
+impl ParsedLanguageFile {
+    fn strict(entries: Vec<LanguageEntry>) -> Self {
+        Self {
+            entries,
+            recovered: false,
+            failed: false,
+        }
+    }
+
+    fn recovered(entries: Vec<LanguageEntry>) -> Self {
+        Self {
+            entries,
+            recovered: true,
+            failed: false,
+        }
+    }
+
+    fn failed() -> Self {
+        Self {
+            entries: Vec::new(),
+            recovered: false,
+            failed: true,
+        }
+    }
+}
+
+fn parse_json_entries(
+    mod_id: &str,
+    language: &str,
+    source_file: &str,
+    content: &str,
+    jar_path: &Path,
+    warnings: &mut Vec<ScanWarning>,
+) -> ParsedLanguageFile {
+    match serde_json::from_str::<HashMap<String, String>>(content) {
+        Ok(map) => {
+            let entries = map
+                .into_iter()
+                .map(|(key, text)| language_entry(mod_id, language, "json", source_file, key, text))
+                .collect();
+            ParsedLanguageFile::strict(entries)
+        }
+        Err(err) => {
+            let lenient_entries = parse_lenient_json_lang_entries(mod_id, language, source_file, content);
+            if !lenient_entries.is_empty() {
+                return ParsedLanguageFile::recovered(lenient_entries);
+            }
+            warnings.push(warning(
+                "json_parse_failed",
+                &format!("解析 JSON 语言文件失败 {source_file}: {err}"),
+                jar_path,
+            ));
+            ParsedLanguageFile::failed()
+        }
+    }
+}
+
+fn parse_lenient_json_lang_entries(
+    mod_id: &str,
+    language: &str,
+    source_file: &str,
+    content: &str,
+) -> Vec<LanguageEntry> {
+    let chars: Vec<char> = content.trim_start_matches('\u{feff}').chars().collect();
+    let mut index = 0;
+    let mut entries = Vec::new();
+
+    while index < chars.len() {
+        skip_until_quote(&chars, &mut index);
+        let Some(key) = read_quoted_until_next_quote(&chars, &mut index) else {
+            break;
+        };
+        skip_ws_and_comments(&chars, &mut index);
+        if chars.get(index) != Some(&':') {
+            index = index.saturating_add(1);
+            continue;
+        }
+        index += 1;
+        skip_ws_and_comments(&chars, &mut index);
+        if chars.get(index) != Some(&'"') {
+            continue;
+        }
+
+        let Some(text) = read_lang_value(&chars, &mut index) else {
+            break;
+        };
+        entries.push(language_entry(
+            mod_id,
+            language,
+            "json",
+            source_file,
+            key,
+            text,
+        ));
+    }
+
+    entries
+}
+
+fn skip_until_quote(chars: &[char], index: &mut usize) {
+    while *index < chars.len() && chars[*index] != '"' {
+        *index += 1;
+    }
+}
+
+fn skip_ws_and_comments(chars: &[char], index: &mut usize) {
+    loop {
+        while *index < chars.len() && chars[*index].is_whitespace() {
+            *index += 1;
+        }
+
+        if chars.get(*index) == Some(&'/') && chars.get(*index + 1) == Some(&'/') {
+            *index += 2;
+            while *index < chars.len() && chars[*index] != '\n' {
+                *index += 1;
+            }
+            continue;
+        }
+
+        if chars.get(*index) == Some(&'/') && chars.get(*index + 1) == Some(&'*') {
+            *index += 2;
+            while *index + 1 < chars.len()
+                && !(chars[*index] == '*' && chars[*index + 1] == '/')
+            {
+                *index += 1;
+            }
+            *index = (*index + 2).min(chars.len());
+            continue;
+        }
+
+        break;
+    }
+}
+
+fn read_quoted_until_next_quote(chars: &[char], index: &mut usize) -> Option<String> {
+    if chars.get(*index) != Some(&'"') {
+        return None;
+    }
+    *index += 1;
+    let mut value = String::new();
+    let mut escaped = false;
+    while *index < chars.len() {
+        let ch = chars[*index];
+        *index += 1;
+        if escaped {
+            value.push(unescape_json_char(ch));
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' {
+            return Some(value);
+        }
+        value.push(ch);
+    }
+    None
+}
+
+fn read_lang_value(chars: &[char], index: &mut usize) -> Option<String> {
+    if chars.get(*index) != Some(&'"') {
+        return None;
+    }
+    *index += 1;
+    let mut value = String::new();
+    let mut escaped = false;
+    while *index < chars.len() {
+        let ch = chars[*index];
+        *index += 1;
+        if escaped {
+            value.push(unescape_json_char(ch));
+            escaped = false;
+            continue;
+        }
+        if ch == '\\' {
+            escaped = true;
+            continue;
+        }
+        if ch == '"' && looks_like_value_end(chars, *index) {
+            return Some(value);
+        }
+        value.push(ch);
+    }
+    None
+}
+
+fn looks_like_value_end(chars: &[char], mut index: usize) -> bool {
+    while index < chars.len() && chars[index].is_whitespace() {
+        index += 1;
+    }
+    matches!(chars.get(index), Some(',') | Some('}') | Some('"') | None)
+}
+
+fn unescape_json_char(ch: char) -> char {
+    match ch {
+        'n' => '\n',
+        'r' => '\r',
+        't' => '\t',
+        '"' => '"',
+        '\\' => '\\',
+        '/' => '/',
+        'b' => '\u{0008}',
+        'f' => '\u{000c}',
+        other => other,
+    }
+}
+
+fn parse_lang_entries(
+    mod_id: &str,
+    language: &str,
+    source_file: &str,
+    content: &str,
+) -> Vec<LanguageEntry> {
+    content
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                return None;
+            }
+            let (key, text) = trimmed.split_once('=')?;
+            Some(language_entry(
+                mod_id,
+                language,
+                "lang",
+                source_file,
+                key.trim().to_string(),
+                text.trim().to_string(),
+            ))
+        })
+        .collect()
+}
+
+fn language_entry(
+    mod_id: &str,
+    language: &str,
+    format: &str,
+    source_file: &str,
+    key: String,
+    text: String,
+) -> LanguageEntry {
+    LanguageEntry {
+        mod_id: mod_id.to_string(),
+        key,
+        text_hash: hash_text(&text),
+        text,
+        language: language.to_string(),
+        format: format.to_string(),
+        source_file: source_file.to_string(),
+    }
+}
+
+fn parse_resourcepack_entry_count(name: &str, content: &str, target_language: &str) -> usize {
+    if name.ends_with(".json") {
+        serde_json::from_str::<HashMap<String, String>>(content)
+            .map(|map| map.len())
+            .unwrap_or_else(|_| {
+                parse_lenient_json_lang_entries("resourcepack", target_language, name, content).len()
+            })
+    } else {
+        content
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                !trimmed.is_empty() && !trimmed.starts_with('#') && trimmed.contains('=')
+            })
+            .count()
+    }
+}
+
+fn parse_lang_path(path: &str) -> Option<(String, String)> {
+    let parts: Vec<_> = path.split('/').collect();
+    if parts.len() != 4 || parts[0] != "assets" || parts[2] != "lang" {
+        return None;
+    }
+    let language = parts[3]
+        .strip_suffix(".json")
+        .or_else(|| parts[3].strip_suffix(".lang"))?;
+    Some((parts[1].to_string(), language.to_string()))
+}
+
+fn is_supported_lang_file(path: &str) -> bool {
+    parse_lang_path(path).is_some()
+}
+
+fn is_target_lang_file(path: &str, target_language: &str) -> bool {
+    (path.starts_with("assets/") || path.contains("/assets/"))
+        && path.contains("/lang/")
+        && (path.ends_with(&format!("/{target_language}.json"))
+            || path.ends_with(&format!("/{target_language}.lang"))
+            || path.ends_with(&format!("lang/{target_language}.json"))
+            || path.ends_with(&format!("lang/{target_language}.lang")))
+}
+
+fn normalize_source_language(value: &str) -> io::Result<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized.is_empty() {
+        return Ok("auto".to_string());
+    }
+    if normalized == "auto" || is_locale_code(&normalized) {
+        return Ok(normalized);
+    }
+    Err(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "来源语言必须是 auto 或合法 Minecraft locale code",
+    ))
+}
+
+fn normalize_target_language(value: &str) -> io::Result<String> {
+    let normalized = value.trim().to_ascii_lowercase();
+    if normalized == "auto" || !is_locale_code(&normalized) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "目标语言必须是合法 Minecraft locale code，且不能为 auto",
+        ));
+    }
+    Ok(normalized)
+}
+
+fn is_locale_code(value: &str) -> bool {
+    let Some((language, region)) = value.split_once('_') else {
+        return false;
+    };
+    (2..=3).contains(&language.len())
+        && (2..=8).contains(&region.len())
+        && language.chars().all(|ch| ch.is_ascii_lowercase())
+        && region.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
+}
+
+fn resolve_source_language(
+    entries: &[LanguageEntry],
+    source_language: &str,
+    target_language: &str,
+) -> String {
+    if source_language != "auto" {
+        return source_language.to_string();
+    }
+
+    let available = entries
+        .iter()
+        .map(|entry| entry.language.as_str())
+        .collect::<BTreeSet<_>>();
+    if available.contains("en_us") {
+        return "en_us".to_string();
+    }
+    for candidate in ["en_gb", "zh_cn", "ja_jp", "ko_kr"] {
+        if candidate != target_language && available.contains(candidate) {
+            return candidate.to_string();
+        }
+    }
+    if let Some(candidate) = available.iter().find(|item| **item != target_language) {
+        return (*candidate).to_string();
+    }
+    if available.contains(target_language) {
+        return target_language.to_string();
+    }
+    "en_us".to_string()
+}
+
+fn infer_pack_source_type(path: &Path) -> String {
+    let name = file_name(path).to_ascii_lowercase();
+    if name.contains("i18n") {
+        "i18n".to_string()
+    } else if name.contains("vm") || name.contains("汉化") {
+        "vm".to_string()
+    } else {
+        "normal".to_string()
+    }
+}
+
+fn infer_mod_id_from_file_name(file_name: &str) -> Option<String> {
+    let stem = file_name.strip_suffix(".jar").unwrap_or(file_name);
+    let mod_id = stem
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '-')
+        .collect::<String>()
+        .trim_matches('-')
+        .to_ascii_lowercase();
+    (!mod_id.is_empty()).then_some(mod_id)
+}
+
+fn file_name(path: &Path) -> String {
+    path.file_name()
+        .map(|value| value.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+fn warning(code: &str, message: &str, path: &Path) -> ScanWarning {
+    ScanWarning {
+        code: code.to_string(),
+        message: message.to_string(),
+        path: display_path(path),
+    }
+}
+
+fn hash_text(text: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fixtures_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .join("tests")
+            .join("fixtures")
+            .join("modpacks")
+            .join("basic_pack")
+    }
+
+    #[test]
+    fn validates_instance_with_only_mods_required() {
+        let validation = validate_instance(display_path(fixtures_root())).unwrap();
+        assert!(validation.is_valid);
+        assert!(validation.warnings.iter().all(|item| item.code != "missing_mods"));
+    }
+
+    #[test]
+    fn scans_mod_jars_and_detects_existing_zh_cn() {
+        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn").unwrap();
+        let example = mods.iter().find(|item| item.mod_id == "examplemod").unwrap();
+        let placeholder = mods.iter().find(|item| item.mod_id == "placeholdermod").unwrap();
+
+        assert_eq!(example.resolved_source_language, "en_us");
+        assert_eq!(example.source_entries, 5);
+        assert_eq!(example.target_entries, 1);
+        assert!(example.has_target_language);
+        assert_eq!(placeholder.source_entries, 3);
+        assert!(placeholder.formats.contains(&"lang".to_string()));
+    }
+
+    #[test]
+    fn scans_resource_pack_sources() {
+        let packs = scan_resourcepacks(&fixtures_root().join("resourcepacks"), "zh_cn").unwrap();
+        let i18n = packs.iter().find(|item| item.source_type == "i18n").unwrap();
+        let vm = packs.iter().find(|item| item.source_type == "vm").unwrap();
+
+        assert!(i18n.is_archive);
+        assert!(i18n.has_pack_meta);
+        assert_eq!(i18n.entry_count, 2);
+        assert!(!vm.is_archive);
+        assert_eq!(vm.entry_count, 1);
+    }
+
+    #[test]
+    fn target_language_changes_resource_pack_matching() {
+        let packs = scan_resourcepacks(&fixtures_root().join("resourcepacks"), "ja_jp").unwrap();
+        assert!(packs.iter().all(|item| item.entry_count == 0));
+    }
+
+    #[test]
+    fn parses_common_lenient_minecraft_lang_json() {
+        let content = r#"{
+          // JSONC comments appear in some mods.
+          "mod.example.title": "Example",
+          "mod.example.multiline": "First line
+
+Second line",
+          "mod.example.missing_comma": "Still readable"
+          "mod.example.next": "Next value"
+        }"#;
+
+        let entries =
+            parse_lenient_json_lang_entries("example", "en_us", "assets/example/lang/en_us.json", content);
+
+        assert_eq!(entries.len(), 4);
+        assert_eq!(entries[1].text, "First line\n\nSecond line");
+        assert_eq!(entries[2].key, "mod.example.missing_comma");
+        assert_eq!(entries[3].text, "Next value");
+    }
+}
