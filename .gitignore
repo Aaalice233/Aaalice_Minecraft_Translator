@@ -1,0 +1,29 @@
+# Local agent/app state
+.omc/
+.codex/
+
+# Build outputs
+dist/
+build/
+target/
+src-tauri/target/
+
+# Dependencies
+node_modules/
+
+# Runtime data
+logs/
+data/
+*.log
+
+# Local settings and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
