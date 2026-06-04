@@ -25,6 +25,8 @@ export interface Settings {
   enableDebugLog: boolean;
   enableHttpLog: boolean;
   enableTokenStats: boolean;
+  i18nPackName: string;
+  vmPackName: string;
 }
 
 export type AppLanguage = "zh_cn" | "en_us" | "ja_jp" | "ko_kr";
@@ -96,6 +98,8 @@ export interface ScanProgressEvent {
   total: number;
   modName: string;
   phase: string;
+  subStep?: string;
+  stageStatus: "running" | "completed" | "failed";
 }
 
 export interface ScanSummary {
@@ -111,4 +115,5 @@ export interface ScanSummary {
   totalTargetEntries: number;
   totalPendingEntries: number;
   warnings: ScanWarning[];
+  cancelled: boolean;
 }

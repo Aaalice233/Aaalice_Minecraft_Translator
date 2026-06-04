@@ -1,0 +1,11 @@
+{
+  "active": true,
+  "started_at": "2026-06-04T08:07:35.989Z",
+  "original_prompt": "/oh-my-claudecode:autopilot 先不管这个，加个设置，汉化资源包设置，用于填写VM汉化和i18n自动汉化更新资源包的名称，默认为 Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip VMTranslationPack-Converted-1.21.1.zip\n  按设置里的名称来找资源包，其他的就不显示了，找到了就显示，没找到就不显示，后面会提取这两个资源包的汉化条目去重合并，作为补充词库",
+  "session_id": "6db4aacb-cfa2-4898-876b-f596a37ea4fa",
+  "project_path": "E:\\MC Projects\\Aaalice_Minecraft_Translator\\src-tauri",
+  "reinforcement_count": 0,
+  "awaiting_confirmation": true,
+  "awaiting_confirmation_set_at": "2026-06-04T08:07:35.989Z",
+  "last_checked_at": "2026-06-04T08:07:35.989Z"
+}

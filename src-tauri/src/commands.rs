@@ -1,4 +1,7 @@
-use std::sync::mpsc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    mpsc,
+};
 
 use tauri::Emitter;
 
@@ -6,6 +9,8 @@ use crate::core::{
     models::{InstanceValidation, LlmModel, LlmModelsResponse, ScanProgress, ScanSummary, Settings},
     paths, scanner, settings,
 };
+
+static SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub fn get_settings() -> Result<Settings, String> {
@@ -30,6 +35,9 @@ pub async fn scan_instance(
     source_language: String,
     target_language: String,
 ) -> Result<ScanSummary, String> {
+    // Reset cancel flag for this scan
+    SCAN_CANCEL.store(false, Ordering::SeqCst);
+
     let root = paths::runtime_root().map_err(to_message)?;
 
     // Channel: relay progress from blocking/rayon threads → async runtime context.
@@ -50,6 +58,13 @@ pub async fn scan_instance(
         }
     });
 
+    // Read pack names from persisted settings for resource pack filtering
+    let settings = settings::load_settings(&root).ok();
+    let (i18n_pack_name, vm_pack_name) = settings
+        .as_ref()
+        .map(|s| (s.i18n_pack_name.clone(), s.vm_pack_name.clone()))
+        .unwrap_or_default();
+
     // Run the actual scan on a blocking thread; the scanner sends progress
     // updates through the channel instead of calling emit directly.
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -58,6 +73,9 @@ pub async fn scan_instance(
             path,
             source_language,
             target_language,
+            i18n_pack_name,
+            vm_pack_name,
+            &SCAN_CANCEL,
             &|progress: ScanProgress| {
                 let _ = progress_tx_scan.send(progress);
             },
@@ -70,6 +88,14 @@ pub async fn scan_instance(
     drop(progress_tx);
 
     result.map_err(to_message)
+}
+
+/// Request cancellation of the current scan.
+/// The current stage completes before the scan stops (stage-boundary cancel).
+#[tauri::command]
+pub fn cancel_scan() -> Result<(), String> {
+    SCAN_CANCEL.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 #[tauri::command]

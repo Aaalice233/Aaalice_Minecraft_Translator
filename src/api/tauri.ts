@@ -28,6 +28,8 @@ const defaultSettings: Settings = {
   enableDebugLog: false,
   enableHttpLog: false,
   enableTokenStats: true,
+  i18nPackName: "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
+  vmPackName: "VMTranslationPack-Converted-1.21.1.zip",
 };
 
 function isTauriRuntime(): boolean {
@@ -71,6 +73,13 @@ export async function scanInstance(
     throw new Error("浏览器预览模式下不可用，请在 Tauri 桌面端中运行");
   }
   return tauriInvoke<ScanSummary>("scan_instance", { path, sourceLanguage, targetLanguage });
+}
+
+export async function cancelScan(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return; // browser mode no-op
+  }
+  return tauriInvoke<void>("cancel_scan");
 }
 
 export async function fetchLlmModels(baseUrl: string, apiKey: string): Promise<LlmModelsResponse> {

@@ -2,6 +2,7 @@ import type { AppLanguage } from "../types";
 
 export type TranslationKey =
   | "app.loadingSettings"
+  | "app.brandSubtitle"
   | "app.currentInstance"
   | "app.noInstance"
   | "app.phase"
@@ -56,12 +57,14 @@ export type TranslationKey =
   | "settings.fetchModels"
   | "settings.modelsFetched"
   | "settings.autosaveHint"
+  | "settings.baseUrl"
   | "settings.tab.language"
   | "settings.tab.api"
   | "settings.tab.performance"
   | "settings.tab.reuse"
   | "settings.tab.logs"
   | "settings.tab.advanced"
+  | "settings.apiKey"
   | "settings.appLanguage"
   | "settings.sourceLanguage"
   | "settings.targetLanguage"
@@ -97,6 +100,11 @@ export type TranslationKey =
   | "settings.enableHttp"
   | "settings.enableTokens"
   | "settings.defaultInstance"
+  | "settings.translationPacks"
+  | "settings.i18nPackName"
+  | "settings.vmPackName"
+  | "settings.i18nPackHint"
+  | "settings.vmPackHint"
   | "settings.futureAdvanced"
   | "logs.title"
   | "logs.subtitle"
@@ -105,6 +113,15 @@ export type TranslationKey =
   | "logs.instance"
   | "logs.warning"
   | "logs.empty"
+  | "dashboard.stage.scan"
+  | "dashboard.stage.resourcepacks"
+  | "dashboard.stage.aggregate"
+  | "dashboard.stage.log"
+  | "dashboard.stage.done"
+  | "dashboard.cancel"
+  | "dashboard.cancelling"
+  | "dashboard.cancellingHint"
+  | "dashboard.cancelledMessage"
   | "placeholder.disabled"
   | "placeholder.subtitle"
   | "placeholder.empty";
@@ -142,6 +159,7 @@ export const localeByAppLanguage: Record<AppLanguage, string> = {
 
 const zhCn: TranslationMap = {
   "app.loadingSettings": "正在读取设置...",
+  "app.brandSubtitle": "MC 翻译器",
   "app.currentInstance": "当前实例",
   "app.noInstance": "未选择实例",
   "app.phase": "第一阶段：扫描闭环",
@@ -189,6 +207,15 @@ const zhCn: TranslationMap = {
   "dashboard.resourceSources": "已识别的目标语言资源来源",
   "dashboard.resourceCount": "{files} 个语言文件 / {entries} 条",
   "dashboard.emptyResource": "等待扫描资源包。",
+  "dashboard.stage.scan": "扫描模组",
+  "dashboard.stage.resourcepacks": "扫描资源包",
+  "dashboard.stage.aggregate": "聚合结果",
+  "dashboard.stage.log": "写入日志",
+  "dashboard.stage.done": "扫描完成",
+  "dashboard.cancel": "取消扫描",
+  "dashboard.cancelling": "正在停止...",
+  "dashboard.cancellingHint": "等待当前阶段完成...",
+  "dashboard.cancelledMessage": "扫描已被取消，显示部分结果",
   "settings.title": "设置中心",
   "settings.subtitle": "常用选项会持久化保存到本地设置文件。",
   "settings.save": "保存设置",
@@ -196,12 +223,14 @@ const zhCn: TranslationMap = {
   "settings.fetchModels": "拉取模型",
   "settings.modelsFetched": "已从 {url} 拉取 {count} 个模型",
   "settings.autosaveHint": "自动保存需点击右上角保存按钮",
+  "settings.baseUrl": "API 地址",
   "settings.tab.language": "语言与翻译",
   "settings.tab.api": "API 设置",
   "settings.tab.performance": "性能设置",
   "settings.tab.reuse": "资源复用",
   "settings.tab.logs": "日志设置",
   "settings.tab.advanced": "高级设置",
+  "settings.apiKey": "API 密钥",
   "settings.appLanguage": "应用语言",
   "settings.sourceLanguage": "来源语言",
   "settings.targetLanguage": "目标语言",
@@ -237,6 +266,11 @@ const zhCn: TranslationMap = {
   "settings.enableHttp": "启用 HTTP 请求日志",
   "settings.enableTokens": "启用 Token 使用统计",
   "settings.defaultInstance": "默认实例路径",
+  "settings.translationPacks": "汉化资源包",
+  "settings.i18nPackName": "i18n 汉化包文件名",
+  "settings.vmPackName": "VM 汉化包文件名",
+  "settings.i18nPackHint": "CFPAOrg 提供的 i18n 汉化资源包，扫描时按此名称精确查找",
+  "settings.vmPackHint": "VM 汉化更新提供的资源包，扫描时按此名称精确查找",
   "settings.futureAdvanced": "词典、打包和实验功能设置会在对应阶段接入。",
   "logs.title": "日志中心",
   "logs.subtitle": "第一阶段已写入 main、job 和 error 日志；完整过滤器在后续阶段接入。",
@@ -253,6 +287,7 @@ const zhCn: TranslationMap = {
 const enUs: TranslationMap = {
   ...zhCn,
   "app.loadingSettings": "Loading settings...",
+  "app.brandSubtitle": "MC Translator",
   "app.currentInstance": "Current instance",
   "app.noInstance": "No instance selected",
   "app.phase": "Phase 1: scan loop",
@@ -295,6 +330,15 @@ const enUs: TranslationMap = {
   "dashboard.resourceSources": "Detected target-language resource sources",
   "dashboard.resourceCount": "{files} language files / {entries} entries",
   "dashboard.emptyResource": "Waiting for resource pack scan.",
+  "dashboard.stage.scan": "Scanning mods",
+  "dashboard.stage.resourcepacks": "Scanning resource packs",
+  "dashboard.stage.aggregate": "Aggregating results",
+  "dashboard.stage.log": "Writing logs",
+  "dashboard.stage.done": "Scan complete",
+  "dashboard.cancel": "Cancel scan",
+  "dashboard.cancelling": "Stopping...",
+  "dashboard.cancellingHint": "Waiting for current stage...",
+  "dashboard.cancelledMessage": "Scan was cancelled, showing partial results",
   "settings.title": "Settings",
   "settings.subtitle": "Common options are persisted to the local settings file.",
   "settings.save": "Save settings",
@@ -302,12 +346,14 @@ const enUs: TranslationMap = {
   "settings.fetchModels": "Fetch models",
   "settings.modelsFetched": "Fetched {count} models from {url}",
   "settings.autosaveHint": "Click the save button to persist changes",
+  "settings.baseUrl": "Base URL",
   "settings.tab.language": "Language & translation",
   "settings.tab.api": "API",
   "settings.tab.performance": "Performance",
   "settings.tab.reuse": "Reuse",
   "settings.tab.logs": "Logs",
   "settings.tab.advanced": "Advanced",
+  "settings.apiKey": "API Key",
   "settings.appLanguage": "App language",
   "settings.sourceLanguage": "Source language",
   "settings.targetLanguage": "Target language",
@@ -340,6 +386,11 @@ const enUs: TranslationMap = {
   "settings.enableHttp": "Enable HTTP request log",
   "settings.enableTokens": "Enable token usage stats",
   "settings.defaultInstance": "Default instance path",
+  "settings.translationPacks": "Translation packs",
+  "settings.i18nPackName": "i18n pack filename",
+  "settings.vmPackName": "VM pack filename",
+  "settings.i18nPackHint": "i18n translation pack from CFPAOrg; scanner looks for this exact filename",
+  "settings.vmPackHint": "VM translation pack; scanner looks for this exact filename",
   "settings.futureAdvanced": "Dictionary, packaging, and lab settings will be connected in later phases.",
   "logs.title": "Logs",
   "logs.subtitle": "Phase 1 writes main, job, and error logs; full filters arrive later.",
@@ -355,6 +406,7 @@ const enUs: TranslationMap = {
 const jaJp: TranslationMap = {
   ...enUs,
   "app.loadingSettings": "設定を読み込んでいます...",
+  "app.brandSubtitle": "MC 翻訳機",
   "app.currentInstance": "現在のインスタンス",
   "app.noInstance": "インスタンス未選択",
   "app.phase": "フェーズ1：スキャン連携",
@@ -400,18 +452,29 @@ const jaJp: TranslationMap = {
   "dashboard.resourceSources": "検出された対象言語リソース",
   "dashboard.resourceCount": "{files} 個の言語ファイル / {entries} 件",
   "dashboard.emptyResource": "リソースパックのスキャン待ち。",
+  "dashboard.stage.scan": "Mod スキャン中",
+  "dashboard.stage.resourcepacks": "リソースパック スキャン中",
+  "dashboard.stage.aggregate": "結果集計中",
+  "dashboard.stage.log": "ログ書き込み中",
+  "dashboard.stage.done": "スキャン完了",
+  "dashboard.cancel": "スキャンキャンセル",
+  "dashboard.cancelling": "停止中...",
+  "dashboard.cancellingHint": "現在の段階が完了するのを待っています...",
+  "dashboard.cancelledMessage": "スキャンがキャンセルされました。部分的な結果を表示しています",
   "settings.title": "設定",
   "settings.subtitle": "よく使う設定はローカル設定ファイルに保存されます。",
   "settings.save": "設定を保存",
   "settings.saved": "設定を保存しました",
   "settings.fetchModels": "モデル取得",
   "settings.autosaveHint": "変更の保存には右上の保存ボタンが必要です",
+  "settings.baseUrl": "ベース URL",
   "settings.tab.language": "言語と翻訳",
   "settings.tab.api": "API 設定",
   "settings.tab.performance": "性能設定",
   "settings.tab.reuse": "再利用",
   "settings.tab.logs": "ログ設定",
   "settings.tab.advanced": "詳細設定",
+  "settings.apiKey": "API キー",
   "settings.appLanguage": "アプリ言語",
   "settings.sourceLanguage": "元言語",
   "settings.targetLanguage": "対象言語",
@@ -444,6 +507,11 @@ const jaJp: TranslationMap = {
   "settings.enableHttp": "HTTP リクエストログを有効化",
   "settings.enableTokens": "Token 使用統計を有効化",
   "settings.defaultInstance": "既定のインスタンスパス",
+  "settings.translationPacks": "翻訳リソースパック",
+  "settings.i18nPackName": "i18n 翻訳パックのファイル名",
+  "settings.vmPackName": "VM 翻訳パックのファイル名",
+  "settings.i18nPackHint": "CFPAOrg が提供する i18n 翻訳リソースパック。スキャナーはこのファイル名を検索します",
+  "settings.vmPackHint": "VM 翻訳更新が提供するリソースパック。スキャナーはこのファイル名を検索します",
   "settings.futureAdvanced": "辞書、パッケージング、実験機能の設定は後続フェーズで接続します。",
   "logs.title": "ログ",
   "logs.subtitle": "フェーズ1では main、job、error ログを書き込みます。完全なフィルターは後続フェーズで接続します。",
@@ -460,6 +528,7 @@ const jaJp: TranslationMap = {
 const koKr: TranslationMap = {
   ...enUs,
   "app.loadingSettings": "설정을 불러오는 중...",
+  "app.brandSubtitle": "MC 번역기",
   "app.currentInstance": "현재 인스턴스",
   "app.noInstance": "인스턴스가 선택되지 않음",
   "app.phase": "1단계: 스캔 루프",
@@ -505,18 +574,29 @@ const koKr: TranslationMap = {
   "dashboard.resourceSources": "감지된 대상 언어 리소스",
   "dashboard.resourceCount": "언어 파일 {files}개 / 항목 {entries}개",
   "dashboard.emptyResource": "리소스 팩 스캔 대기.",
+  "dashboard.stage.scan": "모드 스캔 중",
+  "dashboard.stage.resourcepacks": "리소스팩 스캔 중",
+  "dashboard.stage.aggregate": "결과 집계 중",
+  "dashboard.stage.log": "로그 쓰는 중",
+  "dashboard.stage.done": "스캔 완료",
+  "dashboard.cancel": "스캔 취소",
+  "dashboard.cancelling": "중지 중...",
+  "dashboard.cancellingHint": "현재 단계 완료 대기 중...",
+  "dashboard.cancelledMessage": "스캔이 취소되었습니다. 부분 결과를 표시합니다",
   "settings.title": "설정",
   "settings.subtitle": "일반 옵션은 로컬 설정 파일에 저장됩니다.",
   "settings.save": "설정 저장",
   "settings.saved": "설정이 저장됨",
   "settings.fetchModels": "모델 가져오기",
   "settings.autosaveHint": "변경 사항을 저장하려면 오른쪽 위 저장 버튼을 누르세요",
+  "settings.baseUrl": "기본 URL",
   "settings.tab.language": "언어 및 번역",
   "settings.tab.api": "API 설정",
   "settings.tab.performance": "성능 설정",
   "settings.tab.reuse": "재사용",
   "settings.tab.logs": "로그 설정",
   "settings.tab.advanced": "고급 설정",
+  "settings.apiKey": "API 키",
   "settings.appLanguage": "앱 언어",
   "settings.sourceLanguage": "원본 언어",
   "settings.targetLanguage": "대상 언어",
@@ -549,6 +629,11 @@ const koKr: TranslationMap = {
   "settings.enableHttp": "HTTP 요청 로그 활성화",
   "settings.enableTokens": "Token 사용 통계 활성화",
   "settings.defaultInstance": "기본 인스턴스 경로",
+  "settings.translationPacks": "번역 리소스 팩",
+  "settings.i18nPackName": "i18n 번역 팩 파일명",
+  "settings.vmPackName": "VM 번역 팩 파일명",
+  "settings.i18nPackHint": "CFPAOrg의 i18n 번역 리소스 팩. 스캐너가 이 파일명으로 정확히 검색합니다",
+  "settings.vmPackHint": "VM 번역 업데이트 리소스 팩. 스캐너가 이 파일명으로 정확히 검색합니다",
   "settings.futureAdvanced": "사전, 패키징, 실험 기능 설정은 이후 단계에서 연결됩니다.",
   "logs.title": "로그",
   "logs.subtitle": "1단계에서는 main, job, error 로그를 기록하며 전체 필터는 이후 단계에서 연결됩니다.",

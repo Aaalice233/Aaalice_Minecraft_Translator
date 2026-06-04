@@ -142,7 +142,21 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 {t(language, "settings.appLanguage")}
                 <select
                   value={draft.appLanguage}
-                  onChange={(event) => setDraft({ ...draft, appLanguage: normalizeAppLanguage(event.target.value) })}
+                  onChange={async (event) => {
+                    const newLanguage = normalizeAppLanguage(event.target.value);
+                    setDraft((prev) => ({ ...prev, appLanguage: newLanguage }));
+                    setMessage("");
+                    setError("");
+                    try {
+                      // 立即保存并传播，使侧边栏和所有页面即时刷新
+                      const updatedSettings = { ...settings, appLanguage: newLanguage };
+                      await saveSettings(updatedSettings);
+                      onSettingsChange(updatedSettings);
+                      setMessage(t(newLanguage, "settings.saved"));
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : String(err));
+                    }
+                  }}
                 >
                   {appLanguages.map((item) => (
                     <option key={item.code} value={item.code}>
@@ -172,12 +186,12 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
           {activeTab === "api" && (
             <div className="settings-form two-column">
               <Field
-                label="Base URL"
+                label={t(language, "settings.baseUrl")}
                 value={draft.baseUrl}
                 onChange={(value) => setDraft({ ...draft, baseUrl: value })}
               />
               <Field
-                label="API Key"
+                label={t(language, "settings.apiKey")}
                 type="password"
                 value={draft.apiKey}
                 onChange={(value) => setDraft({ ...draft, apiKey: value })}
@@ -287,6 +301,26 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
               <Toggle label={t(language, "settings.preferDictionary")} checked={draft.preferUserDictionary} onChange={(checked) => setDraft({ ...draft, preferUserDictionary: checked })} />
               <Toggle label={t(language, "settings.keepExisting")} checked={draft.keepExistingResourceTranslations} onChange={(checked) => setDraft({ ...draft, keepExistingResourceTranslations: checked })} />
               <Toggle label={t(language, "settings.enableFtb")} checked={draft.enableFtbQuests} onChange={(checked) => setDraft({ ...draft, enableFtbQuests: checked })} />
+              <hr className="settings-separator" />
+              <h3 className="section-label">{t(language, "settings.translationPacks")}</h3>
+              <label className="field">
+                {t(language, "settings.i18nPackName")}
+                <input
+                  value={draft.i18nPackName}
+                  onChange={(event) => setDraft({ ...draft, i18nPackName: event.target.value })}
+                  placeholder="Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip"
+                />
+                <small>{t(language, "settings.i18nPackHint")}</small>
+              </label>
+              <label className="field">
+                {t(language, "settings.vmPackName")}
+                <input
+                  value={draft.vmPackName}
+                  onChange={(event) => setDraft({ ...draft, vmPackName: event.target.value })}
+                  placeholder="VMTranslationPack-Converted-1.21.1.zip"
+                />
+                <small>{t(language, "settings.vmPackHint")}</small>
+              </label>
             </div>
           )}
 

@@ -1,8 +1,9 @@
 import { AlertTriangle, FolderOpen, RefreshCcw, ScanLine } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { saveSettings, scanInstance } from "../api/tauri";
+import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import type { AppLanguage, ScanProgressEvent, ScanSummary, Settings } from "../types";
+import type { TranslationKey } from "../i18n/translations";
 
 interface Props {
   settings: Settings;
@@ -21,8 +22,15 @@ export function DashboardPage({
 }: Props) {
   const [instancePath, setInstancePath] = useState(settings.instancePath);
   const [isScanning, setIsScanning] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [error, setError] = useState("");
+
+  const stageLabel = (phase: string): string => {
+    const key = `dashboard.stage.${phase}` as TranslationKey;
+    const translated = t(language, key);
+    return translated || phase;
+  };
 
   const numberLocale = localeByAppLanguage[language];
   const sourceLabel = scanSummary?.sourceLanguage ?? settings.sourceLanguage;
@@ -69,8 +77,18 @@ export function DashboardPage({
     };
   }, []);
 
+  async function handleCancel() {
+    setIsCancelling(true);
+    try {
+      await cancelScan();
+    } catch {
+      // ignore — scan might finish before cancel takes effect
+    }
+  }
+
   async function handleScan() {
     setIsScanning(true);
+    setIsCancelling(false);
     setScanProgress(null);
     setError("");
     try {
@@ -87,6 +105,7 @@ export function DashboardPage({
       setError(scanError instanceof Error ? scanError.message : String(scanError));
     } finally {
       setIsScanning(false);
+      setIsCancelling(false);
     }
   }
 
@@ -107,6 +126,21 @@ export function DashboardPage({
             <ScanLine size={18} />
             {isScanning ? t(language, "dashboard.scanning") : t(language, "dashboard.scan")}
           </button>
+          {isScanning && (
+            <div className="cancel-scan-area">
+              <button
+                className="ghost-button danger"
+                disabled={isCancelling}
+                onClick={handleCancel}
+                type="button"
+              >
+                {isCancelling ? t(language, "dashboard.cancelling") : t(language, "dashboard.cancel")}
+              </button>
+              {isCancelling && (
+                <small className="cancelling-hint">{t(language, "dashboard.cancellingHint")}</small>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -132,7 +166,7 @@ export function DashboardPage({
       {isScanning && scanProgress && (
         <div className="scan-progress">
           <div className="scan-progress-header">
-            <strong>{t(language, "dashboard.scanning")}</strong>
+            <strong>{stageLabel(scanProgress.phase)}</strong>
             <span>{t(language, "dashboard.scanProgress", { current: scanProgress.current, total: scanProgress.total })}</span>
           </div>
           <div className="progress-bar-track">
@@ -141,7 +175,15 @@ export function DashboardPage({
               style={{ width: `${progressPercent(scanProgress)}%` }}
             />
           </div>
-          <small className="scan-progress-mod">{scanProgress.modName}</small>
+          {scanProgress.stageStatus === "completed" && (
+            <small className="scan-progress-status">✔ {stageLabel(scanProgress.phase)}</small>
+          )}
+          {scanProgress.subStep && (
+            <small className="scan-progress-mod">{scanProgress.subStep}</small>
+          )}
+          {!scanProgress.subStep && scanProgress.modName && scanProgress.phase === "scan" && (
+            <small className="scan-progress-mod">{scanProgress.modName}</small>
+          )}
         </div>
       )}
 
@@ -149,6 +191,13 @@ export function DashboardPage({
         <div className="alert error">
           <AlertTriangle size={17} />
           {error}
+        </div>
+      )}
+
+      {!isScanning && scanSummary?.cancelled && (
+        <div className="alert warning">
+          <AlertTriangle size={17} />
+          {t(language, "dashboard.cancelledMessage")}
         </div>
       )}
 

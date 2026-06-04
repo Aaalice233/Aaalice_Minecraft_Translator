@@ -29,15 +29,37 @@ pub struct Settings {
     pub enable_debug_log: bool,
     pub enable_http_log: bool,
     pub enable_token_stats: bool,
+    pub i18n_pack_name: String,
+    pub vm_pack_name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum StageStatus {
+    #[serde(rename = "running")]
+    Running,
+    #[serde(rename = "completed")]
+    Completed,
+    #[serde(rename = "failed")]
+    Failed,
+}
+
+impl Default for StageStatus {
+    fn default() -> Self {
+        StageStatus::Running
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
+#[serde(default)]
 pub struct ScanProgress {
     pub current: usize,
     pub total: usize,
     pub mod_name: String,
     pub phase: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_step: Option<String>,
+    pub stage_status: StageStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -82,6 +104,8 @@ impl Default for Settings {
             enable_debug_log: false,
             enable_http_log: false,
             enable_token_stats: true,
+            i18n_pack_name: "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip".to_string(),
+            vm_pack_name: "VMTranslationPack-Converted-1.21.1.zip".to_string(),
         }
     }
 }
@@ -163,6 +187,8 @@ pub struct ScanSummary {
     pub total_target_entries: usize,
     pub total_pending_entries: usize,
     pub warnings: Vec<ScanWarning>,
+    #[serde(default)]
+    pub cancelled: bool,
 }
 
 #[cfg(test)]

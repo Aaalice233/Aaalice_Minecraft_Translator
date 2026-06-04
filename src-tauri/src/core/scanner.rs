@@ -4,7 +4,7 @@ use std::{
     hash::{Hash, Hasher},
     io::{self, Read},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
 use rayon::prelude::*;
@@ -15,7 +15,7 @@ use crate::core::{
     logging,
     models::{
         InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanProgress,
-        ScanSummary, ScanWarning,
+        ScanSummary, ScanWarning, StageStatus,
     },
     paths::display_path,
 };
@@ -68,6 +68,9 @@ pub fn scan_instance(
     path: String,
     source_language: String,
     target_language: String,
+    i18n_pack_name: String,
+    vm_pack_name: String,
+    cancel: &AtomicBool,
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<ScanSummary> {
     let source_language = normalize_source_language(&source_language)?;
@@ -83,37 +86,113 @@ pub fn scan_instance(
     }
 
     let instance_path = PathBuf::from(&path);
+
+    // Stage 1: scan mods (existing, unchanged)
     let mods = scan_mods(
         &instance_path.join("mods"),
         &source_language,
         &target_language,
         progress,
     )?;
-    let resource_packs = scan_resourcepacks(&instance_path.join("resourcepacks"), &target_language)?;
-    let total_language_files = mods.iter().map(|item| item.language_file_count).sum();
-    let total_source_entries = mods.iter().map(|item| item.source_entries).sum();
-    let total_target_entries = mods.iter().map(|item| item.target_entries).sum();
+
+    // Stage 2: resource packs — can be skipped on cancel
+    let resource_packs = if cancel.load(Ordering::SeqCst) {
+        Vec::new()
+    } else {
+        progress(ScanProgress {
+            current: 0,
+            total: 0,
+            mod_name: String::new(),
+            phase: "resourcepacks".to_string(),
+            sub_step: None,
+            stage_status: StageStatus::Running,
+        });
+        scan_resourcepacks(
+            &instance_path.join("resourcepacks"),
+            &target_language,
+            &i18n_pack_name,
+            &vm_pack_name,
+            progress,
+        )?
+    };
+
+    // Stage 3: aggregate — ALWAYS runs regardless of cancel.
+    // Aggregation is required to construct a valid ScanSummary.
+    let total_language_files = mods.iter().map(|m| m.language_file_count).sum();
+    let total_source_entries = mods.iter().map(|m| m.source_entries).sum();
+    let total_target_entries = mods.iter().map(|m| m.target_entries).sum();
     let total_pending_entries = mods
         .iter()
-        .map(|item| item.source_entries.saturating_sub(item.target_entries))
+        .map(|m| m.source_entries.saturating_sub(m.target_entries))
         .sum();
     let mut warnings = validation.warnings.clone();
-    warnings.extend(mods.iter().flat_map(|item| item.warnings.clone()));
+    warnings.extend(mods.iter().flat_map(|m| m.warnings.clone()));
 
-    logging::append_job(
-        root,
-        &job_id,
-        format!(
-            "扫描完成：模组 {} 个，语言文件 {} 个，{} {} 条，{} {} 条，资源包 {} 个",
-            mods.len(),
-            total_language_files,
-            source_language,
-            total_source_entries,
-            target_language,
-            total_target_entries,
-            resource_packs.len()
-        ),
-    )?;
+    // Emit aggregate progress event only if not cancelled
+    if !cancel.load(Ordering::SeqCst) {
+        progress(ScanProgress {
+            current: 0,
+            total: 1,
+            mod_name: String::new(),
+            phase: "aggregate".to_string(),
+            sub_step: None,
+            stage_status: StageStatus::Running,
+        });
+        progress(ScanProgress {
+            current: 1,
+            total: 1,
+            mod_name: String::new(),
+            phase: "aggregate".to_string(),
+            sub_step: None,
+            stage_status: StageStatus::Completed,
+        });
+    }
+
+    // Stage 4: log — only write if not cancelled
+    if !cancel.load(Ordering::SeqCst) {
+        progress(ScanProgress {
+            current: 0,
+            total: 1,
+            mod_name: String::new(),
+            phase: "log".to_string(),
+            sub_step: None,
+            stage_status: StageStatus::Running,
+        });
+        logging::append_job(
+            root,
+            &job_id,
+            format!(
+                "扫描完成：模组 {} 个，语言文件 {} 个，{} {} 条，{} {} 条，资源包 {} 个",
+                mods.len(),
+                total_language_files,
+                source_language,
+                total_source_entries,
+                target_language,
+                total_target_entries,
+                resource_packs.len()
+            ),
+        )?;
+        progress(ScanProgress {
+            current: 1,
+            total: 1,
+            mod_name: String::new(),
+            phase: "log".to_string(),
+            sub_step: None,
+            stage_status: StageStatus::Completed,
+        });
+    }
+
+    let cancelled = cancel.load(Ordering::SeqCst);
+
+    // Always emit final "done" event (even if cancelled, to signal scan end)
+    progress(ScanProgress {
+        current: 1,
+        total: 1,
+        mod_name: String::new(),
+        phase: "done".to_string(),
+        sub_step: None,
+        stage_status: StageStatus::Completed,
+    });
 
     Ok(ScanSummary {
         job_id,
@@ -128,6 +207,7 @@ pub fn scan_instance(
         total_target_entries,
         total_pending_entries,
         warnings,
+        cancelled,
     })
 }
 
@@ -170,6 +250,8 @@ pub fn scan_mods(
                 total,
                 mod_name: file_name,
                 phase: "scan".to_string(),
+                sub_step: None,
+                stage_status: StageStatus::Running,
             });
             result
         })
@@ -182,18 +264,53 @@ pub fn scan_mods(
 pub fn scan_resourcepacks(
     resourcepacks_path: &Path,
     target_language: &str,
+    i18n_pack_name: &str,
+    vm_pack_name: &str,
+    progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<Vec<ResourcePackScanResult>> {
     let mut results = Vec::new();
     if !resourcepacks_path.is_dir() {
         return Ok(results);
     }
 
-    for entry in fs::read_dir(resourcepacks_path)? {
-        let entry = entry?;
+    let i18n_lower = i18n_pack_name.to_ascii_lowercase();
+    let vm_lower = vm_pack_name.to_ascii_lowercase();
+    let is_known_pack = |name: &str| -> bool {
+        let lower = name.to_ascii_lowercase();
+        lower == i18n_lower || lower == vm_lower
+    };
+
+    // Pre-collect known packs and sort by name so progress emission order
+    // matches the final result sort order.
+    let mut known_packs: Vec<_> = fs::read_dir(resourcepacks_path)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            let path = entry.path();
+            let name = file_name(&path);
+            is_known_pack(&name)
+                && (path.is_dir()
+                    || path.extension().and_then(|v| v.to_str()) == Some("zip"))
+        })
+        .collect();
+    known_packs.sort_by(|a, b| file_name(&a.path()).cmp(&file_name(&b.path())));
+    let total = known_packs.len();
+    let mut current = 0;
+
+    for entry in known_packs {
         let path = entry.path();
+        let name = file_name(&path);
+        current += 1;
+        progress(ScanProgress {
+            current,
+            total,
+            mod_name: name.clone(),
+            phase: "resourcepacks".to_string(),
+            sub_step: None,
+            stage_status: StageStatus::Running,
+        });
         if path.is_dir() {
             results.push(scan_resourcepack_dir(&path, target_language)?);
-        } else if path.extension().and_then(|value| value.to_str()) == Some("zip") {
+        } else {
             results.push(scan_resourcepack_zip(&path, target_language));
         }
     }
@@ -784,7 +901,9 @@ fn resolve_source_language(
 
 fn infer_pack_source_type(path: &Path) -> String {
     let name = file_name(path).to_ascii_lowercase();
-    if name.contains("i18n") {
+    // CFPAOrg i18n packs use filenames like "Minecraft-Mod-Language-Modpack-Converted-..."
+    // or "...-i18n-..." / "...-i18nupdates-..."
+    if name.contains("i18n") || name.contains("mod-language") {
         "i18n".to_string()
     } else if name.contains("vm") || name.contains("汉化") {
         "vm".to_string()
@@ -861,7 +980,14 @@ mod tests {
 
     #[test]
     fn scans_resource_pack_sources() {
-        let packs = scan_resourcepacks(&fixtures_root().join("resourcepacks"), "zh_cn").unwrap();
+        let packs = scan_resourcepacks(
+            &fixtures_root().join("resourcepacks"),
+            "zh_cn",
+            "i18n-example.zip",
+            "VM_汉化包",
+            &|_| {},
+        )
+        .unwrap();
         let i18n = packs.iter().find(|item| item.source_type == "i18n").unwrap();
         let vm = packs.iter().find(|item| item.source_type == "vm").unwrap();
 
@@ -874,7 +1000,14 @@ mod tests {
 
     #[test]
     fn target_language_changes_resource_pack_matching() {
-        let packs = scan_resourcepacks(&fixtures_root().join("resourcepacks"), "ja_jp").unwrap();
+        let packs = scan_resourcepacks(
+            &fixtures_root().join("resourcepacks"),
+            "ja_jp",
+            "i18n-example.zip",
+            "VM_汉化包",
+            &|_| {},
+        )
+        .unwrap();
         assert!(packs.iter().all(|item| item.entry_count == 0));
     }
 

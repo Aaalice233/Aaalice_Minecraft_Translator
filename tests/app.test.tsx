@@ -32,6 +32,8 @@ const settings: Settings = {
   enableDebugLog: false,
   enableHttpLog: false,
   enableTokenStats: true,
+  i18nPackName: "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
+  vmPackName: "VMTranslationPack-Converted-1.21.1.zip",
 };
 
 afterEach(() => {
@@ -77,7 +79,8 @@ describe("settings page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /API 设置/ }));
 
-    expect(screen.getByLabelText("Base URL")).toHaveValue("https://api.deepseek.com");
+    expect(screen.getByLabelText("API 地址")).toHaveValue("https://api.deepseek.com");
+    expect(screen.getByLabelText("API 密钥")).toHaveValue("");
     expect(screen.getByLabelText("模型")).toHaveValue("deepseek-v4-flash");
   });
 });

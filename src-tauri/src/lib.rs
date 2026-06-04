@@ -19,6 +19,7 @@ pub fn run() {
             commands::save_settings,
             commands::validate_instance,
             commands::scan_instance,
+            commands::cancel_scan,
             commands::open_path,
             commands::fetch_llm_models
         ])

@@ -86,7 +86,7 @@ export function App() {
           <div className="brand-mark">A</div>
           <div>
             <strong>Aaalice</strong>
-            <span>MC Translator</span>
+            <span>{t(language, "app.brandSubtitle")}</span>
           </div>
         </div>
 

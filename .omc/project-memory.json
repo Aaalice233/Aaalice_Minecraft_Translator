@@ -47,8 +47,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator\" && npm run build 2>&1",
-    "testCommand": "cd \"E:\\MC Projects\\Aaalice_Minecraft_Translator\\src-tauri\" && cargo test 2>&1",
+    "buildCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator\" && npm run test:unit 2>&1 && npm run build 2>&1 | tail -10",
+    "testCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator/src-tauri\" && cargo test 2>&1",
     "lintCommand": null,
     "devCommand": "npm run dev",
     "scripts": {
@@ -232,117 +232,135 @@
   },
   "hotPaths": [
     {
+      "path": "src\\i18n\\translations.ts",
+      "accessCount": 68,
+      "lastAccessed": 1780563997289,
+      "type": "file"
+    },
+    {
       "path": "src\\pages\\SettingsPage.tsx",
-      "accessCount": 48,
-      "lastAccessed": 1780554475629,
+      "accessCount": 60,
+      "lastAccessed": 1780564086573,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\core\\scanner.rs",
-      "accessCount": 38,
-      "lastAccessed": 1780559108914,
-      "type": "file"
-    },
-    {
-      "path": "src-tauri\\src\\commands.rs",
-      "accessCount": 32,
-      "lastAccessed": 1780559108222,
-      "type": "file"
-    },
-    {
-      "path": "src\\api\\tauri.ts",
-      "accessCount": 30,
-      "lastAccessed": 1780559109589,
+      "accessCount": 58,
+      "lastAccessed": 1780562672947,
       "type": "file"
     },
     {
       "path": "src\\pages\\DashboardPage.tsx",
-      "accessCount": 28,
-      "lastAccessed": 1780559109252,
+      "accessCount": 45,
+      "lastAccessed": 1780563548052,
+      "type": "file"
+    },
+    {
+      "path": "src-tauri\\src\\commands.rs",
+      "accessCount": 42,
+      "lastAccessed": 1780563946045,
+      "type": "file"
+    },
+    {
+      "path": "src\\api\\tauri.ts",
+      "accessCount": 40,
+      "lastAccessed": 1780563969252,
       "type": "file"
     },
     {
       "path": "src\\styles\\app.css",
-      "accessCount": 27,
-      "lastAccessed": 1780558095383,
-      "type": "file"
-    },
-    {
-      "path": "src",
-      "accessCount": 26,
-      "lastAccessed": 1780554404569,
-      "type": "directory"
-    },
-    {
-      "path": "src\\i18n\\translations.ts",
-      "accessCount": 26,
-      "lastAccessed": 1780558076291,
+      "accessCount": 37,
+      "lastAccessed": 1780562932860,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\core\\models.rs",
-      "accessCount": 23,
-      "lastAccessed": 1780559114339,
+      "accessCount": 36,
+      "lastAccessed": 1780563949167,
       "type": "file"
     },
     {
       "path": "src\\types.ts",
-      "accessCount": 20,
-      "lastAccessed": 1780559113858,
+      "accessCount": 35,
+      "lastAccessed": 1780563997220,
       "type": "file"
-    },
-    {
-      "path": "src-tauri\\Cargo.toml",
-      "accessCount": 16,
-      "lastAccessed": 1780559135773,
-      "type": "file"
-    },
-    {
-      "path": "src-tauri\\src",
-      "accessCount": 16,
-      "lastAccessed": 1780559147645,
-      "type": "directory"
     },
     {
       "path": "",
-      "accessCount": 15,
-      "lastAccessed": 1780559145921,
+      "accessCount": 32,
+      "lastAccessed": 1780562933905,
+      "type": "directory"
+    },
+    {
+      "path": "src",
+      "accessCount": 30,
+      "lastAccessed": 1780562179747,
+      "type": "directory"
+    },
+    {
+      "path": "src-tauri\\src",
+      "accessCount": 25,
+      "lastAccessed": 1780563943165,
       "type": "directory"
     },
     {
       "path": "src-tauri\\src\\lib.rs",
-      "accessCount": 14,
-      "lastAccessed": 1780559109868,
+      "accessCount": 21,
+      "lastAccessed": 1780562673347,
       "type": "file"
     },
     {
-      "path": "src-tauri\\src\\core\\mod.rs",
-      "accessCount": 10,
-      "lastAccessed": 1780553761769,
+      "path": "src-tauri\\Cargo.toml",
+      "accessCount": 19,
+      "lastAccessed": 1780561657985,
       "type": "file"
     },
     {
       "path": "src\\app\\App.tsx",
-      "accessCount": 9,
-      "lastAccessed": 1780559136167,
+      "accessCount": 15,
+      "lastAccessed": 1780563970804,
+      "type": "file"
+    },
+    {
+      "path": "src-tauri\\src\\core\\mod.rs",
+      "accessCount": 11,
+      "lastAccessed": 1780561077978,
       "type": "file"
     },
     {
       "path": "src-tauri",
-      "accessCount": 9,
-      "lastAccessed": 1780559274773,
+      "accessCount": 11,
+      "lastAccessed": 1780562184114,
       "type": "directory"
     },
     {
+      "path": "tests\\app.test.tsx",
+      "accessCount": 11,
+      "lastAccessed": 1780563083468,
+      "type": "file"
+    },
+    {
+      "path": "src-tauri\\tauri.conf.json",
+      "accessCount": 9,
+      "lastAccessed": 1780562064399,
+      "type": "file"
+    },
+    {
       "path": "docs\\01-product-spec.md",
-      "accessCount": 5,
-      "lastAccessed": 1780553182882,
+      "accessCount": 6,
+      "lastAccessed": 1780561092300,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\core\\paths.rs",
-      "accessCount": 4,
-      "lastAccessed": 1780552445245,
+      "accessCount": 5,
+      "lastAccessed": 1780561089596,
+      "type": "file"
+    },
+    {
+      "path": "src-tauri\\src\\main.rs",
+      "accessCount": 5,
+      "lastAccessed": 1780561479041,
       "type": "file"
     },
     {
@@ -352,24 +370,6 @@
       "type": "directory"
     },
     {
-      "path": "tests\\app.test.tsx",
-      "accessCount": 4,
-      "lastAccessed": 1780553956343,
-      "type": "file"
-    },
-    {
-      "path": "src-tauri\\src\\main.rs",
-      "accessCount": 4,
-      "lastAccessed": 1780555579147,
-      "type": "file"
-    },
-    {
-      "path": "src-tauri\\tauri.conf.json",
-      "accessCount": 4,
-      "lastAccessed": 1780559113761,
-      "type": "file"
-    },
-    {
       "path": "package.json",
       "accessCount": 4,
       "lastAccessed": 1780559114769,
@@ -377,8 +377,26 @@
     },
     {
       "path": "src-tauri\\src\\core\\logging.rs",
-      "accessCount": 3,
-      "lastAccessed": 1780553625595,
+      "accessCount": 4,
+      "lastAccessed": 1780561082937,
+      "type": "file"
+    },
+    {
+      "path": "docs\\02-architecture-plan.md",
+      "accessCount": 4,
+      "lastAccessed": 1780561088926,
+      "type": "file"
+    },
+    {
+      "path": "src\\pages\\LogsPage.tsx",
+      "accessCount": 4,
+      "lastAccessed": 1780563547128,
+      "type": "file"
+    },
+    {
+      "path": "src-tauri\\src\\core\\settings.rs",
+      "accessCount": 4,
+      "lastAccessed": 1780563945649,
       "type": "file"
     },
     {
@@ -394,15 +412,9 @@
       "type": "file"
     },
     {
-      "path": "src-tauri\\src\\core\\settings.rs",
-      "accessCount": 2,
-      "lastAccessed": 1780552404561,
-      "type": "file"
-    },
-    {
-      "path": "docs\\02-architecture-plan.md",
-      "accessCount": 2,
-      "lastAccessed": 1780553182079,
+      "path": "src\\pages\\PlaceholderPage.tsx",
+      "accessCount": 3,
+      "lastAccessed": 1780562919197,
       "type": "file"
     },
     {
@@ -436,27 +448,21 @@
       "type": "file"
     },
     {
-      "path": "src\\pages\\PlaceholderPage.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1780552059892,
-      "type": "file"
+      "path": "src-tauri\\src\\core",
+      "accessCount": 2,
+      "lastAccessed": 1780561077822,
+      "type": "directory"
     },
     {
-      "path": "src\\pages\\LogsPage.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1780552064040,
+      "path": "src\\main.tsx",
+      "accessCount": 2,
+      "lastAccessed": 1780562942906,
       "type": "file"
     },
     {
       "path": "tsconfig.json",
       "accessCount": 1,
       "lastAccessed": 1780552065705,
-      "type": "file"
-    },
-    {
-      "path": "src\\main.tsx",
-      "accessCount": 1,
-      "lastAccessed": 1780552065838,
       "type": "file"
     },
     {
@@ -482,12 +488,6 @@
       "accessCount": 1,
       "lastAccessed": 1780552077677,
       "type": "file"
-    },
-    {
-      "path": "src-tauri\\src\\core",
-      "accessCount": 1,
-      "lastAccessed": 1780552635520,
-      "type": "directory"
     },
     {
       "path": "src\\i18n",

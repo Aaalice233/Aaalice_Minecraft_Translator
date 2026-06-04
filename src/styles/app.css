@@ -329,6 +329,35 @@ select {
   text-overflow: ellipsis;
 }
 
+.scan-progress-status {
+  display: block;
+  margin-top: 4px;
+  color: #1f8a5b;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cancel-scan-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.ghost-button.danger {
+  color: #d32f2f;
+}
+.ghost-button.danger:hover {
+  background: rgba(211, 47, 47, 0.08);
+}
+
+.cancelling-hint {
+  display: block;
+  color: #8b8579;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
 .alert {
   display: flex;
   align-items: center;
@@ -585,6 +614,19 @@ th {
   width: 18px;
   height: 18px;
   accent-color: #1f8a5b;
+}
+
+.settings-separator {
+  border: 0;
+  border-top: 1px solid #e3ddd1;
+  margin: 6px 0;
+}
+
+.section-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #45413a;
+  margin: 0;
 }
 
 .empty-state {
