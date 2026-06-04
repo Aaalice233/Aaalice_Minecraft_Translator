@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, HashSet},
     fs,
     hash::{Hash, Hasher},
     io::{self, Read},
@@ -121,10 +121,32 @@ pub fn scan_instance(
     let total_language_files = mods.iter().map(|m| m.language_file_count).sum();
     let total_source_entries = mods.iter().map(|m| m.source_entries).sum();
     let total_target_entries = mods.iter().map(|m| m.target_entries).sum();
-    let total_pending_entries = mods
+    let total_pending_entries: usize = mods
         .iter()
         .map(|m| m.source_entries.saturating_sub(m.target_entries))
         .sum();
+
+    // Stage 3b: match resource pack entries against mod source entries
+    // to determine how many pending entries are already covered.
+    let resource_pack_keys: HashSet<(&str, &str)> = resource_packs
+        .iter()
+        .flat_map(|rp| rp.entries.iter())
+        .map(|e| (e.mod_id.as_str(), e.key.as_str()))
+        .collect();
+    let resource_pack_covered_entries: usize = {
+        let rp_keys = &resource_pack_keys;
+        mods.iter()
+            .flat_map(|m| {
+                let src_lang = m.resolved_source_language.as_str();
+                m.entries.iter().filter(move |e| {
+                    e.language == src_lang
+                        && rp_keys.contains(&(e.mod_id.as_str(), e.key.as_str()))
+                })
+            })
+            .count()
+    };
+    let actual_pending_entries = total_pending_entries.saturating_sub(resource_pack_covered_entries);
+
     let mut warnings = validation.warnings.clone();
     warnings.extend(mods.iter().flat_map(|m| m.warnings.clone()));
 
@@ -172,6 +194,34 @@ pub fn scan_instance(
                 resource_packs.len()
             ),
         )?;
+
+        // Per-mod breakdown
+        for mod_result in &mods {
+            let pending = mod_result.source_entries.saturating_sub(mod_result.target_entries);
+            logging::append_job(
+                root,
+                &job_id,
+                format!(
+                    "[模组] {}: 来源条目={} 目标条目={} 待翻译={}",
+                    mod_result.file_name, mod_result.source_entries, mod_result.target_entries, pending
+                ),
+            )?;
+        }
+
+        // Total summary
+        logging::append_job(
+            root,
+            &job_id,
+            format!(
+                "扫描汇总: {} 模组, {} 语言文件, {} 来源条目, {} 目标条目, {} 待翻译条目",
+                mods.len(),
+                total_language_files,
+                total_source_entries,
+                total_target_entries,
+                total_pending_entries
+            ),
+        )?;
+
         progress(ScanProgress {
             current: 1,
             total: 1,
@@ -206,6 +256,8 @@ pub fn scan_instance(
         total_source_entries,
         total_target_entries,
         total_pending_entries,
+        resource_pack_covered_entries,
+        actual_pending_entries,
         warnings,
         cancelled,
     })
@@ -277,7 +329,15 @@ pub fn scan_resourcepacks(
     let vm_lower = vm_pack_name.to_ascii_lowercase();
     let is_known_pack = |name: &str| -> bool {
         let lower = name.to_ascii_lowercase();
-        lower == i18n_lower || lower == vm_lower
+        // Prefix/suffix strip: remove .zip and version suffixes for comparison
+        let stripped = lower
+            .strip_suffix(".zip")
+            .unwrap_or(&lower)
+            .trim_end_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '.');
+        stripped == i18n_lower.trim_end_matches(".zip").trim_end_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '.')
+            || stripped == vm_lower.trim_end_matches(".zip").trim_end_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '.')
+            || lower == i18n_lower
+            || lower == vm_lower
     };
 
     // Pre-collect known packs and sort by name so progress emission order
@@ -424,19 +484,23 @@ fn scan_mod_jar(path: &Path, source_language: &str, target_language: &str) -> Mo
 
 fn scan_resourcepack_dir(path: &Path, target_language: &str) -> io::Result<ResourcePackScanResult> {
     let mut lang_file_count = 0;
-    let mut entry_count = 0;
+    let mut entries = Vec::new();
+    let mut warnings = Vec::new();
     let has_pack_meta = path.join("pack.mcmeta").is_file();
     let assets_path = path.join("assets");
 
     if assets_path.is_dir() {
         collect_resourcepack_lang_dir(
             &assets_path,
+            &assets_path,
             target_language,
             &mut lang_file_count,
-            &mut entry_count,
+            &mut entries,
+            &mut warnings,
         )?;
     }
 
+    let entry_count = entries.len();
     Ok(ResourcePackScanResult {
         name: file_name(path),
         path: display_path(path),
@@ -445,13 +509,15 @@ fn scan_resourcepack_dir(path: &Path, target_language: &str) -> io::Result<Resou
         has_pack_meta,
         lang_file_count,
         entry_count,
+        entries,
     })
 }
 
 fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScanResult {
     let mut lang_file_count = 0;
-    let mut entry_count = 0;
+    let mut entries = Vec::new();
     let mut has_pack_meta = false;
+    let mut warnings = Vec::new();
 
     if let Ok(file) = fs::File::open(path) {
         if let Ok(mut archive) = ZipArchive::new(file) {
@@ -472,14 +538,15 @@ fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScan
                 let mut content = String::new();
                 if file.read_to_string(&mut content).is_ok() {
                     lang_file_count += 1;
-                    entry_count += parse_resourcepack_entry_count(
-                        &file.name().replace('\\', "/"), &content, target_language
-                    );
+                    let name = file.name().replace('\\', "/");
+                    let file_entries = parse_resourcepack_lang_file(&name, &content, &mut warnings);
+                    entries.extend(file_entries);
                 }
             }
         }
     }
 
+    let entry_count = entries.len();
     ResourcePackScanResult {
         name: file_name(path),
         path: display_path(path),
@@ -488,28 +555,50 @@ fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScan
         has_pack_meta,
         lang_file_count,
         entry_count,
+        entries,
     }
 }
 
 fn collect_resourcepack_lang_dir(
-    path: &Path,
+    assets_root: &Path,
+    current: &Path,
     target_language: &str,
     lang_file_count: &mut usize,
-    entry_count: &mut usize,
+    entries: &mut Vec<LanguageEntry>,
+    warnings: &mut Vec<ScanWarning>,
 ) -> io::Result<()> {
-    for entry in fs::read_dir(path)? {
+    for entry in fs::read_dir(current)? {
         let entry = entry?;
         let child = entry.path();
         if child.is_dir() {
-            collect_resourcepack_lang_dir(&child, target_language, lang_file_count, entry_count)?;
+            collect_resourcepack_lang_dir(
+                assets_root,
+                &child,
+                target_language,
+                lang_file_count,
+                entries,
+                warnings,
+            )?;
             continue;
         }
-        if !is_target_lang_file(&display_path(&child), target_language) {
+        let path_str = display_path(&child);
+        if !is_target_lang_file(&path_str, target_language) {
             continue;
         }
         let content = fs::read_to_string(&child)?;
         *lang_file_count += 1;
-        *entry_count += parse_resourcepack_entry_count(&display_path(child), &content, target_language);
+
+        // Compute assets-relative path for parse_lang_path compatibility.
+        // e.g. from full path ".../VM_汉化包/assets/placeholdermod/lang/zh_cn.lang"
+        // produce "assets/placeholdermod/lang/zh_cn.lang"
+        let pack_path = child
+            .strip_prefix(assets_root)
+            .ok()
+            .map(|rel| format!("assets/{}", rel.display().to_string().replace('\\', "/")))
+            .unwrap_or_else(|| path_str.clone());
+
+        let file_entries = parse_resourcepack_lang_file(&pack_path, &content, warnings);
+        entries.extend(file_entries);
     }
     Ok(())
 }
@@ -792,22 +881,16 @@ fn language_entry(
     }
 }
 
-fn parse_resourcepack_entry_count(name: &str, content: &str, target_language: &str) -> usize {
-    if name.ends_with(".json") {
-        serde_json::from_str::<HashMap<String, String>>(content)
-            .map(|map| map.len())
-            .unwrap_or_else(|_| {
-                parse_lenient_json_lang_entries("resourcepack", target_language, name, content).len()
-            })
-    } else {
-        content
-            .lines()
-            .filter(|line| {
-                let trimmed = line.trim();
-                !trimmed.is_empty() && !trimmed.starts_with('#') && trimmed.contains('=')
-            })
-            .count()
-    }
+/// Parse a single language file (JSON or .lang) inside a resource pack into LanguageEntry objects.
+/// Reuses the same parsing logic as mod jar language file parsing.
+fn parse_resourcepack_lang_file(
+    name: &str,
+    content: &str,
+    warnings: &mut Vec<ScanWarning>,
+) -> Vec<LanguageEntry> {
+    let format = if name.ends_with(".json") { "json" } else { "lang" };
+    let result = parse_language_entries(name, content, format, Path::new(name), warnings);
+    result.entries
 }
 
 fn parse_lang_path(path: &str) -> Option<(String, String)> {
@@ -994,8 +1077,20 @@ mod tests {
         assert!(i18n.is_archive);
         assert!(i18n.has_pack_meta);
         assert_eq!(i18n.entry_count, 2);
+        assert_eq!(i18n.entries.len(), 2);
+        // Entries may be in any order (ZipArchive enumeration order); check by key
+        let find_i18n_entry = |key: &str| i18n.entries.iter().find(|e| e.key == key).unwrap();
+        assert_eq!(find_i18n_entry("item.examplemod.energy_cell").text, "能量单元");
+        assert_eq!(find_i18n_entry("message.examplemod.open").text, "按住 %s 打开 %s 界面");
+        assert!(i18n.entries.iter().all(|e| e.language == "zh_cn"));
+
         assert!(!vm.is_archive);
         assert_eq!(vm.entry_count, 1);
+        assert_eq!(vm.entries.len(), 1);
+        assert_eq!(vm.entries[0].key, "item.placeholdermod.wrench");
+        assert_eq!(vm.entries[0].text, "占位扳手");
+        assert_eq!(vm.entries[0].language, "zh_cn");
+        assert_eq!(vm.entries[0].format, "lang");
     }
 
     #[test]

@@ -47,8 +47,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator\" && npm run test:unit 2>&1 && npm run build 2>&1 | tail -10",
-    "testCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator/src-tauri\" && cargo test 2>&1",
+    "buildCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator\" && npx tsc --noEmit 2>&1 && npm run build 2>&1 | tail -3",
+    "testCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator\" && npm run test:unit 2>&1 | tail -4 && echo \"---\" && cd src-tauri && cargo test 2>&1 | tail -5",
     "lintCommand": null,
     "devCommand": "npm run dev",
     "scripts": {
@@ -233,134 +233,164 @@
   "hotPaths": [
     {
       "path": "src\\i18n\\translations.ts",
-      "accessCount": 68,
-      "lastAccessed": 1780563997289,
-      "type": "file"
-    },
-    {
-      "path": "src\\pages\\SettingsPage.tsx",
-      "accessCount": 60,
-      "lastAccessed": 1780564086573,
+      "accessCount": 188,
+      "lastAccessed": 1780588682691,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\core\\scanner.rs",
-      "accessCount": 58,
-      "lastAccessed": 1780562672947,
+      "accessCount": 111,
+      "lastAccessed": 1780588124918,
       "type": "file"
     },
     {
       "path": "src\\pages\\DashboardPage.tsx",
-      "accessCount": 45,
-      "lastAccessed": 1780563548052,
-      "type": "file"
-    },
-    {
-      "path": "src-tauri\\src\\commands.rs",
-      "accessCount": 42,
-      "lastAccessed": 1780563946045,
-      "type": "file"
-    },
-    {
-      "path": "src\\api\\tauri.ts",
-      "accessCount": 40,
-      "lastAccessed": 1780563969252,
+      "accessCount": 97,
+      "lastAccessed": 1780587124012,
       "type": "file"
     },
     {
       "path": "src\\styles\\app.css",
-      "accessCount": 37,
-      "lastAccessed": 1780562932860,
+      "accessCount": 82,
+      "lastAccessed": 1780588787019,
       "type": "file"
     },
     {
-      "path": "src-tauri\\src\\core\\models.rs",
-      "accessCount": 36,
-      "lastAccessed": 1780563949167,
-      "type": "file"
-    },
-    {
-      "path": "src\\types.ts",
-      "accessCount": 35,
-      "lastAccessed": 1780563997220,
-      "type": "file"
-    },
-    {
-      "path": "",
-      "accessCount": 32,
-      "lastAccessed": 1780562933905,
-      "type": "directory"
-    },
-    {
-      "path": "src",
-      "accessCount": 30,
-      "lastAccessed": 1780562179747,
-      "type": "directory"
-    },
-    {
-      "path": "src-tauri\\src",
-      "accessCount": 25,
-      "lastAccessed": 1780563943165,
-      "type": "directory"
-    },
-    {
-      "path": "src-tauri\\src\\lib.rs",
-      "accessCount": 21,
-      "lastAccessed": 1780562673347,
-      "type": "file"
-    },
-    {
-      "path": "src-tauri\\Cargo.toml",
-      "accessCount": 19,
-      "lastAccessed": 1780561657985,
+      "path": "src-tauri\\src\\commands.rs",
+      "accessCount": 76,
+      "lastAccessed": 1780587433994,
       "type": "file"
     },
     {
       "path": "src\\app\\App.tsx",
-      "accessCount": 15,
-      "lastAccessed": 1780563970804,
+      "accessCount": 73,
+      "lastAccessed": 1780588781371,
       "type": "file"
     },
     {
-      "path": "src-tauri\\src\\core\\mod.rs",
-      "accessCount": 11,
-      "lastAccessed": 1780561077978,
+      "path": "src-tauri\\src\\core\\models.rs",
+      "accessCount": 65,
+      "lastAccessed": 1780587133848,
+      "type": "file"
+    },
+    {
+      "path": "src",
+      "accessCount": 62,
+      "lastAccessed": 1780587105669,
+      "type": "directory"
+    },
+    {
+      "path": "src\\pages\\SettingsPage.tsx",
+      "accessCount": 61,
+      "lastAccessed": 1780572615084,
+      "type": "file"
+    },
+    {
+      "path": "src\\types.ts",
+      "accessCount": 61,
+      "lastAccessed": 1780587096990,
+      "type": "file"
+    },
+    {
+      "path": "src\\api\\tauri.ts",
+      "accessCount": 59,
+      "lastAccessed": 1780587439000,
+      "type": "file"
+    },
+    {
+      "path": "",
+      "accessCount": 48,
+      "lastAccessed": 1780588109102,
+      "type": "directory"
+    },
+    {
+      "path": "src-tauri\\src",
+      "accessCount": 44,
+      "lastAccessed": 1780588109527,
+      "type": "directory"
+    },
+    {
+      "path": "src-tauri\\Cargo.toml",
+      "accessCount": 30,
+      "lastAccessed": 1780577991479,
+      "type": "file"
+    },
+    {
+      "path": "src-tauri\\src\\lib.rs",
+      "accessCount": 29,
+      "lastAccessed": 1780577414108,
       "type": "file"
     },
     {
       "path": "src-tauri",
-      "accessCount": 11,
-      "lastAccessed": 1780562184114,
+      "accessCount": 20,
+      "lastAccessed": 1780587113674,
       "type": "directory"
     },
     {
+      "path": "src-tauri\\src\\core\\mod.rs",
+      "accessCount": 19,
+      "lastAccessed": 1780577477665,
+      "type": "file"
+    },
+    {
       "path": "tests\\app.test.tsx",
-      "accessCount": 11,
-      "lastAccessed": 1780563083468,
+      "accessCount": 16,
+      "lastAccessed": 1780584935264,
       "type": "file"
     },
     {
       "path": "src-tauri\\tauri.conf.json",
-      "accessCount": 9,
-      "lastAccessed": 1780562064399,
+      "accessCount": 10,
+      "lastAccessed": 1780571500422,
       "type": "file"
     },
     {
       "path": "docs\\01-product-spec.md",
-      "accessCount": 6,
-      "lastAccessed": 1780561092300,
+      "accessCount": 9,
+      "lastAccessed": 1780572706747,
+      "type": "file"
+    },
+    {
+      "path": "docs\\02-architecture-plan.md",
+      "accessCount": 9,
+      "lastAccessed": 1780572751337,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\core\\paths.rs",
-      "accessCount": 5,
-      "lastAccessed": 1780561089596,
+      "accessCount": 9,
+      "lastAccessed": 1780577978369,
+      "type": "file"
+    },
+    {
+      "path": "src-tauri\\src\\core\\logging.rs",
+      "accessCount": 8,
+      "lastAccessed": 1780577135429,
+      "type": "file"
+    },
+    {
+      "path": "src-tauri\\src\\core\\settings.rs",
+      "accessCount": 7,
+      "lastAccessed": 1780572702980,
+      "type": "file"
+    },
+    {
+      "path": "src\\pages\\PlaceholderPage.tsx",
+      "accessCount": 6,
+      "lastAccessed": 1780584394144,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\main.rs",
       "accessCount": 5,
       "lastAccessed": 1780561479041,
+      "type": "file"
+    },
+    {
+      "path": "src\\pages\\LogsPage.tsx",
+      "accessCount": 5,
+      "lastAccessed": 1780571885702,
       "type": "file"
     },
     {
@@ -376,30 +406,6 @@
       "type": "file"
     },
     {
-      "path": "src-tauri\\src\\core\\logging.rs",
-      "accessCount": 4,
-      "lastAccessed": 1780561082937,
-      "type": "file"
-    },
-    {
-      "path": "docs\\02-architecture-plan.md",
-      "accessCount": 4,
-      "lastAccessed": 1780561088926,
-      "type": "file"
-    },
-    {
-      "path": "src\\pages\\LogsPage.tsx",
-      "accessCount": 4,
-      "lastAccessed": 1780563547128,
-      "type": "file"
-    },
-    {
-      "path": "src-tauri\\src\\core\\settings.rs",
-      "accessCount": 4,
-      "lastAccessed": 1780563945649,
-      "type": "file"
-    },
-    {
       "path": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\E--MC-Projects-Aaalice-Minecraft-Translator\\5c8b259d-287b-4a88-b7eb-39a747dc9f18\\tasks\\bkkkwiatb.output",
       "accessCount": 3,
       "lastAccessed": 1780555680776,
@@ -412,10 +418,10 @@
       "type": "file"
     },
     {
-      "path": "src\\pages\\PlaceholderPage.tsx",
+      "path": "src-tauri\\src\\core",
       "accessCount": 3,
-      "lastAccessed": 1780562919197,
-      "type": "file"
+      "lastAccessed": 1780581610085,
+      "type": "directory"
     },
     {
       "path": "C:\\Users\\Admin\\.claude\\projects\\E--MC-Projects-Aaalice-Minecraft-Translator\\16f1f38a-8ca3-4506-9a76-544df1cba025\\tool-results\\b81g98ex4.txt",
@@ -448,16 +454,16 @@
       "type": "file"
     },
     {
-      "path": "src-tauri\\src\\core",
-      "accessCount": 2,
-      "lastAccessed": 1780561077822,
-      "type": "directory"
-    },
-    {
       "path": "src\\main.tsx",
       "accessCount": 2,
       "lastAccessed": 1780562942906,
       "type": "file"
+    },
+    {
+      "path": "src\\i18n",
+      "accessCount": 2,
+      "lastAccessed": 1780577680202,
+      "type": "directory"
     },
     {
       "path": "tsconfig.json",
@@ -488,12 +494,6 @@
       "accessCount": 1,
       "lastAccessed": 1780552077677,
       "type": "file"
-    },
-    {
-      "path": "src\\i18n",
-      "accessCount": 1,
-      "lastAccessed": 1780553190975,
-      "type": "directory"
     },
     {
       "path": "C:\\Users\\Admin\\AppData\\Local\\Temp\\claude\\E--MC-Projects-Aaalice-Minecraft-Translator\\5c8b259d-287b-4a88-b7eb-39a747dc9f18\\tasks\\bfmmq40t8.output",

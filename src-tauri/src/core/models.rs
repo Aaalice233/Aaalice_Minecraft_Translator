@@ -170,6 +170,7 @@ pub struct ResourcePackScanResult {
     pub has_pack_meta: bool,
     pub lang_file_count: usize,
     pub entry_count: usize,
+    pub entries: Vec<LanguageEntry>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -186,10 +187,30 @@ pub struct ScanSummary {
     pub total_source_entries: usize,
     pub total_target_entries: usize,
     pub total_pending_entries: usize,
+    /// How many pending entries match existing resource-pack translations.
+    pub resource_pack_covered_entries: usize,
+    /// Effective pending after deducting resource pack coverage.
+    pub actual_pending_entries: usize,
     pub warnings: Vec<ScanWarning>,
     #[serde(default)]
     pub cancelled: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslateProgress {
+    pub current: usize,
+    pub total: usize,
+    pub phase: String,
+    pub mod_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_step: Option<String>,
+    pub stage_status: StageStatus,
+}
+
+use std::sync::atomic::AtomicU64;
+pub static TOTAL_TOKEN_USAGE_PROMPT: AtomicU64 = AtomicU64::new(0);
+pub static TOTAL_TOKEN_USAGE_COMPLETION: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(test)]
 mod tests {

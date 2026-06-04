@@ -1,4 +1,4 @@
-import type { InstanceValidation, LlmModelsResponse, ScanSummary, Settings } from "../types";
+import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, PackEntry, PackResult, ScanSummary, Settings, TranslateProgress } from "../types";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
 
@@ -102,4 +102,110 @@ function loadBrowserSettings(): Settings {
   } catch {
     return defaultSettings;
   }
+}
+
+// ── P2: Dictionary API ────────────────────────────────────────────
+
+export async function searchDictionary(
+  search?: string,
+  sourceType?: string,
+  modId?: string,
+  sourceLang?: string,
+  targetLang?: string,
+  limit?: number,
+  offset?: number,
+): Promise<DictionaryEntry[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return tauriInvoke<DictionaryEntry[]>("search_dictionary", {
+    search, sourceType, modId, sourceLang, targetLang, limit, offset,
+  });
+}
+
+export async function updateDictionaryEntry(id: number, targetText: string): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return true;
+  }
+  return tauriInvoke<boolean>("update_dictionary_entry", { id, targetText });
+}
+
+export async function deleteDictionaryEntry(id: number): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return true;
+  }
+  return tauriInvoke<boolean>("delete_dictionary_entry", { id });
+}
+
+export async function exportDictionary(filePath: string): Promise<number> {
+  if (!isTauriRuntime()) {
+    return 0;
+  }
+  return tauriInvoke<number>("export_dictionary", { filePath });
+}
+
+export async function importDictionary(filePath: string): Promise<ImportResult> {
+  if (!isTauriRuntime()) {
+    return { imported: 0, skipped: 0, conflicts: [] };
+  }
+  return tauriInvoke<ImportResult>("import_dictionary", { filePath });
+}
+
+export async function getDictionaryStats(): Promise<DictionaryStats> {
+  if (!isTauriRuntime()) {
+    return { total: 0, modIds: [] };
+  }
+  return tauriInvoke<DictionaryStats>("get_dictionary_stats");
+}
+
+// ── P4: Pack API ──────────────────────────────────────────────────
+
+export async function startTranslation(
+  path: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+  totalEntries?: number,
+): Promise<number> {
+  if (!isTauriRuntime()) {
+    throw new Error("浏览器预览模式下不可用，请在 Tauri 桌面端中运行");
+  }
+  return tauriInvoke<number>("start_translation", {
+    path,
+    sourceLanguage,
+    targetLanguage,
+    totalEntries,
+  });
+}
+
+export async function cancelTranslation(): Promise<void> {
+  if (!isTauriRuntime()) {
+    return;
+  }
+  return tauriInvoke<void>("cancel_translation");
+}
+
+export async function generateTranslationPack(
+  entries: PackEntry[],
+  targetLanguage: string,
+  dryRun: boolean,
+): Promise<PackResult> {
+  if (!isTauriRuntime()) {
+    return { outputDir: "", zipPath: "", modCount: 0, entryCount: 0, conflicts: [] };
+  }
+  return tauriInvoke<PackResult>("generate_translation_pack", {
+    entries, targetLanguage, dryRun,
+  });
+}
+
+export async function copyPackToInstance(
+  packZipPath: string,
+  instancePath: string,
+  overwrite: boolean,
+): Promise<CopyResult> {
+  if (!isTauriRuntime()) {
+    return { success: false, targetPath: "", replaced: false };
+  }
+  return tauriInvoke<CopyResult>("copy_pack_to_instance", {
+    packZipPath, instancePath, overwrite,
+  });
 }

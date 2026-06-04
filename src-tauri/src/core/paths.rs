@@ -40,3 +40,23 @@ pub fn runtime_root() -> io::Result<PathBuf> {
 pub fn display_path(path: impl AsRef<std::path::Path>) -> String {
     path.as_ref().to_string_lossy().replace('\\', "/")
 }
+
+/// Path to the SQLite dictionary database
+pub fn dictionary_db_path(root: &std::path::Path) -> std::path::PathBuf {
+    root.join("data").join("dictionary.sqlite")
+}
+
+/// Directory for build output (translated resource pack)
+pub fn build_output_dir(root: &std::path::Path) -> std::path::PathBuf {
+    root.join("build").join("output")
+}
+
+/// Path to a translation job's state file (for cross-session recovery)
+pub fn job_state_path(root: &std::path::Path, job_id: &str) -> std::path::PathBuf {
+    root.join("data").join("jobs").join(format!("{job_id}.json"))
+}
+
+/// Directory for all job state files
+pub fn jobs_dir(root: &std::path::Path) -> std::path::PathBuf {
+    root.join("data").join("jobs")
+}

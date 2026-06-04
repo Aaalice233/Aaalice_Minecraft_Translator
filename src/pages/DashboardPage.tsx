@@ -1,5 +1,5 @@
-import { AlertTriangle, FolderOpen, RefreshCcw, ScanLine } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, FolderOpen, Loader2, RefreshCcw, ScanLine, Square } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import type { AppLanguage, ScanProgressEvent, ScanSummary, Settings } from "../types";
@@ -10,6 +10,7 @@ interface Props {
   scanSummary: ScanSummary | null;
   onSettingsChange: (settings: Settings) => void;
   onScanSummaryChange: (summary: ScanSummary) => void;
+  onScanStart?: () => void;
   language: AppLanguage;
 }
 
@@ -18,6 +19,7 @@ export function DashboardPage({
   scanSummary,
   onSettingsChange,
   onScanSummaryChange,
+  onScanStart,
   language,
 }: Props) {
   const [instancePath, setInstancePath] = useState(settings.instancePath);
@@ -25,6 +27,14 @@ export function DashboardPage({
   const [isCancelling, setIsCancelling] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [error, setError] = useState("");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const copyFlash = useCallback(async (text: string, key: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1200);
+    } catch { /* clipboard not available */ }
+  }, []);
 
   const stageLabel = (phase: string): string => {
     const key = `dashboard.stage.${phase}` as TranslationKey;
@@ -33,24 +43,16 @@ export function DashboardPage({
   };
 
   const numberLocale = localeByAppLanguage[language];
-  const sourceLabel = scanSummary?.sourceLanguage ?? settings.sourceLanguage;
-  const targetLabel = scanSummary?.targetLanguage ?? settings.targetLanguage;
   const progressPercent = (p: ScanProgressEvent) =>
     p.total === 0 ? 0 : Math.round((p.current / p.total) * 100);
   const stats = useMemo(
     () => [
       { label: t(language, "dashboard.stats.mods"), value: scanSummary?.mods.length ?? 0, hint: t(language, "dashboard.stats.modsHint") },
-      { label: t(language, "dashboard.stats.langFiles"), value: scanSummary?.totalLanguageFiles ?? 0, hint: `${sourceLabel} / ${targetLabel}` },
-      { label: t(language, "dashboard.stats.sourceEntries"), value: scanSummary?.totalSourceEntries ?? 0, hint: sourceLabel },
-      { label: t(language, "dashboard.stats.targetEntries"), value: scanSummary?.totalTargetEntries ?? 0, hint: targetLabel },
-      { label: t(language, "dashboard.stats.pendingEntries"), value: scanSummary?.totalPendingEntries ?? 0, hint: t(language, "dashboard.stats.pendingHint") },
-      {
-        label: t(language, "dashboard.stats.recovered"),
-        value: scanSummary?.mods.reduce((sum, mod) => sum + mod.recoveredLanguageFiles, 0) ?? 0,
-        hint: t(language, "dashboard.stats.recoveredHint"),
-      },
+      { label: t(language, "dashboard.stats.pendingEntries"), value: scanSummary?.totalPendingEntries ?? 0, hint: "" },
+      { label: t(language, "dashboard.stats.resourcePackCovered"), value: scanSummary?.resourcePackCoveredEntries ?? 0, hint: t(language, "dashboard.stats.resourcePackCoveredHint") },
+      { label: t(language, "dashboard.stats.actualPending"), value: scanSummary?.actualPendingEntries ?? 0, hint: t(language, "dashboard.stats.actualPendingHint") },
     ],
-    [language, scanSummary, sourceLabel, targetLabel],
+    [language, scanSummary],
   );
 
   // Register scan-progress listener — only in real Tauri runtime
@@ -81,8 +83,10 @@ export function DashboardPage({
     setIsCancelling(true);
     try {
       await cancelScan();
-    } catch {
-      // ignore — scan might finish before cancel takes effect
+    } catch (err) {
+      console.error("取消扫描失败:", err);
+      setError("取消扫描失败: " + (err instanceof Error ? err.message : String(err)));
+      setIsCancelling(false);
     }
   }
 
@@ -91,6 +95,7 @@ export function DashboardPage({
     setIsCancelling(false);
     setScanProgress(null);
     setError("");
+    onScanStart?.();
     try {
       const nextSettings = { ...settings, instancePath };
       onSettingsChange(nextSettings);
@@ -118,29 +123,28 @@ export function DashboardPage({
         </div>
         <div className="page-header-button">
           <button
-            className={isScanning ? "primary-button scanning" : "primary-button"}
-            disabled={isScanning}
-            onClick={handleScan}
+            className={[
+              "primary-button",
+              isScanning && !isCancelling && "danger",
+              isCancelling && "cancelling",
+            ].filter(Boolean).join(" ")}
+            disabled={isCancelling}
+            onClick={isScanning ? handleCancel : handleScan}
             type="button"
           >
-            <ScanLine size={18} />
-            {isScanning ? t(language, "dashboard.scanning") : t(language, "dashboard.scan")}
+            {isCancelling ? (
+              <Loader2 size={18} className="spin" />
+            ) : isScanning ? (
+              <Square size={18} />
+            ) : (
+              <ScanLine size={18} />
+            )}
+            {isCancelling
+              ? t(language, "dashboard.cancelling")
+              : isScanning
+                ? t(language, "dashboard.cancel")
+                : t(language, "dashboard.scan")}
           </button>
-          {isScanning && (
-            <div className="cancel-scan-area">
-              <button
-                className="ghost-button danger"
-                disabled={isCancelling}
-                onClick={handleCancel}
-                type="button"
-              >
-                {isCancelling ? t(language, "dashboard.cancelling") : t(language, "dashboard.cancel")}
-              </button>
-              {isCancelling && (
-                <small className="cancelling-hint">{t(language, "dashboard.cancellingHint")}</small>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -225,8 +229,20 @@ export function DashboardPage({
         ))}
       </div>
 
+      <div className="resource-bar">
+        <span className="resource-bar-label">{t(language, "dashboard.resourceSources")}</span>
+        {(scanSummary?.resourcePacks ?? []).map((pack) => (
+          <span key={pack.path} className="resource-chip">
+            <strong>{pack.name}</strong>
+            <span>{t(language, "dashboard.resourceCount", { files: pack.langFileCount, entries: pack.entryCount })}</span>
+            <span className={`badge ${pack.sourceType}`}>{pack.sourceType}</span>
+          </span>
+        ))}
+        {!scanSummary && <span className="resource-bar-empty">{t(language, "dashboard.emptyResource")}</span>}
+      </div>
+
       <div className="dashboard-grid">
-        <section className="panel wide">
+        <section className="panel">
           <div className="panel-title">
             <h2>{t(language, "dashboard.modsTitle")}</h2>
             <span>{scanSummary ? scanSummary.mods.length : t(language, "dashboard.waiting")}</span>
@@ -239,26 +255,36 @@ export function DashboardPage({
                   <th>{t(language, "dashboard.column.modId")}</th>
                   <th>{t(language, "dashboard.column.format")}</th>
                   <th>{t(language, "dashboard.column.langFiles")}</th>
-                  <th>{t(language, "dashboard.column.recovered")}</th>
-                  <th>{t(language, "dashboard.column.source")}</th>
-                  <th>{t(language, "dashboard.column.target")}</th>
+                  <th>{t(language, "dashboard.column.pending")}</th>
                   <th>{t(language, "dashboard.column.status")}</th>
                 </tr>
               </thead>
               <tbody>
                 {(scanSummary?.mods ?? []).map((mod) => (
                   <tr key={mod.jarPath}>
-                    <td>{mod.fileName}</td>
-                    <td>{mod.modId}</td>
+                    <td
+                      className="copy-cell mod-name"
+                      onClick={() => copyFlash(mod.fileName, `n-${mod.jarPath}`)}
+                      onKeyDown={(e) => e.key === "Enter" && copyFlash(mod.fileName, `n-${mod.jarPath}`)}
+                      tabIndex={0}
+                      title={mod.fileName}
+                    >
+                      {mod.fileName}
+                      {copiedKey === `n-${mod.jarPath}` && <span className="copy-flash">{t(language, "common.copied")}</span>}
+                    </td>
+                    <td
+                      className="copy-cell mod-id"
+                      onClick={() => copyFlash(mod.modId, `i-${mod.jarPath}`)}
+                      onKeyDown={(e) => e.key === "Enter" && copyFlash(mod.modId, `i-${mod.jarPath}`)}
+                      tabIndex={0}
+                      title={mod.modId}
+                    >
+                      {mod.modId}
+                      {copiedKey === `i-${mod.jarPath}` && <span className="copy-flash">{t(language, "common.copied")}</span>}
+                    </td>
                     <td>{mod.formats.join(" / ") || "-"}</td>
                     <td>{mod.languageFileCount}</td>
-                    <td>
-                      {mod.recoveredLanguageFiles > 0 || mod.failedLanguageFiles > 0
-                        ? `${mod.recoveredLanguageFiles}/${mod.failedLanguageFiles}`
-                        : "-"}
-                    </td>
-                    <td title={mod.resolvedSourceLanguage}>{mod.sourceEntries}</td>
-                    <td>{mod.targetEntries}</td>
+                    <td>{Math.max(0, mod.sourceEntries - mod.targetEntries)}</td>
                     <td>
                       <span className={mod.hasTargetLanguage ? "badge success" : "badge muted"}>
                         {mod.hasTargetLanguage ? t(language, "dashboard.hasTarget") : t(language, "dashboard.needsTranslation")}
@@ -268,7 +294,7 @@ export function DashboardPage({
                 ))}
                 {!scanSummary && (
                   <tr>
-                    <td colSpan={8}>{t(language, "dashboard.emptyScan")}</td>
+                    <td colSpan={6}>{t(language, "dashboard.emptyScan")}</td>
                   </tr>
                 )}
               </tbody>
@@ -276,24 +302,6 @@ export function DashboardPage({
           </div>
         </section>
 
-        <section className="panel">
-          <div className="panel-title">
-            <h2>{t(language, "dashboard.resourceSources")}</h2>
-            <span>{scanSummary?.resourcePacks.length ?? 0}</span>
-          </div>
-          <div className="resource-list">
-            {(scanSummary?.resourcePacks ?? []).map((pack) => (
-              <article key={pack.path} className="resource-item">
-                <div>
-                  <strong>{pack.name}</strong>
-                  <span>{t(language, "dashboard.resourceCount", { files: pack.langFileCount, entries: pack.entryCount })}</span>
-                </div>
-                <span className={`badge ${pack.sourceType}`}>{pack.sourceType}</span>
-              </article>
-            ))}
-            {!scanSummary && <div className="empty-state compact">{t(language, "dashboard.emptyResource")}</div>}
-          </div>
-        </section>
       </div>
     </section>
   );

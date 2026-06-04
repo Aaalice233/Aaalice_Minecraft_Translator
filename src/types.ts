@@ -91,6 +91,7 @@ export interface ResourcePackScanResult {
   hasPackMeta: boolean;
   langFileCount: number;
   entryCount: number;
+  entries: LanguageEntry[];
 }
 
 export interface ScanProgressEvent {
@@ -114,6 +115,148 @@ export interface ScanSummary {
   totalSourceEntries: number;
   totalTargetEntries: number;
   totalPendingEntries: number;
+  resourcePackCoveredEntries: number;
+  actualPendingEntries: number;
   warnings: ScanWarning[];
   cancelled: boolean;
+}
+
+// ── P2: Dictionary types ──────────────────────────────────────────
+
+export interface DictionaryEntry {
+  id?: number;
+  sourceText: string;
+  targetText: string;
+  sourceLang: string;
+  targetLang: string;
+  sourceType: string;
+  modId?: string;
+  translationKey?: string;
+  context?: string;
+  confidence: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface DictionaryStats {
+  total: number;
+  modIds: string[];
+}
+
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+  conflicts: string[];
+}
+
+// ── P3: Translation types ─────────────────────────────────────────
+
+export interface TranslationEntry {
+  key: string;
+  text: string;
+  modId: string;
+  sourceLang: string;
+  targetLang: string;
+}
+
+export interface TranslateProgress {
+  current: number;
+  total: number;
+  phase: string;
+  modName: string;
+  subStep?: string;
+  stageStatus: "running" | "completed" | "failed";
+}
+
+export type JobStatus =
+  | "idle"
+  | "scanning"
+  | "matching"
+  | "translating"
+  | "translatingPaused"
+  | "validating"
+  | "validatingPaused"
+  | "packaging"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface TranslationJob {
+  id: string;
+  status: JobStatus;
+  createdAt: string;
+  totalEntries: number;
+  completedEntries: number;
+  failedEntries: number;
+  skippedEntries: number;
+  matchedEntries: number;
+  pendingEntries: number;
+  tokenUsage: TokenUsage;
+  etaSecs?: number;
+}
+
+// ── P3.5: Pipeline types ────────────────────────────
+
+export type PipelineStage = "scan" | "translate" | "validate" | "pack";
+
+export type StageStatus =
+  | "locked"
+  | "active"
+  | "completed"
+  | "failed_partial"
+  | "failed_total";
+
+export interface PipelineState {
+  currentStage: PipelineStage;
+  stageStatuses: Record<PipelineStage, StageStatus>;
+}
+
+export const PIPELINE_STAGES: readonly PipelineStage[] = [
+  "scan",
+  "translate",
+  "validate",
+  "pack",
+] as const;
+
+export const STAGE_TO_PAGE: Record<PipelineStage, string> = {
+  scan: "dashboard",
+  translate: "jobs",
+  validate: "validate",
+  pack: "packages",
+};
+
+// ── P4: Pack types ────────────────────────────────────────────────
+
+export interface PackEntry {
+  modId: string;
+  key: string;
+  text: string;
+}
+
+export interface ConflictInfo {
+  modId: string;
+  key: string;
+  sourceText: string;
+  dictionaryText: string;
+  existingText: string;
+}
+
+export interface PackResult {
+  outputDir: string;
+  zipPath: string;
+  modCount: number;
+  entryCount: number;
+  conflicts: ConflictInfo[];
+}
+
+export interface CopyResult {
+  success: boolean;
+  targetPath: string;
+  replaced: boolean;
 }

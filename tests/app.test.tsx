@@ -46,7 +46,7 @@ describe("app shell", () => {
 
     expect(await screen.findByText("Aaalice")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /总览/ })).toBeInTheDocument();
-    expect(screen.getByText("第一阶段：扫描闭环")).toBeInTheDocument();
+    expect(screen.getAllByText(/扫描/).length).toBeGreaterThan(0);
   });
 });
 

@@ -21,7 +21,20 @@ pub fn run() {
             commands::scan_instance,
             commands::cancel_scan,
             commands::open_path,
-            commands::fetch_llm_models
+            commands::fetch_llm_models,
+            // P2: Dictionary
+            commands::search_dictionary,
+            commands::update_dictionary_entry,
+            commands::delete_dictionary_entry,
+            commands::export_dictionary,
+            commands::import_dictionary,
+            commands::get_dictionary_stats,
+            // P4: Pack
+            commands::generate_translation_pack,
+            commands::copy_pack_to_instance,
+            // Translation
+            commands::start_translation,
+            commands::cancel_translation,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Aaalice MC Translator");

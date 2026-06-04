@@ -1,39 +1,20 @@
-# 实现计划：汉化资源包名称设置
+# Autopilot Plan: 扫描结果延迟修复
 
-## 修改文件清单（按顺序）
+## 改动清单
 
-### 1. Rust 后端模型
+### Change 1: models.rs — 跳过 entries 序列化
 - **文件**: `src-tauri/src/core/models.rs`
-  - Settings 新增 `i18n_pack_name` 和 `vm_pack_name` 字段 (String)
-  - Default impl 添加默认值
+- `ModScanResult.entries`: 添加 `#[serde(skip)]`
+- `ResourcePackScanResult.entries`: 添加 `#[serde(skip)]`
+- 内部数据结构不变，Rust 端依然保留完整 entries
 
-### 2. Rust 扫描器
+### Change 2: scanner.rs — 资源包名模糊匹配
 - **文件**: `src-tauri/src/core/scanner.rs`
-  - `scan_resourcepacks` 新增 `i18n_pack_name` 和 `vm_pack_name` 参数
-  - 只返回文件名匹配的 zip，其他过滤掉
-  - 更新 `scan_resourcepack_zip` 调用链
+- `is_known_pack()` 闭包的 `==` 改为 `contains()`
 
-### 3. Rust 命令层
-- **文件**: `src-tauri/src/commands.rs`
-  - `scan_instance` 从 settings 读取 pack name 并传入 scanner
+### 验证
+1. `cd src-tauri && cargo test` — 全部通过
+2. `npm run build` — 前端构建通过
 
-### 4. 前端类型定义
-- **文件**: `src/types.ts`
-  - Settings 新增 `i18nPackName` 和 `vmPackName` 字段
-
-### 5. 前端 API 层
-- **文件**: `src/api/tauri.ts`
-  - defaultSettings 补充默认值
-
-### 6. i18n 翻译字典
-- **文件**: `src/i18n/translations.ts`
-  - 新增 settings 相关翻译条目（4 语言）
-
-### 7. 前端设置页 UI
-- **文件**: `src/pages/SettingsPage.tsx`
-  - 新增"汉化资源包"设置区域
-  - 两个文本框
-
-### 8. 更新测试
-- **文件**: `tests/app.test.tsx`（如有需要）
-  - 测试默认值兼容性
+## 执行顺序
+Change 1 + Change 2 独立可并行 → 验证

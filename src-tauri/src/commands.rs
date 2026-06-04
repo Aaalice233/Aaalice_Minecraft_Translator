@@ -6,11 +6,18 @@ use std::sync::{
 use tauri::Emitter;
 
 use crate::core::{
-    models::{InstanceValidation, LlmModel, LlmModelsResponse, ScanProgress, ScanSummary, Settings},
+    dictionary,
+    logging,
+    models::{
+        InstanceValidation, LlmModel, LlmModelsResponse, ScanProgress, ScanSummary, Settings,
+        StageStatus, TranslateProgress,
+    },
+    packer,
     paths, scanner, settings,
 };
 
 static SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
+static TRANSLATE_CANCEL: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
 pub fn get_settings() -> Result<Settings, String> {
@@ -173,4 +180,297 @@ fn model_urls(base_url: &str) -> Vec<String> {
     } else {
         vec![format!("{trimmed}/models"), format!("{trimmed}/v1/models")]
     }
+}
+
+// ── P2: Dictionary commands ─────────────────────────────────────────
+
+#[tauri::command]
+pub fn search_dictionary(
+    search: Option<String>,
+    source_type: Option<String>,
+    mod_id: Option<String>,
+    source_lang: Option<String>,
+    target_lang: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+) -> Result<Vec<dictionary::DictionaryEntry>, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(to_message)?;
+    let query = dictionary::DictionaryQuery {
+        search,
+        source_type,
+        mod_id,
+        source_lang,
+        target_lang,
+        limit,
+        offset,
+    };
+    dictionary::search(&conn, &query).map_err(to_message)
+}
+
+#[tauri::command]
+pub fn update_dictionary_entry(id: i64, target_text: String) -> Result<bool, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(to_message)?;
+    dictionary::update_translation(&conn, id, &target_text).map_err(to_message)
+}
+
+#[tauri::command]
+pub fn delete_dictionary_entry(id: i64) -> Result<bool, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(to_message)?;
+    dictionary::delete(&conn, id).map_err(to_message)
+}
+
+#[tauri::command]
+pub fn export_dictionary(file_path: String) -> Result<usize, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(to_message)?;
+    let lines = dictionary::export_jsonl(&conn).map_err(to_message)?;
+    let content = lines.join("\n");
+    std::fs::write(&file_path, content).map_err(to_message)?;
+    Ok(lines.len())
+}
+
+#[tauri::command]
+pub fn import_dictionary(file_path: String) -> Result<dictionary::ImportResult, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let content = std::fs::read_to_string(&file_path).map_err(to_message)?;
+    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(to_message)?;
+    let lines: Vec<&str> = content.lines().collect();
+    dictionary::import_jsonl(&conn, &lines).map_err(to_message)
+}
+
+#[tauri::command]
+pub fn get_dictionary_stats() -> Result<dictionary::DictionaryStats, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(to_message)?;
+    let total = dictionary::count(&conn).map_err(to_message)?;
+    let mod_ids = dictionary::distinct_mod_ids(&conn).map_err(to_message)?;
+    Ok(dictionary::DictionaryStats { total, mod_ids })
+}
+
+// ── P4: Pack command ────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn generate_translation_pack(
+    entries: Vec<packer::PackEntry>,
+    target_language: String,
+    dry_run: bool,
+) -> Result<packer::PackResult, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let output_dir = paths::build_output_dir(&root);
+    std::fs::create_dir_all(&output_dir).map_err(to_message)?;
+
+    let options = packer::PackOptions {
+        target_language,
+        entries,
+        build_name: "Aaalice-MC-Translator".to_string(),
+        dry_run,
+        output_dir: output_dir.to_string_lossy().to_string(),
+    };
+
+    packer::generate_pack(&options).map_err(to_message)
+}
+
+#[tauri::command]
+pub fn copy_pack_to_instance(
+    pack_zip_path: String,
+    instance_path: String,
+    overwrite: bool,
+) -> Result<packer::CopyResult, String> {
+    packer::copy_to_resourcepacks(&pack_zip_path, &instance_path, overwrite).map_err(to_message)
+}
+
+// ── Translation commands ────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn start_translation(
+    app: tauri::AppHandle,
+    path: String,
+    source_language: String,
+    target_language: String,
+    total_entries: Option<usize>,
+) -> Result<usize, String> {
+    TRANSLATE_CANCEL.store(false, Ordering::SeqCst);
+
+    let root = paths::runtime_root().map_err(to_message)?;
+    let job_id = logging::new_job_id("translate");
+    logging::append_main(&root, format!("翻译任务创建成功，任务 ID: {job_id}"))
+        .map_err(to_message)?;
+
+    // Channel: relay progress from blocking threads → async runtime context
+    let (progress_tx, progress_rx) = mpsc::channel::<TranslateProgress>();
+    let progress_tx_work = progress_tx.clone();
+
+    // Spawn reader that receives progress from channel and emits events
+    let app_emit = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        while let Ok(progress) = progress_rx.recv() {
+            if let Err(err) = app_emit.emit("translate-progress", &progress) {
+                eprintln!("translate-progress emit error: {err}");
+            }
+        }
+    });
+
+    // Read pack names from persisted settings for resource pack filtering during re-scan
+    let settings = settings::load_settings(&root).ok();
+    let (i18n_pack_name, vm_pack_name) = settings
+        .as_ref()
+        .map(|s| (s.i18n_pack_name.clone(), s.vm_pack_name.clone()))
+        .unwrap_or_default();
+
+    let result: Result<usize, String> = tauri::async_runtime::spawn_blocking(move || {
+        // Phase: matching — validate and re-scan to get entries
+        if TRANSLATE_CANCEL.load(Ordering::SeqCst) {
+            return Ok(0usize);
+        }
+
+        let _ = progress_tx_work.send(TranslateProgress {
+            current: 0,
+            total: 1,
+            phase: "matching".to_string(),
+            mod_name: String::new(),
+            sub_step: None,
+            stage_status: StageStatus::Running,
+        });
+
+        let scan_summary = scanner::scan_instance(
+            &root,
+            path,
+            source_language.clone(),
+            target_language.clone(),
+            i18n_pack_name,
+            vm_pack_name,
+            &TRANSLATE_CANCEL,
+            &|_: ScanProgress| {},
+        )
+        .map_err(to_message)?;
+
+        let _ = progress_tx_work.send(TranslateProgress {
+            current: 1,
+            total: 1,
+            phase: "matching".to_string(),
+            mod_name: String::new(),
+            sub_step: None,
+            stage_status: StageStatus::Completed,
+        });
+
+        // Collect all pending entries (source entries without target equivalents)
+        let mut pending_entries: Vec<(&crate::core::models::LanguageEntry, &str)> = Vec::new();
+        for mod_result in &scan_summary.mods {
+            let resolved_source = &mod_result.resolved_source_language;
+            let target = &mod_result.target_language;
+            // Build a set of keys already present in target language
+            let target_keys: std::collections::HashSet<&str> = mod_result
+                .entries
+                .iter()
+                .filter(|e| e.language == *target)
+                .map(|e| e.key.as_str())
+                .collect();
+
+            for entry in &mod_result.entries {
+                if entry.language == *resolved_source && !target_keys.contains(entry.key.as_str()) {
+                    pending_entries.push((entry, mod_result.file_name.as_str()));
+                }
+            }
+        }
+
+        if TRANSLATE_CANCEL.load(Ordering::SeqCst) {
+            return Ok(0usize);
+        }
+
+        let total = total_entries.unwrap_or(pending_entries.len());
+        if pending_entries.is_empty() {
+            let _ = progress_tx_work.send(TranslateProgress {
+                current: 0,
+                total: 0,
+                phase: "translating".to_string(),
+                mod_name: String::new(),
+                sub_step: None,
+                stage_status: StageStatus::Completed,
+            });
+            logging::append_job(&root, &job_id, "无需翻译，所有条目已有目标语言版本")
+                .map_err(to_message)?;
+            return Ok(0usize);
+        }
+
+        // Phase: translating — divide into batches and simulate
+        let batch_size = 50usize;
+        let total_batches = (total + batch_size - 1) / batch_size;
+        let mut completed = 0usize;
+
+        let _ = progress_tx_work.send(TranslateProgress {
+            current: 0,
+            total,
+            phase: "translating".to_string(),
+            mod_name: String::new(),
+            sub_step: Some(format!("0/{total_batches} 批次")),
+            stage_status: StageStatus::Running,
+        });
+
+        for batch_index in 0..total_batches {
+            if TRANSLATE_CANCEL.load(Ordering::SeqCst) {
+                logging::append_job(&root, &job_id, "翻译任务被用户取消").map_err(to_message)?;
+                return Ok(completed);
+            }
+
+            let start = batch_index * batch_size;
+            let end = total.min(start + batch_size);
+            let batch_entries = &pending_entries[start..end];
+
+            // Simulate translation: mark each entry as translated (stub for real LLM)
+            for (_entry, _mod_name) in batch_entries {
+                completed += 1;
+            }
+
+            // Emit progress update for this batch
+            let _ = progress_tx_work.send(TranslateProgress {
+                current: completed,
+                total,
+                phase: "translating".to_string(),
+                mod_name: batch_entries
+                    .first()
+                    .map(|(_, name)| name.to_string())
+                    .unwrap_or_default(),
+                sub_step: Some(format!(
+                    "{}/{} 批次",
+                    batch_index + 1,
+                    total_batches
+                )),
+                stage_status: StageStatus::Running,
+            });
+
+            // Simulate work: small delay per batch
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        let _ = progress_tx_work.send(TranslateProgress {
+            current: completed,
+            total,
+            phase: "translating".to_string(),
+            mod_name: String::new(),
+            sub_step: None,
+            stage_status: StageStatus::Completed,
+        });
+
+        logging::append_job(&root, &job_id, format!("翻译完成: {completed}/{total} 条目"))
+            .map_err(to_message)?;
+
+        Ok(completed)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Drop sender to close channel
+    drop(progress_tx);
+
+    result.map_err(to_message)
+}
+
+/// Request cancellation of the current translation.
+#[tauri::command]
+pub fn cancel_translation() -> Result<(), String> {
+    TRANSLATE_CANCEL.store(true, Ordering::SeqCst);
+    Ok(())
 }
