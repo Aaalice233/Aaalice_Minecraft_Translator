@@ -12,7 +12,7 @@
 | **定位** | Windows 桌面端 Minecraft 整合包汉化工具 |
 | **本地路径** | `E:/MC Projects/Aaalice_Minecraft_Translator/` |
 | **MC 实例** | `E:/PCL2/.minecraft/versions/Aaalice Craft` |
-| **Git 地址** | 私有仓库，远程地址待配置 |
+| **Git 地址** | `https://github.com/Aaalice233/Aaalice_Minecraft_Translator`（私有） |
 | **技术栈** | Tauri 2 + Rust + React + TypeScript + Vite |
 
 ## 项目文档
