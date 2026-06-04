@@ -7,6 +7,7 @@ export interface Settings {
   apiKey: string;
   model: string;
   temperature: number;
+  /** Max response tokens. 0 = no limit (API default). */
   maxTokens: number;
   concurrency: number;
   batchSize: number;
@@ -88,6 +89,13 @@ export interface ResourcePackScanResult {
   hasPackMeta: boolean;
   langFileCount: number;
   entryCount: number;
+}
+
+export interface ScanProgressEvent {
+  current: number;
+  total: number;
+  modName: string;
+  phase: string;
 }
 
 export interface ScanSummary {

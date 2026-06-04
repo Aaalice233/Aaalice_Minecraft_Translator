@@ -43,6 +43,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [showCustomModel, setShowCustomModel] = useState(false);
   const language = normalizeAppLanguage(draft.appLanguage);
 
   const currentTitle = useMemo(
@@ -83,6 +84,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
     try {
       const result = await fetchLlmModels(draft.baseUrl, draft.apiKey);
       setModels(result.models);
+      setShowCustomModel(false);
       if (result.models.length > 0 && !result.models.some((item) => item.id === draft.model)) {
         setDraft({ ...draft, model: result.models[0].id });
       }
@@ -135,7 +137,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
           </div>
 
           {activeTab === "language" && (
-            <div className="settings-form two-column">
+            <div className="settings-form">
               <label className="field">
                 {t(language, "settings.appLanguage")}
                 <select
@@ -181,13 +183,34 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 onChange={(value) => setDraft({ ...draft, apiKey: value })}
               />
               <label className="field">
-                Model
+                {t(language, "settings.modelLabel")}
                 <div className="inline-control">
-                  <input
-                    list="llm-models"
-                    value={draft.model}
-                    onChange={(event) => setDraft({ ...draft, model: event.target.value })}
-                  />
+                  {showCustomModel || models.length === 0 ? (
+                    <input
+                      value={draft.model}
+                      onChange={(event) => setDraft({ ...draft, model: event.target.value })}
+                      placeholder={
+                        models.length === 0
+                          ? draft.model
+                          : t(language, "settings.modelPlaceholder")
+                      }
+                    />
+                  ) : (
+                    <select
+                      value={models.some((item) => item.id === draft.model) ? draft.model : ""}
+                      onChange={(event) => setDraft({ ...draft, model: event.target.value })}
+                    >
+                      <option value="" disabled>
+                        {t(language, "settings.selectModel")}
+                      </option>
+                      {models.map((model) => (
+                        <option key={model.id} value={model.id}>
+                          {model.id}
+                          {model.ownedBy ? ` (${model.ownedBy})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button
                     className="ghost-button"
                     disabled={isFetchingModels || !draft.baseUrl || !draft.apiKey}
@@ -198,26 +221,50 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                     {t(language, "settings.fetchModels")}
                   </button>
                 </div>
-                <datalist id="llm-models">
-                  {models.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.ownedBy}
-                    </option>
-                  ))}
-                </datalist>
+                {!showCustomModel && models.length > 0 && (
+                  <button
+                    className="text-button"
+                    onClick={() => setShowCustomModel(true)}
+                    type="button"
+                  >
+                    {t(language, "settings.customModel")}
+                  </button>
+                )}
+                {showCustomModel && (
+                  <button
+                    className="text-button"
+                    onClick={() => setShowCustomModel(false)}
+                    type="button"
+                  >
+                    {t(language, "settings.pickFromList")}
+                  </button>
+                )}
               </label>
-              <Field
-                label={t(language, "settings.temperature")}
-                type="number"
-                value={draft.temperature}
-                onChange={(value) => setDraft({ ...draft, temperature: Number(value) })}
-              />
-              <Field
-                label={t(language, "settings.maxTokens")}
-                type="number"
-                value={draft.maxTokens}
-                onChange={(value) => setDraft({ ...draft, maxTokens: Number(value) })}
-              />
+              <label className="field">
+                <span>{t(language, "settings.temperature")}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={draft.temperature}
+                  onChange={(event) => setDraft({ ...draft, temperature: Number(event.target.value) })}
+                />
+                <small>{t(language, "settings.temperatureHint")}</small>
+              </label>
+              <label className="field">
+                <span>{t(language, "settings.maxTokens")}</span>
+                <input
+                  type="number"
+                  min="0"
+                  max={999999}
+                  step="1"
+                  value={draft.maxTokens === 0 ? "" : draft.maxTokens}
+                  placeholder={t(language, "settings.maxTokensPlaceholder")}
+                  onChange={(event) => setDraft({ ...draft, maxTokens: event.target.value === "" ? 0 : Number(event.target.value) })}
+                />
+                <small>{t(language, "settings.maxTokensHint")}</small>
+              </label>
             </div>
           )}
 

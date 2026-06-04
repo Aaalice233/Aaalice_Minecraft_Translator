@@ -18,6 +18,7 @@ export type TranslationKey =
   | "dashboard.subtitle"
   | "dashboard.scan"
   | "dashboard.scanning"
+  | "dashboard.scanProgress"
   | "dashboard.instancePath"
   | "dashboard.instancePlaceholder"
   | "dashboard.pickInstance"
@@ -69,7 +70,16 @@ export type TranslationKey =
   | "settings.invalidSourceLanguage"
   | "settings.invalidTargetLanguage"
   | "settings.temperature"
+  | "settings.temperatureHint"
   | "settings.maxTokens"
+  | "settings.maxTokensHint"
+  | "settings.maxTokensPlaceholder"
+  | "settings.modelLabel"
+  | "settings.modelPlaceholder"
+  | "settings.noModels"
+  | "settings.selectModel"
+  | "settings.customModel"
+  | "settings.pickFromList"
   | "settings.concurrency"
   | "settings.batchSize"
   | "settings.batchMaxChars"
@@ -148,6 +158,7 @@ const zhCn: TranslationMap = {
   "dashboard.subtitle": "扫描实例中的模组语言文件和已有目标语言资源包。",
   "dashboard.scan": "开始扫描",
   "dashboard.scanning": "扫描中",
+  "dashboard.scanProgress": "{current} / {total}",
   "dashboard.instancePath": "实例路径",
   "dashboard.instancePlaceholder": "E:/PCL2/.minecraft/versions/Aaalice Craft",
   "dashboard.pickInstance": "选择实例",
@@ -199,7 +210,16 @@ const zhCn: TranslationMap = {
   "settings.invalidSourceLanguage": "来源语言必须是 auto 或合法 Minecraft locale code。",
   "settings.invalidTargetLanguage": "目标语言必须是合法 Minecraft locale code，且不能为 auto。",
   "settings.temperature": "Temperature",
+  "settings.temperatureHint": "越低输出越确定，越高越有创造性。翻译建议 0.3–1.0。",
   "settings.maxTokens": "Max tokens",
+  "settings.maxTokensHint": "限制每次请求的响应 token 数。0 = 不限制（使用 API 默认值）。翻译建议设为 0 或较大值（如 32768），过小会截断翻译结果。",
+  "settings.maxTokensPlaceholder": "0 = 不限制",
+  "settings.modelLabel": "模型",
+  "settings.modelPlaceholder": "输入自定义模型名称…",
+  "settings.noModels": "尚未拉取模型",
+  "settings.selectModel": "选择一个模型…",
+  "settings.customModel": "输入自定义模型",
+  "settings.pickFromList": "从列表选择",
   "settings.concurrency": "并发请求数",
   "settings.batchSize": "Batch size",
   "settings.batchMaxChars": "每批最大字符数",
@@ -295,6 +315,15 @@ const enUs: TranslationMap = {
   "settings.targetHint": "Target must be a Minecraft locale code, not auto.",
   "settings.invalidSourceLanguage": "Source language must be auto or a valid Minecraft locale code.",
   "settings.invalidTargetLanguage": "Target language must be a valid Minecraft locale code and cannot be auto.",
+  "settings.temperatureHint": "Lower = more deterministic, higher = more creative. Recommended 0.3–1.0 for translation.",
+  "settings.maxTokensHint": "Caps response tokens per request. 0 = no limit (API default). Set 0 or high (e.g. 32768) for translation to avoid truncation.",
+  "settings.maxTokensPlaceholder": "0 = no limit",
+  "settings.modelLabel": "Model",
+  "settings.modelPlaceholder": "Enter custom model name…",
+  "settings.noModels": "No models fetched",
+  "settings.selectModel": "Select a model…",
+  "settings.customModel": "Enter custom model",
+  "settings.pickFromList": "Pick from list",
   "settings.concurrency": "Concurrent requests",
   "settings.batchMaxChars": "Max chars per batch",
   "settings.timeoutSecs": "Timeout (seconds)",
@@ -390,6 +419,15 @@ const jaJp: TranslationMap = {
   "settings.targetHint": "対象言語は Minecraft locale code にしてください。auto は使えません。",
   "settings.invalidSourceLanguage": "元言語は auto または有効な Minecraft locale code にしてください。",
   "settings.invalidTargetLanguage": "対象言語は有効な Minecraft locale code にしてください。auto は使えません。",
+  "settings.temperatureHint": "低いほど決定論的、高いほど創造的。翻訳の推奨値 0.3-1.0。",
+  "settings.maxTokensHint": "応答のトークン数を制限。0 = 無制限（API デフォルト）。翻訳では 0 または大きな値（例 32768）を推奨。",
+  "settings.maxTokensPlaceholder": "0 = 無制限",
+  "settings.modelLabel": "モデル",
+  "settings.modelPlaceholder": "カスタムモデル名を入力…",
+  "settings.noModels": "モデルが取得されていません",
+  "settings.selectModel": "モデルを選択…",
+  "settings.customModel": "カスタムモデルを入力",
+  "settings.pickFromList": "リストから選択",
   "settings.concurrency": "同時リクエスト数",
   "settings.batchMaxChars": "バッチ最大文字数",
   "settings.timeoutSecs": "タイムアウト（秒）",
@@ -486,6 +524,15 @@ const koKr: TranslationMap = {
   "settings.targetHint": "대상 언어는 Minecraft locale code여야 하며 auto는 사용할 수 없습니다.",
   "settings.invalidSourceLanguage": "원본 언어는 auto 또는 올바른 Minecraft locale code여야 합니다.",
   "settings.invalidTargetLanguage": "대상 언어는 올바른 Minecraft locale code여야 하며 auto는 사용할 수 없습니다.",
+  "settings.temperatureHint": "낮을수록 결정론적, 높을수록 창의적. 번역 권장값 0.3-1.0.",
+  "settings.maxTokensHint": "응답 토큰 수 제한. 0 = 무제한(API 기본값). 번역 시 0 또는 큰 값(예: 32768) 권장.",
+  "settings.maxTokensPlaceholder": "0 = 무제한",
+  "settings.modelLabel": "모델",
+  "settings.modelPlaceholder": "사용자 모델명 입력…",
+  "settings.noModels": "모델을 불러오지 않음",
+  "settings.selectModel": "모델 선택…",
+  "settings.customModel": "사용자 모델 입력",
+  "settings.pickFromList": "목록에서 선택",
   "settings.concurrency": "동시 요청 수",
   "settings.batchMaxChars": "배치당 최대 문자 수",
   "settings.timeoutSecs": "타임아웃(초)",

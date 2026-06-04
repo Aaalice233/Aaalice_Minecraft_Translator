@@ -27,18 +27,41 @@
 
 - `src/`：React + TypeScript 前端，包含应用壳、页面、Tauri API 封装、i18n 字典和样式。
 - `src/app/`：全局布局、左侧导航、当前页面切换和全局设置读取。
-- `src/pages/`：总览、设置、日志和后续功能入口页面。
-- `src/api/`：前端调用 Tauri command 的薄封装；浏览器预览模式只保留必要 mock。
-- `src/i18n/`：应用自身多语言文案和语言选项，不要把新的 UI 文案散落硬编码到页面里。
-- `src/styles/`：全局样式，保持现有桌面工具风格和 6px 圆角控件。
+- `src/pages/`：DashboardPage（总览含扫描进度条）、SettingsPage（6 选项卡 + 模型下拉选择）、LogsPage。
+- `src/api/tauri.ts`：Tauri invoke 的懒加载封装。静态不引入 `@tauri-apps/api`，运行时仅在 `__TAURI_INTERNALS__` 存在时动态 import。浏览器预览模式使用 localStorage + mock 数据。
+- `src/i18n/translations.ts`：4 语言字典（zh_cn / en_us / ja_jp / ko_kr），t() 参数插值，enUs 以 zhCn 为 fallback。
+- `src/styles/app.css`：全局样式，桌面工具风格 + 6px 圆角控件 + 进度条动画。
 - `src-tauri/`：Tauri 2 + Rust 后端，负责设置持久化、实例扫描、日志、LLM 模型拉取和后续翻译/打包流水线。
-- `src-tauri/src/core/`：后端核心逻辑模块，当前包含 `settings`、`scanner`、`logging`、`paths`、`models`。
-- `src-tauri/src/commands.rs`：Tauri command 暴露层，只做参数转发和错误字符串化，业务逻辑放到 `core/`。
+- `src-tauri/src/core/`：后端核心逻辑模块：`settings`（JSON 持久化）、`scanner`（rayon 并行 + 进度事件）、`logging`（文件日志 + 脱敏）、`paths`（运行时根路径）、`models`（数据模型 + Default impl）。
+- `src-tauri/src/commands.rs`：Tauri command 暴露层，含进度事件发射（scan-progress）和 AppHandle 管理。
+- `src-tauri/Cargo.toml`：依赖 `rayon`、`reqwest`（blocking+json）、`serde`、`zip`、`tauri 2`。
 - `tests/`：前端单元测试和 Minecraft fixture；新增行为优先补最小 fixture 测试。
 - `docs/`：产品规格、架构计划、UI 风格和 agent 测试计划。
-- `scripts/`：Windows 打包脚本。
+- `scripts/`：Windows 打包脚本（package-exe.bat / .ps1）。
 - `data/`：运行期本地数据目录，例如 `settings.json`；不要把用户本地设置当成源码常量。
 - `assets/`：应用图标源和后续可复用静态资产。
+
+## 关键架构决策
+
+### Tauri API 懒加载模式
+
+`src/api/tauri.ts` 不使用模块级静态 `import { invoke }`，而是通过 `tauriInvoke<T>()` 函数在调用时动态 `import("@tauri-apps/api/core")`。这样浏览器预览模式不会加载 Tauri 原生模块，避免 `window.__TAURI_INTERNALS__` 不存在的崩溃。
+
+浏览器预览模式下：
+- `getSettings()` → 读 localStorage
+- `saveSettings()` → 写 localStorage
+- `validateInstance()` / `scanInstance()` → 抛友好错误
+- `fetchLlmModels()` → 返回硬编码 mock 列表
+
+### 扫描进度事件
+
+`src-tauri/src/core/scanner.rs` 使用 rayon 并行扫描 jars，通过 `&(dyn Fn(ScanProgress) + Sync)` 进度回调将进度传递到 `commands.rs`，再由 `app.emit("scan-progress", payload)` 发射到前端。
+
+前端 `DashboardPage.tsx` 在 `useEffect` 中通过 `__TAURI_INTERNALS__` 守卫后动态 `import("@tauri-apps/api/event")` 注册 `listen("scan-progress")`，更新进度条组件。
+
+### 模型下拉选择
+
+设置页 API 选项卡使用 `<select>` + "输入自定义模型" 切换按钮代替 `<datalist>`，避免浏览器兼容问题和用户感知的"拉取后无反应"。
 
 ## 参考项目
 
@@ -67,12 +90,17 @@
 
 ### 常用命令
 
-- 开发期前端构建验证：`npm run build`
-- 前端单元测试：`npm run test:unit`
-- Rust 后端测试：`cargo test`（在 `src-tauri/` 下执行）
-- 生成 Windows 安装器：`npm run package:exe`
-- 生成未打包的 release 主程序：`npm run package:app`
-- 双击一键打包：`scripts/package-exe.bat`
+- **开发模式（热重载）**：`npm run tauri dev` ← **日常使用**
+  - 改 React/TypeScript → Vite HMR 即时生效，无需手动刷新
+  - 改 Rust → Tauri 自动检测变化 → 增量编译 → 重启窗口
+  - Rust 增量编译通常 3–10s（首次编译约 1–2min）
+  - 开发期不要用 `npm run build` + `cargo build --release` 每次测试，太慢
+- **前端构建验证**：`npm run build`
+- **前端单元测试**：`npm run test:unit`
+- **Rust 后端测试**：`cd src-tauri && cargo test`
+- **生成 Windows 安装器**：`npm run package:exe`
+- **生成未打包 release 主程序**：`npm run package:app`
+- **双击一键打包**：`scripts/package-exe.bat`
 
 ### 产物路径
 

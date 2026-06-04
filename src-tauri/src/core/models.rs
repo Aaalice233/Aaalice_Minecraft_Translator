@@ -33,6 +33,15 @@ pub struct Settings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
+pub struct ScanProgress {
+    pub current: usize,
+    pub total: usize,
+    pub mod_name: String,
+    pub phase: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
 pub struct LlmModel {
     pub id: String,
     pub owned_by: String,
@@ -55,8 +64,8 @@ impl Default for Settings {
             base_url: "https://api.deepseek.com".to_string(),
             api_key: String::new(),
             model: "deepseek-v4-flash".to_string(),
-            temperature: 0.3,
-            max_tokens: 4096,
+            temperature: 1.0,
+            max_tokens: 0,
             concurrency: 6,
             batch_size: 80,
             batch_max_chars: 120_000,
@@ -168,8 +177,8 @@ mod tests {
               "baseUrl": "https://api.deepseek.com",
               "apiKey": "",
               "model": "deepseek-v4-flash",
-              "temperature": 0.3,
-              "maxTokens": 4096,
+              "temperature": 1.0,
+              "maxTokens": 0,
               "concurrency": 6,
               "batchSize": 80,
               "batchMaxChars": 120000,

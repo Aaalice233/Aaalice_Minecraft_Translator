@@ -4,15 +4,18 @@ use std::{
     hash::{Hash, Hasher},
     io::{self, Read},
     path::{Path, PathBuf},
+    sync::atomic::{AtomicUsize, Ordering},
 };
+
+use rayon::prelude::*;
 
 use zip::ZipArchive;
 
 use crate::core::{
     logging,
     models::{
-        InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanSummary,
-        ScanWarning,
+        InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanProgress,
+        ScanSummary, ScanWarning,
     },
     paths::display_path,
 };
@@ -65,6 +68,7 @@ pub fn scan_instance(
     path: String,
     source_language: String,
     target_language: String,
+    progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<ScanSummary> {
     let source_language = normalize_source_language(&source_language)?;
     let target_language = normalize_target_language(&target_language)?;
@@ -79,7 +83,12 @@ pub fn scan_instance(
     }
 
     let instance_path = PathBuf::from(&path);
-    let mods = scan_mods(&instance_path.join("mods"), &source_language, &target_language)?;
+    let mods = scan_mods(
+        &instance_path.join("mods"),
+        &source_language,
+        &target_language,
+        progress,
+    )?;
     let resource_packs = scan_resourcepacks(&instance_path.join("resourcepacks"), &target_language)?;
     let total_language_files = mods.iter().map(|item| item.language_file_count).sum();
     let total_source_entries = mods.iter().map(|item| item.source_entries).sum();
@@ -126,20 +135,45 @@ pub fn scan_mods(
     mods_path: &Path,
     source_language: &str,
     target_language: &str,
+    progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<Vec<ModScanResult>> {
-    let mut results = Vec::new();
     if !mods_path.is_dir() {
-        return Ok(results);
+        return Ok(Vec::new());
     }
 
-    for entry in fs::read_dir(mods_path)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("jar") {
-            continue;
-        }
-        results.push(scan_mod_jar(&path, source_language, target_language));
+    let entries: Vec<_> = fs::read_dir(mods_path)?
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry.path().extension().and_then(|value| value.to_str()) == Some("jar")
+        })
+        .collect();
+    let total = entries.len();
+
+    if total == 0 {
+        return Ok(Vec::new());
     }
+
+    // Parallel scan with atomic progress counter
+    let completed = AtomicUsize::new(0);
+    let mut results: Vec<ModScanResult> = entries
+        .par_iter()
+        .map(|entry| {
+            let path = entry.path();
+            let file_name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let result = scan_mod_jar(&path, source_language, target_language);
+            let current = completed.fetch_add(1, Ordering::SeqCst) + 1;
+            progress(ScanProgress {
+                current,
+                total,
+                mod_name: file_name,
+                phase: "scan".to_string(),
+            });
+            result
+        })
+        .collect();
 
     results.sort_by(|left, right| left.file_name.cmp(&right.file_name));
     Ok(results)
@@ -185,14 +219,21 @@ fn scan_mod_jar(path: &Path, source_language: &str, target_language: &str) -> Mo
         ZipArchive::new(file).map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))
     }) {
         Ok(mut archive) => {
-            for index in 0..archive.len() {
+            // Phase 1: zero IO — collect from in-memory central directory
+            let lang_indices: Vec<usize> = {
+                archive
+                    .file_names()
+                    .enumerate()
+                    .filter(|(_, name)| is_supported_lang_file(&name.replace('\\', "/")))
+                    .map(|(i, _)| i)
+                    .collect()
+            };
+            // Phase 2: only seek + read matching entries
+            for index in lang_indices {
                 let Ok(mut file) = archive.by_index(index) else {
                     continue;
                 };
                 let name = file.name().replace('\\', "/");
-                if !is_supported_lang_file(&name) {
-                    continue;
-                }
 
                 if parse_lang_path(&name).is_some_and(|(_, language)| language == target_language) {
                     target_language_file_exists = true;
@@ -297,21 +338,26 @@ fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScan
 
     if let Ok(file) = fs::File::open(path) {
         if let Ok(mut archive) = ZipArchive::new(file) {
-            for index in 0..archive.len() {
-                let Ok(mut file) = archive.by_index(index) else {
-                    continue;
-                };
-                let name = file.name().replace('\\', "/");
-                if name == "pack.mcmeta" || name.ends_with("/pack.mcmeta") {
-                    has_pack_meta = true;
-                }
-                if !is_target_lang_file(&name, target_language) {
-                    continue;
-                }
+            // Check pack.mcmeta from in-memory (zero IO)
+            if archive.file_names().any(|n| n == "pack.mcmeta" || n.ends_with("/pack.mcmeta")) {
+                has_pack_meta = true;
+            }
+            // Zero-IO filter
+            let lang_indices: Vec<usize> = {
+                archive.file_names()
+                    .enumerate()
+                    .filter(|(_, name)| is_target_lang_file(&name.replace('\\', "/"), target_language))
+                    .map(|(i, _)| i)
+                    .collect()
+            };
+            for index in lang_indices {
+                let Ok(mut file) = archive.by_index(index) else { continue; };
                 let mut content = String::new();
                 if file.read_to_string(&mut content).is_ok() {
                     lang_file_count += 1;
-                    entry_count += parse_resourcepack_entry_count(&name, &content, target_language);
+                    entry_count += parse_resourcepack_entry_count(
+                        &file.name().replace('\\', "/"), &content, target_language
+                    );
                 }
             }
         }
@@ -801,7 +847,7 @@ mod tests {
 
     #[test]
     fn scans_mod_jars_and_detects_existing_zh_cn() {
-        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn").unwrap();
+        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &|_| {}).unwrap();
         let example = mods.iter().find(|item| item.mod_id == "examplemod").unwrap();
         let placeholder = mods.iter().find(|item| item.mod_id == "placeholdermod").unwrap();
 
@@ -851,5 +897,19 @@ Second line",
         assert_eq!(entries[1].text, "First line\n\nSecond line");
         assert_eq!(entries[2].key, "mod.example.missing_comma");
         assert_eq!(entries[3].text, "Next value");
+    }
+
+    #[test]
+    fn progress_callback_is_called_for_each_jar() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let calls = AtomicUsize::new(0);
+        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &|p: ScanProgress| {
+            calls.fetch_add(1, Ordering::SeqCst);
+            assert!(p.current >= 1);
+            assert_eq!(p.total, 2);
+            assert!(p.phase == "scan");
+        }).unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), mods.len());
+        assert!(mods.len() > 0);
     }
 }

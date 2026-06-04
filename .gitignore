@@ -1,6 +1,9 @@
-# Local agent/app state
-.omc/
+# Agent/app state (only ignore ephemeral runtime data)
 .codex/
+.omc/state/
+.omc/tmp/
+.omc/logs/
+.omc/research/
 
 # Build outputs
 dist/

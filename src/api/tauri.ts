@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import type { InstanceValidation, LlmModelsResponse, ScanSummary, Settings } from "../types";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
@@ -11,8 +10,8 @@ const defaultSettings: Settings = {
   baseUrl: "https://api.deepseek.com",
   apiKey: "",
   model: "deepseek-v4-flash",
-  temperature: 0.3,
-  maxTokens: 4096,
+  temperature: 1.0,
+  maxTokens: 0,
   concurrency: 6,
   batchSize: 80,
   batchMaxChars: 120000,
@@ -31,11 +30,21 @@ const defaultSettings: Settings = {
   enableTokenStats: true,
 };
 
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+/** Lazy Tauri invoke — only loads the module in Tauri runtime. */
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  return invoke(cmd, args);
+}
+
 export async function getSettings(): Promise<Settings> {
   if (!isTauriRuntime()) {
     return loadBrowserSettings();
   }
-  return invoke<Settings>("get_settings");
+  return tauriInvoke<Settings>("get_settings");
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
@@ -43,11 +52,14 @@ export async function saveSettings(settings: Settings): Promise<void> {
     localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
     return;
   }
-  return invoke<void>("save_settings", { settings });
+  return tauriInvoke<void>("save_settings", { settings });
 }
 
 export async function validateInstance(path: string): Promise<InstanceValidation> {
-  return invoke<InstanceValidation>("validate_instance", { path });
+  if (!isTauriRuntime()) {
+    throw new Error("浏览器预览模式下不可用，请在 Tauri 桌面端中运行");
+  }
+  return tauriInvoke<InstanceValidation>("validate_instance", { path });
 }
 
 export async function scanInstance(
@@ -55,7 +67,10 @@ export async function scanInstance(
   sourceLanguage: string,
   targetLanguage: string,
 ): Promise<ScanSummary> {
-  return invoke<ScanSummary>("scan_instance", { path, sourceLanguage, targetLanguage });
+  if (!isTauriRuntime()) {
+    throw new Error("浏览器预览模式下不可用，请在 Tauri 桌面端中运行");
+  }
+  return tauriInvoke<ScanSummary>("scan_instance", { path, sourceLanguage, targetLanguage });
 }
 
 export async function fetchLlmModels(baseUrl: string, apiKey: string): Promise<LlmModelsResponse> {
@@ -65,11 +80,7 @@ export async function fetchLlmModels(baseUrl: string, apiKey: string): Promise<L
       sourceUrl: `${baseUrl.replace(/\/$/, "")}/models`,
     };
   }
-  return invoke<LlmModelsResponse>("fetch_llm_models", { baseUrl, apiKey });
-}
-
-function isTauriRuntime(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  return tauriInvoke<LlmModelsResponse>("fetch_llm_models", { baseUrl, apiKey });
 }
 
 function loadBrowserSettings(): Settings {

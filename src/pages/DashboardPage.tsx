@@ -1,8 +1,8 @@
 import { AlertTriangle, FolderOpen, RefreshCcw, ScanLine } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
-import type { AppLanguage, ScanSummary, Settings } from "../types";
+import type { AppLanguage, ScanProgressEvent, ScanSummary, Settings } from "../types";
 
 interface Props {
   settings: Settings;
@@ -21,11 +21,14 @@ export function DashboardPage({
 }: Props) {
   const [instancePath, setInstancePath] = useState(settings.instancePath);
   const [isScanning, setIsScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [error, setError] = useState("");
 
   const numberLocale = localeByAppLanguage[language];
   const sourceLabel = scanSummary?.sourceLanguage ?? settings.sourceLanguage;
   const targetLabel = scanSummary?.targetLanguage ?? settings.targetLanguage;
+  const progressPercent = (p: ScanProgressEvent) =>
+    p.total === 0 ? 0 : Math.round((p.current / p.total) * 100);
   const stats = useMemo(
     () => [
       { label: t(language, "dashboard.stats.mods"), value: scanSummary?.mods.length ?? 0, hint: t(language, "dashboard.stats.modsHint") },
@@ -42,8 +45,33 @@ export function DashboardPage({
     [language, scanSummary, sourceLabel, targetLabel],
   );
 
+  // Register scan-progress listener — only in real Tauri runtime
+  useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+      return;
+    }
+    let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      if (cancelled) return;
+      listen("scan-progress", (event) => {
+        setScanProgress(event.payload as ScanProgressEvent);
+      }).then((unlisten) => {
+        unlistenFn = unlisten;
+        if (cancelled) unlisten();
+      });
+    }).catch((err) => {
+      console.error("scan-progress listener registration failed:", err);
+    });
+    return () => {
+      cancelled = true;
+      unlistenFn?.();
+    };
+  }, []);
+
   async function handleScan() {
     setIsScanning(true);
+    setScanProgress(null);
     setError("");
     try {
       const nextSettings = { ...settings, instancePath };
@@ -69,10 +97,17 @@ export function DashboardPage({
           <h1>{t(language, "dashboard.title")}</h1>
           <p>{t(language, "dashboard.subtitle")}</p>
         </div>
-        <button className="primary-button" disabled={isScanning} onClick={handleScan} type="button">
-          <ScanLine size={18} />
-          {isScanning ? t(language, "dashboard.scanning") : t(language, "dashboard.scan")}
-        </button>
+        <div className="page-header-button">
+          <button
+            className={isScanning ? "primary-button scanning" : "primary-button"}
+            disabled={isScanning}
+            onClick={handleScan}
+            type="button"
+          >
+            <ScanLine size={18} />
+            {isScanning ? t(language, "dashboard.scanning") : t(language, "dashboard.scan")}
+          </button>
+        </div>
       </div>
 
       <div className="instance-row">
@@ -93,6 +128,22 @@ export function DashboardPage({
           {t(language, "dashboard.rescan")}
         </button>
       </div>
+
+      {isScanning && scanProgress && (
+        <div className="scan-progress">
+          <div className="scan-progress-header">
+            <strong>{t(language, "dashboard.scanning")}</strong>
+            <span>{t(language, "dashboard.scanProgress", { current: scanProgress.current, total: scanProgress.total })}</span>
+          </div>
+          <div className="progress-bar-track">
+            <div
+              className="progress-bar-fill"
+              style={{ width: `${progressPercent(scanProgress)}%` }}
+            />
+          </div>
+          <small className="scan-progress-mod">{scanProgress.modName}</small>
+        </div>
+      )}
 
       {error && (
         <div className="alert error">

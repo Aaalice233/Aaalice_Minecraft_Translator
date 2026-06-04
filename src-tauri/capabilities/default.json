@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "默认能力 — 允许核心 IPC 和事件监听",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default"
+  ]
+}

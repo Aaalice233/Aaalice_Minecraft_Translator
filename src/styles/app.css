@@ -202,6 +202,46 @@ p {
   cursor: default;
 }
 
+/* Scanning button: animated progress background */
+.primary-button.scanning {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(90deg, #1f8a5b 0%, #2ea875 40%, #1f8a5b 80%);
+  background-size: 200% 100%;
+  animation: scan-progress-slide 1.5s ease-in-out infinite;
+  color: #fff;
+}
+
+@keyframes scan-progress-slide {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Pulsing ring overlay on scanning button */
+.primary-button.scanning::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border: 2px solid rgba(31, 138, 91, 0.4);
+  border-radius: 8px;
+  animation: scan-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes scan-pulse {
+  0%, 100% {
+    opacity: 0.4;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.04);
+  }
+}
+
 .ghost-button {
   border: 1px solid #ded8cc;
   background: #fff;
@@ -238,6 +278,55 @@ select {
   color: #6b665d;
   font-weight: 400;
   line-height: 1.4;
+}
+
+.scan-progress {
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid #ded8cc;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.scan-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.scan-progress-header strong {
+  font-size: 13px;
+  color: #1f8a5b;
+}
+
+.scan-progress-header span {
+  color: #6b665d;
+  font-size: 12px;
+}
+
+.progress-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: #efeade;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: #1f8a5b;
+  transition: width 0.2s ease;
+}
+
+.scan-progress-mod {
+  display: block;
+  margin-top: 6px;
+  color: #6b665d;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .alert {
@@ -389,10 +478,16 @@ th {
 
 .resource-item {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 10px;
   border-bottom: 1px solid #efeade;
   padding-bottom: 10px;
+}
+
+.resource-item .badge {
+  flex: 0 0 auto;
+  margin-top: 2px;
 }
 
 .resource-item strong,
@@ -461,6 +556,20 @@ th {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
+}
+
+.text-button {
+  border: 0;
+  background: transparent;
+  color: #1f8a5b;
+  cursor: pointer;
+  font-weight: 700;
+  padding: 4px 0;
+  text-align: left;
+}
+
+.text-button:hover {
+  text-decoration: underline;
 }
 
 .toggle-row {

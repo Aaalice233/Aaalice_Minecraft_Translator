@@ -14,8 +14,8 @@ const settings: Settings = {
   baseUrl: "https://api.deepseek.com",
   apiKey: "",
   model: "deepseek-v4-flash",
-  temperature: 0.3,
-  maxTokens: 4096,
+  temperature: 1.0,
+  maxTokens: 0,
   concurrency: 6,
   batchSize: 80,
   batchMaxChars: 120000,
@@ -78,6 +78,6 @@ describe("settings page", () => {
     fireEvent.click(screen.getByRole("button", { name: /API 设置/ }));
 
     expect(screen.getByLabelText("Base URL")).toHaveValue("https://api.deepseek.com");
-    expect(screen.getByLabelText("Model")).toHaveValue("deepseek-v4-flash");
+    expect(screen.getByLabelText("模型")).toHaveValue("deepseek-v4-flash");
   });
 });

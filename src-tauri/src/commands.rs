@@ -1,5 +1,9 @@
+use std::sync::mpsc;
+
+use tauri::Emitter;
+
 use crate::core::{
-    models::{InstanceValidation, LlmModel, LlmModelsResponse, ScanSummary, Settings},
+    models::{InstanceValidation, LlmModel, LlmModelsResponse, ScanProgress, ScanSummary, Settings},
     paths, scanner, settings,
 };
 
@@ -20,18 +24,52 @@ pub fn validate_instance(path: String) -> Result<InstanceValidation, String> {
 }
 
 #[tauri::command]
-pub fn scan_instance(
+pub async fn scan_instance(
+    app: tauri::AppHandle,
     path: String,
     source_language: String,
     target_language: String,
 ) -> Result<ScanSummary, String> {
-    scanner::scan_instance(
-        &paths::runtime_root().map_err(to_message)?,
-        path,
-        source_language,
-        target_language,
-    )
-    .map_err(to_message)
+    let root = paths::runtime_root().map_err(to_message)?;
+
+    // Channel: relay progress from blocking/rayon threads → async runtime context.
+    // This avoids calling app.emit() from inside rayon's thread pool (which may
+    // not reliably deliver events to the webview on Windows).
+    let (progress_tx, progress_rx) = mpsc::channel::<ScanProgress>();
+    let progress_tx_scan = progress_tx.clone();
+
+    // Spawn a reader that receives progress from the channel and emits events
+    // from a tokio blocking thread (not from rayon's thread pool), ensuring
+    // events reliably reach the webview on Windows.
+    let app_emit = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        while let Ok(progress) = progress_rx.recv() {
+            if let Err(err) = app_emit.emit("scan-progress", &progress) {
+                eprintln!("scan-progress emit error: {err}");
+            }
+        }
+    });
+
+    // Run the actual scan on a blocking thread; the scanner sends progress
+    // updates through the channel instead of calling emit directly.
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        scanner::scan_instance(
+            &root,
+            path,
+            source_language,
+            target_language,
+            &|progress: ScanProgress| {
+                let _ = progress_tx_scan.send(progress);
+            },
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    // Drop our sender so the channel closes, letting the reader task exit.
+    drop(progress_tx);
+
+    result.map_err(to_message)
 }
 
 #[tauri::command]

@@ -1,6 +1,34 @@
 use std::{io, path::PathBuf};
 
 pub fn runtime_root() -> io::Result<PathBuf> {
+    // Use the executable's location to determine runtime root.
+    // During development (cargo): .../src-tauri/target/{debug,release}/exe
+    // For installed app:           install_dir/exe
+    let exe = std::env::current_exe().map_err(|e| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            format!("无法获取可执行文件路径: {e}"),
+        )
+    })?;
+
+    if let Some(dir) = exe.parent() {
+        let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if dir_name == "debug" || dir_name == "release" {
+            // Development mode: exe is in .../src-tauri/target/{debug,release}/
+            // Walk up 3 levels to reach project root
+            let mut root = dir.to_path_buf();
+            for _ in 0..3 {
+                if let Some(parent) = root.parent() {
+                    root = parent.to_path_buf();
+                }
+            }
+            return Ok(root);
+        }
+        // Installed mode: use exe's own directory
+        return Ok(dir.to_path_buf());
+    }
+
+    // Fallback: current working directory
     let cwd = std::env::current_dir()?;
     if cwd.file_name().is_some_and(|name| name == "src-tauri") {
         Ok(cwd.parent().unwrap_or(&cwd).to_path_buf())
