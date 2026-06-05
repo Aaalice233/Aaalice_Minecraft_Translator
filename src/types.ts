@@ -168,6 +168,14 @@ export interface TranslateProgress {
   stageStatus: "running" | "completed" | "failed";
 }
 
+export interface TranslateLogEntry {
+  key: string;
+  sourceText: string;
+  targetText: string;
+  modName: string;
+  sourceType: string;
+}
+
 export type JobStatus =
   | "idle"
   | "scanning"

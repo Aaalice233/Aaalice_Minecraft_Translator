@@ -805,3 +805,127 @@ th {
     border-bottom: 1px solid #ded8cc;
   }
 }
+
+/* ── Log Panel ──────────────────────────── */
+
+.log-panel {
+  margin-top: 16px;
+  border: 1px solid #ded8cc;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.log-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #efeade;
+  flex-wrap: wrap;
+}
+
+.log-panel-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.log-panel-filter {
+  display: flex;
+  flex: 1;
+  max-width: 300px;
+  min-width: 140px;
+  height: 30px;
+  border: 1px solid #ded8cc;
+  border-radius: 5px;
+  padding: 0 10px;
+  font-size: 12px;
+  background: #fff;
+}
+
+.log-panel-body {
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+.log-panel-body table {
+  font-size: 12px;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.log-panel-body th {
+  text-align: left;
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  color: #6b665d;
+  border-bottom: 1px solid #efeade;
+  position: sticky;
+  top: 0;
+  background: #fcf9f4;
+}
+
+.log-panel-body td {
+  padding: 6px 10px;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid #f5f3ee;
+}
+
+.log-panel-body .copy-log-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.log-panel-body .copy-log-row:hover {
+  background: #f0ede6;
+}
+
+.log-panel-empty {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+  color: #6b665d;
+  font-size: 13px;
+}
+
+.log-entries-count {
+  font-size: 12px;
+  color: #6b665d;
+  white-space: nowrap;
+}
+
+/* idle summary — compact info line replacing old stats-grid */
+.idle-summary {
+  display: flex;
+  gap: 18px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.idle-summary-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fcf9f4;
+  padding: 6px 12px;
+  border-radius: 5px;
+  border: 1px solid #efeade;
+  font-size: 13px;
+  color: #6b665d;
+}
+
+.percent-label {
+  font-size: 12px;
+  color: #6b665d;
+  min-width: 40px;
+  text-align: right;
+}
+
+.status-canceled {
+  color: #b0a99c;
+}

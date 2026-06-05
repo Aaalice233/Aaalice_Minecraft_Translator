@@ -1,7 +1,7 @@
 {
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"python << 'PYEOF'\\nimport json, zipfile, os\\n\\npack_path = 'E:/PCL2/.minecraft/versions/Aaalice Craft/resourcepacks/Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip'\\n\\nprint(f'File exi...",
-  "error": "Exit code 1\n  File \"<stdin>\", line 17\r\n    p = name.replace('\\', '/')\r\n                            ^\r\nSyntaxError: unterminated string literal (detected at line 17)",
-  "timestamp": "2026-06-04T08:04:14.657Z",
-  "retry_count": 2
+  "tool_name": "mcp__plugin_oh-my-claudecode_t__lsp_diagnostics",
+  "tool_input_preview": "{\"file\":\"E:/MC Projects/Aaalice_Minecraft_Translator/src-tauri/src/core/models.rs\"}",
+  "error": "Error in diagnostics: LSP server exited (code 1)",
+  "timestamp": "2026-06-05T02:16:02.816Z",
+  "retry_count": 6
 }

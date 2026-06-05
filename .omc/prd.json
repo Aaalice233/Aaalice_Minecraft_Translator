@@ -1,0 +1,88 @@
+{
+  "title": "翻译阶段大修 — 进度条 + 日志审查面板 + 后端流式事件",
+  "stories": [
+    {
+      "id": "US-001",
+      "title": "Rust 后端：新增 TranslateLogEntry 结构体 + 独立事件通道",
+      "description": "在 models.rs 新增 TranslateLogEntry 结构体，commands.rs 新增独立 mpsc 通道发射 translate-log-entry 事件",
+      "acceptanceCriteria": [
+        "B1: models.rs 存在 TranslateLogEntry 结构体定义（key, sourceText, targetText, modName, sourceType）",
+        "B2: TranslateLogEntry 在 serde(rename_all = camelCase) 下序列化正确",
+        "B3: 翻译循环中每个条目发射一次 translate-log-entry 事件",
+        "B4: matching 阶段不发射日志事件",
+        "B5: 翻译完成后 channel 正确关闭"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "前端类型定义 + i18n 翻译键",
+      "description": "在 types.ts 新增 TranslateLogEntry 接口，i18n 字典新增日志面板相关翻译键",
+      "acceptanceCriteria": [
+        "types.ts 中存在 TranslateLogEntry 接口（camelCase 字段）",
+        "i18n translations.ts 中新增 10+ 日志面板相关翻译键",
+        "4 种语言（zh_cn/en_us/ja_jp/ko_kr）均有对应翻译值",
+        "npm run build 无 TypeScript 错误"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "进度条改造",
+      "description": "移除 idle 状态统计卡片，替换为带 mod 文件名截断 + 条目数/百分比的进度条",
+      "acceptanceCriteria": [
+        "A1: 翻译 idle 状态下不显示 stats-grid 统计卡片，改为简洁摘要信息",
+        "A2: 翻译运行时进度条显示当前 mod 文件名，且文件名超出最大宽度时 text-overflow 截断",
+        "A3: 进度条显示 current/total 数值和百分比",
+        "A4: 翻译完成后进度条变绿、显示翻译完成",
+        "A5: 翻译取消时显示取消状态"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-004",
+      "title": "实时翻译日志审查面板",
+      "description": "页面下方大块区域，监听 translate-log-entry 事件，显示表格，支持复制/过滤/清空/500 条截断",
+      "acceptanceCriteria": [
+        "C1: 日志面板始终可见（翻译前显示空状态）",
+        "C2: 翻译过程中日志逐条追加",
+        "C3: 点击单行复制 key:sourceText->targetText 到剪贴板",
+        "C4: 清空日志按钮清除所有条目",
+        "C5: 支持按模组名称或键名过滤",
+        "C6: 条目超过 500 条时自动丢弃最早的条目",
+        "C7: 浏览器预览模式显示 mock 日志",
+        "C8: 日志追加时自动滚动到底部"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-005",
+      "title": "收尾检查与整体验证",
+      "description": "运行完整构建和测试，确认无回归",
+      "acceptanceCriteria": [
+        "O1: npm run build 无错误",
+        "O2: npm run test:unit 全通过",
+        "O3: cd src-tauri && cargo test 全通过",
+        "O4: LSP 诊断 0 error",
+        "O5: 4 种应用语言下日志面板显示正确翻译文本"
+      ],
+      "passes": true
+    },
+    {
+      "id": "US-006",
+      "title": "Code Review 验证循环 — 持续审查修复直到无问题",
+      "description": "对全部变更文件运行 9-角度 code-review，修复所有 CONFIRMED/PLAUSIBLE 问题，重新审查直到无新发现",
+      "acceptanceCriteria": [
+        "CR1: git diff HEAD 范围内无 CONFIRMED 级别的 bug",
+        "CR2: handleCancel 正确重置 isRunning 且进度条在翻译完成后仍可见",
+        "CR3: 所有 dynamic import 有 .catch() 兜底",
+        "CR4: 无多余 as any 类型断言",
+        "CR5: React key 不使用数组索引",
+        "CR6: npm run build 通过",
+        "CR7: npx tsc --noEmit 通过",
+        "CR8: cargo test 全部通过"
+      ],
+      "passes": true
+    }
+  ]
+}

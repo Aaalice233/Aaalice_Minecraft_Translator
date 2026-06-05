@@ -208,6 +208,16 @@ pub struct TranslateProgress {
     pub stage_status: StageStatus,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct TranslateLogEntry {
+    pub key: String,
+    pub source_text: String,
+    pub target_text: String,
+    pub mod_name: String,
+    pub source_type: String,
+}
+
 use std::sync::atomic::AtomicU64;
 pub static TOTAL_TOKEN_USAGE_PROMPT: AtomicU64 = AtomicU64::new(0);
 pub static TOTAL_TOKEN_USAGE_COMPLETION: AtomicU64 = AtomicU64::new(0);

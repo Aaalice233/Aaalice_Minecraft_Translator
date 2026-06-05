@@ -47,8 +47,8 @@
     "runtime": null
   },
   "build": {
-    "buildCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator\" && npx tsc --noEmit 2>&1 && npm run build 2>&1 | tail -3",
-    "testCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator\" && npm run test:unit 2>&1 | tail -4 && echo \"---\" && cd src-tauri && cargo test 2>&1 | tail -5",
+    "buildCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator\" && npx tsc --noEmit 2>&1; echo \"EXIT:$?\"",
+    "testCommand": "cd \"E:/MC Projects/Aaalice_Minecraft_Translator/src-tauri\" && cargo test 2>&1 | tail -20",
     "lintCommand": null,
     "devCommand": "npm run dev",
     "scripts": {
@@ -233,50 +233,62 @@
   "hotPaths": [
     {
       "path": "src\\i18n\\translations.ts",
-      "accessCount": 188,
-      "lastAccessed": 1780588682691,
+      "accessCount": 211,
+      "lastAccessed": 1780625444704,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\core\\scanner.rs",
-      "accessCount": 111,
-      "lastAccessed": 1780588124918,
+      "accessCount": 112,
+      "lastAccessed": 1780623048880,
       "type": "file"
     },
     {
       "path": "src\\pages\\DashboardPage.tsx",
-      "accessCount": 97,
-      "lastAccessed": 1780587124012,
+      "accessCount": 99,
+      "lastAccessed": 1780625264485,
       "type": "file"
     },
     {
       "path": "src\\styles\\app.css",
-      "accessCount": 82,
-      "lastAccessed": 1780588787019,
+      "accessCount": 97,
+      "lastAccessed": 1780624982821,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\commands.rs",
-      "accessCount": 76,
-      "lastAccessed": 1780587433994,
-      "type": "file"
-    },
-    {
-      "path": "src\\app\\App.tsx",
-      "accessCount": 73,
-      "lastAccessed": 1780588781371,
+      "accessCount": 93,
+      "lastAccessed": 1780625227389,
       "type": "file"
     },
     {
       "path": "src-tauri\\src\\core\\models.rs",
-      "accessCount": 65,
-      "lastAccessed": 1780587133848,
+      "accessCount": 79,
+      "lastAccessed": 1780625368493,
+      "type": "file"
+    },
+    {
+      "path": "src\\app\\App.tsx",
+      "accessCount": 75,
+      "lastAccessed": 1780621879325,
+      "type": "file"
+    },
+    {
+      "path": "src\\types.ts",
+      "accessCount": 70,
+      "lastAccessed": 1780625250724,
+      "type": "file"
+    },
+    {
+      "path": "src\\api\\tauri.ts",
+      "accessCount": 67,
+      "lastAccessed": 1780625228879,
       "type": "file"
     },
     {
       "path": "src",
-      "accessCount": 62,
-      "lastAccessed": 1780587105669,
+      "accessCount": 65,
+      "lastAccessed": 1780625150072,
       "type": "directory"
     },
     {
@@ -286,28 +298,22 @@
       "type": "file"
     },
     {
-      "path": "src\\types.ts",
-      "accessCount": 61,
-      "lastAccessed": 1780587096990,
-      "type": "file"
-    },
-    {
-      "path": "src\\api\\tauri.ts",
-      "accessCount": 59,
-      "lastAccessed": 1780587439000,
-      "type": "file"
-    },
-    {
       "path": "",
-      "accessCount": 48,
-      "lastAccessed": 1780588109102,
+      "accessCount": 56,
+      "lastAccessed": 1780623056032,
       "type": "directory"
     },
     {
       "path": "src-tauri\\src",
-      "accessCount": 44,
-      "lastAccessed": 1780588109527,
+      "accessCount": 46,
+      "lastAccessed": 1780623255578,
       "type": "directory"
+    },
+    {
+      "path": "src-tauri\\src\\lib.rs",
+      "accessCount": 32,
+      "lastAccessed": 1780625246455,
+      "type": "file"
     },
     {
       "path": "src-tauri\\Cargo.toml",
@@ -316,27 +322,21 @@
       "type": "file"
     },
     {
-      "path": "src-tauri\\src\\lib.rs",
-      "accessCount": 29,
-      "lastAccessed": 1780577414108,
+      "path": "src-tauri\\src\\core\\mod.rs",
+      "accessCount": 21,
+      "lastAccessed": 1780621894564,
       "type": "file"
     },
     {
       "path": "src-tauri",
-      "accessCount": 20,
-      "lastAccessed": 1780587113674,
+      "accessCount": 21,
+      "lastAccessed": 1780625443995,
       "type": "directory"
     },
     {
-      "path": "src-tauri\\src\\core\\mod.rs",
-      "accessCount": 19,
-      "lastAccessed": 1780577477665,
-      "type": "file"
-    },
-    {
       "path": "tests\\app.test.tsx",
-      "accessCount": 16,
-      "lastAccessed": 1780584935264,
+      "accessCount": 17,
+      "lastAccessed": 1780624483626,
       "type": "file"
     },
     {
@@ -346,15 +346,15 @@
       "type": "file"
     },
     {
-      "path": "docs\\01-product-spec.md",
-      "accessCount": 9,
-      "lastAccessed": 1780572706747,
+      "path": "docs\\02-architecture-plan.md",
+      "accessCount": 10,
+      "lastAccessed": 1780621544223,
       "type": "file"
     },
     {
-      "path": "docs\\02-architecture-plan.md",
-      "accessCount": 9,
-      "lastAccessed": 1780572751337,
+      "path": "docs\\01-product-spec.md",
+      "accessCount": 10,
+      "lastAccessed": 1780621544388,
       "type": "file"
     },
     {

@@ -10,7 +10,7 @@ use crate::core::{
     logging,
     models::{
         InstanceValidation, LlmModel, LlmModelsResponse, ScanProgress, ScanSummary, Settings,
-        StageStatus, TranslateProgress,
+        StageStatus, TranslateLogEntry, TranslateProgress,
     },
     packer,
     paths, scanner, settings,
@@ -303,12 +303,26 @@ pub async fn start_translation(
     let (progress_tx, progress_rx) = mpsc::channel::<TranslateProgress>();
     let progress_tx_work = progress_tx.clone();
 
+    // Channel: relay per-entry log entries for the real-time log panel
+    let (log_tx, log_rx) = mpsc::channel::<TranslateLogEntry>();
+    let log_tx_work = log_tx.clone();
+
     // Spawn reader that receives progress from channel and emits events
     let app_emit = app.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(progress) = progress_rx.recv() {
             if let Err(err) = app_emit.emit("translate-progress", &progress) {
                 eprintln!("translate-progress emit error: {err}");
+            }
+        }
+    });
+
+    // Spawn reader that receives log entries from channel and emits events
+    let app_emit_log = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        while let Ok(log_entry) = log_rx.recv() {
+            if let Err(err) = app_emit_log.emit("translate-log-entry", &log_entry) {
+                eprintln!("translate-log-entry emit error: {err}");
             }
         }
     });
@@ -419,8 +433,15 @@ pub async fn start_translation(
             let end = total.min(start + batch_size);
             let batch_entries = &pending_entries[start..end];
 
-            // Simulate translation: mark each entry as translated (stub for real LLM)
-            for (_entry, _mod_name) in batch_entries {
+            // Simulate translation: emit per-entry log event (stub for real LLM)
+            for (entry, mod_name) in batch_entries {
+                let _ = log_tx_work.send(TranslateLogEntry {
+                    key: entry.key.clone(),
+                    source_text: entry.text.clone(),
+                    target_text: entry.text.clone(), // stub: target = source (LLM later)
+                    mod_name: mod_name.to_string(),
+                    source_type: "mod".to_string(),
+                });
                 completed += 1;
             }
 
@@ -462,8 +483,9 @@ pub async fn start_translation(
     .await
     .map_err(|e| e.to_string())?;
 
-    // Drop sender to close channel
+    // Drop senders to close channels
     drop(progress_tx);
+    drop(log_tx);
 
     result.map_err(to_message)
 }

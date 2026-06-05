@@ -101,6 +101,22 @@ export type TranslationKey =
   | "jobs.stage.translating"
   | "jobs.stage.packaging"
   | "jobs.progressHint"
+  | "jobs.completed.message"
+  | "jobs.canceled"
+  | "jobs.canceledStatus"
+  | "jobs.failed.message"
+  | "jobs.progressFallback"
+  | "jobs.logPanel.title"
+  | "jobs.logPanel.filterPlaceholder"
+  | "jobs.logPanel.clear"
+  | "jobs.logPanel.copyEntry"
+  | "jobs.logPanel.noEntries"
+  | "jobs.logPanel.entriesCount"
+  | "jobs.logPanel.colKey"
+  | "jobs.logPanel.colSource"
+  | "jobs.logPanel.colTarget"
+  | "jobs.logPanel.colMod"
+  | "jobs.logPanel.colType"
   | "packages.title"
   | "packages.subtitle"
   | "packages.dryRun"
@@ -332,6 +348,22 @@ const zhCn: TranslationMap = {
   "jobs.stage.translating": "翻译中",
   "jobs.stage.packaging": "打包中",
   "jobs.progressHint": "请等待当前批处理完成",
+  "jobs.completed.message": "翻译完成：共处理 {count} 条条目",
+  "jobs.canceled": "翻译已取消",
+  "jobs.canceledStatus": "已取消",
+  "jobs.failed.message": "翻译失败：{error}",
+  "jobs.progressFallback": "- / -",
+  "jobs.logPanel.title": "翻译日志",
+  "jobs.logPanel.filterPlaceholder": "按模组名或键名过滤...",
+  "jobs.logPanel.clear": "清空日志",
+  "jobs.logPanel.copyEntry": "复制",
+  "jobs.logPanel.noEntries": "暂无翻译日志",
+  "jobs.logPanel.entriesCount": "{count} 条",
+  "jobs.logPanel.colKey": "键名",
+  "jobs.logPanel.colSource": "原文",
+  "jobs.logPanel.colTarget": "译文",
+  "jobs.logPanel.colMod": "模组",
+  "jobs.logPanel.colType": "来源",
   "packages.title": "资源包打包",
   "packages.subtitle": "生成翻译资源包并部署到实例",
   "packages.dryRun": "预览",
@@ -539,6 +571,22 @@ const enUs: TranslationMap = {
   "jobs.stage.matching": "Matching dictionary",
   "jobs.stage.translating": "Translating",
   "jobs.stage.packaging": "Packaging",
+  "jobs.completed.message": "Translation complete: {count} entries",
+  "jobs.canceled": "Translation canceled",
+  "jobs.canceledStatus": "Canceled",
+  "jobs.failed.message": "Translation failed: {error}",
+  "jobs.progressFallback": "- / -",
+  "jobs.logPanel.title": "Translation Log",
+  "jobs.logPanel.filterPlaceholder": "Filter by mod name or key...",
+  "jobs.logPanel.clear": "Clear Log",
+  "jobs.logPanel.copyEntry": "Copy",
+  "jobs.logPanel.noEntries": "No translation log entries",
+  "jobs.logPanel.entriesCount": "{count} entries",
+  "jobs.logPanel.colKey": "Key",
+  "jobs.logPanel.colSource": "Source",
+  "jobs.logPanel.colTarget": "Target",
+  "jobs.logPanel.colMod": "Mod",
+  "jobs.logPanel.colType": "Type",
   "placeholder.disabled": "Disabled",
   "placeholder.subtitle": "Phase 1 keeps this entry visible; the workflow will be connected later.",
   "placeholder.empty": "This module does not run automatic processing in the current phase.",
