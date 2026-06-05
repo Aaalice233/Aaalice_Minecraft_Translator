@@ -18,11 +18,12 @@ interface Props {
   onScanSummaryChange: (summary: ScanSummary) => void;
   settings: { instancePath: string; sourceLanguage: string; targetLanguage: string };
   onBusyChange?: (busy: boolean) => void;
+  onCompleteChange?: (completed: boolean) => void;
 }
 
 type TranslationStatus = "idle" | "running" | "completed" | "canceled" | "failed";
 
-export function JobsPage({ language, scanSummary, onScanSummaryChange, settings, onBusyChange }: Props) {
+export function JobsPage({ language, scanSummary, onScanSummaryChange, settings, onBusyChange, onCompleteChange }: Props) {
   const [translateProgress, setTranslateProgress] = useState<TranslateProgress | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<TranslationStatus>("idle");
@@ -31,6 +32,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
   const [logEntries, setLogEntries] = useState<TranslateLogEntry[]>([]);
   const [filterTerm, setFilterTerm] = useState("");
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const cancelledRef = useRef(false);
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && status === "idle";
 
@@ -82,7 +84,8 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
         const entry = event.payload as TranslateLogEntry;
         setLogEntries((prev) => {
           const next = [...prev, entry];
-          return next.length > 500 ? next.slice(-500) : next;
+          const MAX_LOG = 10000;
+          return next.length > MAX_LOG ? next.slice(-MAX_LOG) : next;
         });
       }).then((unlisten) => {
         unlistenFn = unlisten;
@@ -97,20 +100,27 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     };
   }, []);
 
-  // Auto-scroll log panel when new entries arrive
+  // Auto-scroll log panel only when user is near the bottom
   useEffect(() => {
-    if (logContainerRef.current) {
-      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    const container = logContainerRef.current;
+    if (container) {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
+      if (isNearBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
     }
   }, [logEntries]);
 
   async function handleStart() {
     if (!scanSummary) return;
+    cancelledRef.current = false; // reset cancel flag for this new translation
     setIsRunning(true);
     setStatus("running");
     setTranslateProgress(null);
     setTranslationResult(null);
     setTranslationError("");
+    setLogEntries([]); // clear log from previous run
 
     try {
       const result = await startTranslation(
@@ -118,9 +128,12 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
         settings.sourceLanguage || scanSummary.sourceLanguage,
         settings.targetLanguage || scanSummary.targetLanguage,
         scanSummary.actualPendingEntries,
+        scanSummary.jobId,  // scan_job_id — translation loads from persisted scan
       );
+      if (cancelledRef.current) return; // user cancelled while translation was running
       setTranslationResult(result);
       setStatus("completed");
+      onCompleteChange?.(true); // update sidebar nav state
 
       // Re-scan to refresh pending counts after translation
       if ("__TAURI_INTERNALS__" in window) {
@@ -133,7 +146,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
           );
           onScanSummaryChange(newSummary);
         } catch (scanErr) {
-          console.warn("翻译后自动重新扫描失败：", scanErr);
+          setTranslationError("翻译后自动重新扫描失败: " + (scanErr instanceof Error ? scanErr.message : String(scanErr)));
         }
       }
     } catch (err) {
@@ -145,6 +158,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
   }
 
   async function handleCancel() {
+    cancelledRef.current = true; // signal handleStart not to set completed
     try {
       await cancelTranslation();
       setStatus("canceled");
@@ -175,7 +189,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
       await navigator.clipboard.writeText(
-        `${csvQuote(entry.key)} | ${csvQuote(entry.sourceText)} | ${csvQuote(entry.targetText)} | ${csvQuote(entry.modName)}`,
+        `${csvQuote(entry.key)},${csvQuote(entry.sourceText)},${csvQuote(entry.targetText)},${csvQuote(entry.modName)}`,
       );
     } catch {
       // clipboard not available
@@ -201,20 +215,21 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
           <p>{t(language, "jobs.subtitle")}</p>
         </div>
         <div className="page-header-button">
-          <button
-            className="primary-button"
-            disabled={!canTranslate}
-            onClick={handleStart}
-            type="button"
-            data-tooltip={t(language, "tooltip.startTranslation")}
-          >
-            <Play size={18} />
-            {isRunning ? t(language, "jobs.running") : t(language, "jobs.start")}
-          </button>
-          {isRunning && (
+          {isRunning ? (
             <button className="ghost-button danger" onClick={handleCancel} type="button" data-tooltip={t(language, "tooltip.stopTranslation")}>
               <Square size={17} />
               {t(language, "jobs.stop")}
+            </button>
+          ) : (
+            <button
+              className="primary-button"
+              disabled={!canTranslate}
+              onClick={handleStart}
+              type="button"
+              data-tooltip={t(language, "tooltip.startTranslation")}
+            >
+              <Play size={18} />
+              {t(language, "jobs.start")}
             </button>
           )}
         </div>
@@ -300,9 +315,13 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
               }}
             />
           </div>
-          {translateProgress?.subStep && !translateProgress.modName && (
+          {translateProgress?.subStep && translateProgress.modName ? (
+            <small className="scan-progress-mod">{translateProgress.modName} — {translateProgress.subStep}</small>
+          ) : translateProgress?.subStep ? (
             <small className="scan-progress-mod">{translateProgress.subStep}</small>
-          )}
+          ) : translateProgress?.modName ? (
+            <small className="scan-progress-mod">{translateProgress.modName}</small>
+          ) : null}
           {status === "completed" && (
             <small className="scan-progress-status">
               ✔ {t(language, "jobs.title")} — {translationResult ?? 0} {t(language, "jobs.totalEntries")}

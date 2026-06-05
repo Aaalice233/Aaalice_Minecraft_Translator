@@ -1,8 +1,8 @@
-import { Boxes, Copy, FileArchive, Eye } from "lucide-react";
+import { Boxes, Copy, FileArchive, Eye, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { copyPackToInstance, generateTranslationPack } from "../api/tauri";
+import { copyPackToInstance, generatePackFromJob, generateTranslationPack, loadLatestTranslationJob } from "../api/tauri";
 import { t } from "../i18n/translations";
-import type { AppLanguage, CopyResult, PackResult, ScanSummary } from "../types";
+import type { AppLanguage, CopyResult, PackResult, ScanSummary, TranslationJobState } from "../types";
 
 interface Props {
   language: AppLanguage;
@@ -18,6 +18,29 @@ export function PackagesPage({ language, scanSummary, settings, onBusyChange }: 
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState("");
 
+  // Job-based state
+  const [translationJob, setTranslationJob] = useState<TranslationJobState | null>(null);
+  const [loadingJob, setLoadingJob] = useState(true);
+
+  // On mount, try to find the latest completed translation job
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingJob(true);
+    loadLatestTranslationJob()
+      .then((job) => {
+        if (!cancelled && job?.status === "completed") {
+          setTranslationJob(job);
+        }
+      })
+      .catch((err) => {
+        console.warn("加载翻译结果失败:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingJob(false);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   // Sync packaging busy state to parent (sidebar)
   useEffect(() => {
     onBusyChange?.(loading);
@@ -25,26 +48,21 @@ export function PackagesPage({ language, scanSummary, settings, onBusyChange }: 
 
   const canGenerate = scanSummary && scanSummary.actualPendingEntries > 0 && !loading;
 
-  const handleGenerate = async (dryRun: boolean) => {
+  // ── Generate from scan (old path) ─────────────────────────────
+
+  const handleGenerateFromScan = async (dryRun: boolean) => {
     if (!scanSummary) return;
     setLoading(true);
     setError("");
     try {
-      // Collect all entries from mods
       const entries = scanSummary.mods.flatMap((mod) =>
         mod.entries
           .filter((e) => e.language === scanSummary.sourceLanguage)
           .map((e) => ({ modId: e.modId, key: e.key, text: e.text }))
       );
-      const result = await generateTranslationPack(
-        entries,
-        scanSummary.targetLanguage,
-        dryRun,
-      );
+      const result = await generateTranslationPack(entries, scanSummary.targetLanguage, dryRun);
       setPackResult(result);
-      if (!dryRun) {
-        setShowConfirm(true);
-      }
+      if (!dryRun) setShowConfirm(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -52,21 +70,46 @@ export function PackagesPage({ language, scanSummary, settings, onBusyChange }: 
     }
   };
 
+  // ── Generate from translation job (new path) ──────────────────
+
+  const languageMismatch = settings.instancePath && translationJob
+    && translationJob.targetLanguage !== scanSummary?.targetLanguage;
+
+  const handleGenerateFromJob = async (dryRun: boolean) => {
+    if (!translationJob) return;
+    setLoading(true);
+    setError("");
+    try {
+      const targetLang = scanSummary?.targetLanguage || translationJob.targetLanguage;
+      const result = await generatePackFromJob(
+        translationJob.jobId,
+        targetLang,
+        dryRun,
+      );
+      setPackResult(result);
+      if (!dryRun) setShowConfirm(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ── Copy to instance ──────────────────────────────────────────
+
   const handleCopyToInstance = async () => {
     if (!packResult?.zipPath) return;
     setError("");
     try {
-      const result = await copyPackToInstance(
-        packResult.zipPath,
-        settings.instancePath,
-        true,
-      );
+      const result = await copyPackToInstance(packResult.zipPath, settings.instancePath, true);
       setCopyResult(result);
       setShowConfirm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  // ── Render ────────────────────────────────────────────────────
 
   return (
     <section className="page">
@@ -76,35 +119,89 @@ export function PackagesPage({ language, scanSummary, settings, onBusyChange }: 
           <p>{t(language, "packages.subtitle")}</p>
         </div>
         <div className="page-header-button">
-          <button
-            className="ghost-button"
-            disabled={!canGenerate}
-            onClick={() => handleGenerate(true)}
-            type="button"
-            data-tooltip={t(language, "tooltip.dryRun")}
-          >
-            <Eye size={17} />
-            {t(language, "packages.dryRun")}
-          </button>
-          <button
-            className="primary-button"
-            disabled={!canGenerate}
-            onClick={() => handleGenerate(false)}
-            type="button"
-            data-tooltip={t(language, "tooltip.generatePack")}
-          >
-            <FileArchive size={18} />
-            {t(language, "packages.generate")}
-          </button>
+          {/* Dry-run buttons */}
+          {translationJob && (
+            <button
+              className="ghost-button"
+              disabled={loading}
+              onClick={() => handleGenerateFromJob(true)}
+              type="button"
+              data-tooltip="使用已翻译结果预览"
+            >
+              <Eye size={17} />
+              预览(翻译结果)
+            </button>
+          )}
+          {canGenerate && (
+            <button
+              className="ghost-button"
+              disabled={loading}
+              onClick={() => handleGenerateFromScan(true)}
+              type="button"
+              data-tooltip={t(language, "tooltip.dryRun")}
+            >
+              <Eye size={17} />
+              {t(language, "packages.dryRun")}
+            </button>
+          )}
+          {/* Real generate buttons */}
+          {translationJob && (
+            <button
+              className="primary-button"
+              disabled={loading}
+              onClick={() => handleGenerateFromJob(false)}
+              type="button"
+              data-tooltip="从已翻译结果生成资源包"
+            >
+              {loading ? <Loader2 size={18} className="spin" /> : <FileArchive size={18} />}
+              生成(翻译结果)
+            </button>
+          )}
+          {canGenerate && (
+            <button
+              className="primary-button"
+              disabled={loading}
+              onClick={() => handleGenerateFromScan(false)}
+              type="button"
+              data-tooltip={t(language, "tooltip.generatePack")}
+            >
+              <FileArchive size={18} />
+              {t(language, "packages.generate")}
+            </button>
+          )}
         </div>
       </div>
 
       {error && <div className="alert error">{error}</div>}
 
+      {/* Translation job info */}
+      {translationJob && (
+        <div className="panel" style={{ padding: "12px 18px", marginBottom: 18 }}>
+          <span>
+            ✅ 翻译结果可用: <code>{translationJob.jobId}</code> —
+            {translationJob.completedEntries} 条已翻译 ({translationJob.targetLanguage})
+          </span>
+          {languageMismatch && (
+            <span style={{ display: "block", marginTop: 8, color: "#d4a72c" }}>
+              ⚠️ 当前设置的目标语言 ({scanSummary?.targetLanguage})
+              与翻译结果的语言 ({translationJob.targetLanguage}) 不一致。
+              将使用当前设置的语言打包。
+            </span>
+          )}
+        </div>
+      )}
+
       {!scanSummary && (
         <div className="empty-state">
           <Boxes size={32} />
           <p>{t(language, "packages.noScan")}</p>
+        </div>
+      )}
+
+      {loadingJob && (
+        <div className="empty-state">
+          <Loader2 size={24} className="spin" />
+          <p>检查翻译结果...</p>
         </div>
       )}
 

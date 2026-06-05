@@ -218,6 +218,42 @@ pub struct TranslateLogEntry {
     pub source_type: String,
 }
 
+/// Token usage statistics, shared across models and jobs.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TokenUsage {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+}
+
+// ── P6: Validation types ───────────────────────────────────────────
+
+/// A single issue found during translation validation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidationIssue {
+    pub key: String,
+    pub mod_id: String,
+    pub source_text: String,
+    pub target_text: String,
+    pub issue_type: String,
+    pub description: String,
+    pub severity: String,
+}
+
+/// Aggregate report from validating a completed translation job.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct ValidationReport {
+    pub total_entries: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub missing: usize,
+    pub placeholder_issues: Vec<ValidationIssue>,
+    pub format_issues: Vec<ValidationIssue>,
+}
+
 use std::sync::atomic::AtomicU64;
 pub static TOTAL_TOKEN_USAGE_PROMPT: AtomicU64 = AtomicU64::new(0);
 pub static TOTAL_TOKEN_USAGE_COMPLETION: AtomicU64 = AtomicU64::new(0);

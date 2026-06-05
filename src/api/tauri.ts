@@ -1,4 +1,4 @@
-import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, PackEntry, PackResult, ScanSummary, Settings, TranslateProgress } from "../types";
+import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, PackEntry, PackResult, ScanSummary, Settings, TranslateProgress, TranslationJobState, ValidationReport } from "../types";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
 
@@ -75,10 +75,10 @@ export async function scanInstance(
   return tauriInvoke<ScanSummary>("scan_instance", { path, sourceLanguage, targetLanguage });
 }
 
-/** Load the most recently persisted scan result from disk (if any). */
-export async function loadLatestScanSummary(): Promise<ScanSummary | null> {
-  if (!isTauriRuntime()) return null;
-  return tauriInvoke<ScanSummary | null>("load_latest_scan_summary");
+/** Clear all cached scan and translation job files, forcing a fresh scan next time. */
+export async function clearJobsCache(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  return tauriInvoke<void>("clear_jobs_cache");
 }
 
 export async function cancelScan(): Promise<void> {
@@ -171,6 +171,7 @@ export async function startTranslation(
   sourceLanguage: string,
   targetLanguage: string,
   totalEntries?: number,
+  scanJobId?: string,
 ): Promise<number> {
   if (!isTauriRuntime()) {
     throw new Error("浏览器预览模式下不可用，请在 Tauri 桌面端中运行");
@@ -180,6 +181,7 @@ export async function startTranslation(
     sourceLanguage,
     targetLanguage,
     totalEntries,
+    scanJobId: scanJobId ?? null,
   });
 }
 
@@ -188,6 +190,27 @@ export async function cancelTranslation(): Promise<void> {
     return;
   }
   return tauriInvoke<void>("cancel_translation");
+}
+
+export async function getTranslationJob(jobId: string): Promise<TranslationJobState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return tauriInvoke<TranslationJobState | null>("get_translation_job", { jobId });
+}
+
+export async function loadLatestTranslationJob(): Promise<TranslationJobState | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return tauriInvoke<TranslationJobState | null>("load_latest_translation_job");
+}
+
+export async function validateTranslation(jobId: string): Promise<ValidationReport> {
+  if (!isTauriRuntime()) {
+    return { totalEntries: 0, passed: 0, failed: 0, missing: 0, placeholderIssues: [], formatIssues: [] };
+  }
+  return tauriInvoke<ValidationReport>("validate_translation", { jobId });
 }
 
 export async function generateTranslationPack(
@@ -213,5 +236,18 @@ export async function copyPackToInstance(
   }
   return tauriInvoke<CopyResult>("copy_pack_to_instance", {
     packZipPath, instancePath, overwrite,
+  });
+}
+
+export async function generatePackFromJob(
+  jobId: string,
+  targetLanguage: string,
+  dryRun: boolean,
+): Promise<PackResult> {
+  if (!isTauriRuntime()) {
+    return { outputDir: "", zipPath: "", modCount: 0, entryCount: 0, conflicts: [] };
+  }
+  return tauriInvoke<PackResult>("generate_pack_from_job", {
+    jobId, targetLanguage, dryRun,
   });
 }

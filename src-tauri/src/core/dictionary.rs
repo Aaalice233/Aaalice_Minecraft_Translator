@@ -179,16 +179,16 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
     if let Some((existing_id,)) = existing {
         // Update existing entry
         // Only update if source_type is 'manual' or if new entry has higher priority
-        let current_type: String = conn
+        let current_info: (String, f64) = conn
             .query_row(
-                "SELECT source_type FROM dictionary_entries WHERE id = ?1",
+                "SELECT source_type, confidence FROM dictionary_entries WHERE id = ?1",
                 params![existing_id],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap_or_default();
 
         // Priority: manual > cfpa > resourcepack > llm
-        let should_update = match (current_type.as_str(), entry.source_type.as_str()) {
+        let should_update = match (current_info.0.as_str(), entry.source_type.as_str()) {
             // Current is manual: never overwrite with lower priority
             ("manual", _) => false,
             // Current is cfpa: overwrite only with manual
@@ -197,8 +197,8 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
             ("resourcepack", "cfpa") => true,
             // Current is llm: overwrite with anything
             ("llm", _) => true,
-            // Same type: update if confidence is higher
-            (a, b) if a == b => entry.confidence > 0.0,
+            // Same type: update only if new confidence is strictly higher than existing
+            (a, b) if a == b => entry.confidence > current_info.1,
             // Default: don't overwrite
             _ => false,
         };
@@ -275,6 +275,47 @@ pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<Dicti
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(param_refs.as_slice(), |row| {
+        Ok(DictionaryEntry {
+            id: Some(row.get(0)?),
+            source_text: row.get(1)?,
+            target_text: row.get(2)?,
+            source_lang: row.get(3)?,
+            target_lang: row.get(4)?,
+            source_type: row.get(5)?,
+            mod_id: row.get(6)?,
+            translation_key: row.get(7)?,
+            context: row.get(8)?,
+            confidence: row.get(9)?,
+            created_at: row.get(10)?,
+            updated_at: row.get(11)?,
+        })
+    })?;
+
+    let mut results = Vec::new();
+    for row in rows {
+        results.push(row?);
+    }
+    Ok(results)
+}
+
+/// Search dictionary entries by source_hash (exact match against the indexed hash column).
+/// Returns entries matching the hash and target_lang, limited to a small number
+/// (the same source text from different mods usually yields the same hash).
+pub fn search_by_hash(
+    conn: &Connection,
+    source_hash: &str,
+    target_lang: &str,
+) -> SqlResult<Vec<DictionaryEntry>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, source_text, target_text, source_lang, target_lang, source_type,
+                mod_id, translation_key, context, confidence, created_at, updated_at
+         FROM dictionary_entries
+         WHERE source_hash = ?1 AND target_lang = ?2
+         ORDER BY updated_at DESC
+         LIMIT 5",
+    )?;
+
+    let rows = stmt.query_map(params![source_hash, target_lang], |row| {
         Ok(DictionaryEntry {
             id: Some(row.get(0)?),
             source_text: row.get(1)?,

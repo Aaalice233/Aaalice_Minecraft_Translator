@@ -60,3 +60,30 @@ pub fn job_state_path(root: &std::path::Path, job_id: &str) -> std::path::PathBu
 pub fn jobs_dir(root: &std::path::Path) -> std::path::PathBuf {
     root.join("data").join("jobs")
 }
+
+/// Path to a translation job's lightweight state file (stats only).
+pub fn translate_job_state_path(root: &std::path::Path, job_id: &str) -> std::path::PathBuf {
+    root.join("data").join("jobs").join(format!("translate_{job_id}.json"))
+}
+
+/// Path to a translation job's results file (JSONL, one result per line).
+pub fn translate_job_results_path(root: &std::path::Path, job_id: &str) -> std::path::PathBuf {
+    root.join("data").join("jobs").join(format!("translate_{job_id}_results.jsonl"))
+}
+
+/// Delete all scan_*.json cache files in the jobs directory.
+/// Called on app startup to ensure a fresh scan state.
+pub fn clear_scan_cache(root: &std::path::Path) -> std::io::Result<()> {
+    let jobs_dir = jobs_dir(root);
+    if !jobs_dir.is_dir() {
+        return Ok(());
+    }
+    for entry in std::fs::read_dir(&jobs_dir)? {
+        let entry = entry?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with("scan_") && name.ends_with(".json") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    Ok(())
+}

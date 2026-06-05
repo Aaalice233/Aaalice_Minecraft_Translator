@@ -32,11 +32,11 @@ pub enum MatchResult {
 /// Result of the matching phase for a batch.
 #[derive(Debug, Clone)]
 pub struct MatchedBatch {
-    /// Entries found in the dictionary
-    pub matched: Vec<dictionary::DictionaryEntry>,
+    /// Entries found in the dictionary — paired with original key
+    pub matched: Vec<(String, dictionary::DictionaryEntry)>,
     /// Entries needing LLM translation
     pub pending: Vec<SourceEntry>,
-    /// Entries skipped (all placeholders)
+    /// Entries skipped (all placeholders) — paired with original key
     pub skipped: Vec<String>,
 }
 
@@ -59,26 +59,20 @@ pub fn match_entries(
             continue;
         }
 
-        let query = dictionary::DictionaryQuery {
-            search: None,
-            source_type: None,
-            mod_id: Some(entry.mod_id.clone()),
-            source_lang: Some(entry.source_lang.clone()),
-            target_lang: Some(target_lang.to_string()),
-            limit: Some(50),
-            offset: None,
-        };
+        // Use source_hash index for O(1) dictionary lookup instead of text-pattern search
+        let source_hash = dictionary::hash_text(&entry.text);
+        let results = dictionary::search_by_hash(&conn, &source_hash, target_lang)
+            .map_err(|e| e.to_string())?;
 
-        let results = dictionary::search(&conn, &query).map_err(|e| e.to_string())?;
-
-        // Match by source_hash first, then verify source_text equality
+        // Match first non-manual entry whose source_text matches exactly
+        // (hash is very unlikely to collide, but verify text equality as a safety check)
         let dict_match = results
             .iter()
-            .find(|d| d.source_type != "resourcepack" && d.source_text == entry.text)
+            .find(|d| d.source_type != "manual" && d.source_text == entry.text)
             .cloned();
 
         match dict_match {
-            Some(entry) => matched.push(entry),
+            Some(dict_entry) => matched.push((entry.key.clone(), dict_entry)),
             None => pending.push(SourceEntry {
                 key: entry.key.clone(),
                 text: entry.text.clone(),

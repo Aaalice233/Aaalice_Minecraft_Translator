@@ -151,14 +151,6 @@ export interface ImportResult {
 
 // ── P3: Translation types ─────────────────────────────────────────
 
-export interface TranslationEntry {
-  key: string;
-  text: string;
-  modId: string;
-  sourceLang: string;
-  targetLang: string;
-}
-
 export interface TranslateProgress {
   current: number;
   total: number;
@@ -179,37 +171,71 @@ export interface TranslateLogEntry {
 /** 侧边栏导航项的三态：空闲 / 运行中 / 已完成 */
 export type PageNavStatus = "idle" | "busy" | "completed";
 
-export type JobStatus =
-  | "idle"
-  | "scanning"
-  | "matching"
-  | "translating"
-  | "translatingPaused"
-  | "validating"
-  | "validatingPaused"
-  | "packaging"
-  | "completed"
-  | "failed"
-  | "canceled";
-
 export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
 }
 
-export interface TranslationJob {
-  id: string;
-  status: JobStatus;
-  createdAt: string;
-  totalEntries: number;
+// ── P5: Translation job state types (new pipeline) ────────────────
+
+export type TranslationStatus =
+  | "pending"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
+export interface PendingEntry {
+  key: string;
+  sourceText: string;
+  modId: string;
+  modName: string;
+}
+
+export interface TranslationResult {
+  key: string;
+  sourceText: string;
+  targetText: string;
+  modId: string;
+  modName: string;
+  sourceType: string;
+}
+
+export interface TranslationJobState {
+  jobId: string;
+  scanJobId: string;
+  status: TranslationStatus;
+  sourceLanguage: string;
+  targetLanguage: string;
+  entries: PendingEntry[];
   completedEntries: number;
   failedEntries: number;
-  skippedEntries: number;
-  matchedEntries: number;
-  pendingEntries: number;
   tokenUsage: TokenUsage;
-  etaSecs?: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
+// ── P6: Validation types ──────────────────────────────────────────
+
+export interface ValidationIssue {
+  key: string;
+  modId: string;
+  sourceText: string;
+  targetText: string;
+  issueType: string;
+  description: string;
+  severity: string;
+}
+
+export interface ValidationReport {
+  totalEntries: number;
+  passed: number;
+  failed: number;
+  missing: number;
+  placeholderIssues: ValidationIssue[];
+  formatIssues: ValidationIssue[];
 }
 
 // ── P4: Pack types ────────────────────────────────────────────────

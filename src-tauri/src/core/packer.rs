@@ -10,6 +10,7 @@ pub struct PackEntry {
     pub mod_id: String,
     pub key: String,
     pub text: String,
+    pub source_text: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,7 +73,7 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
                                             conflicts.push(ConflictInfo {
                                                 mod_id: e.mod_id.clone(),
                                                 key: e.key.clone(),
-                                                source_text: String::new(),
+                                                source_text: e.source_text.clone(),
                                                 dictionary_text: e.text.clone(),
                                                 existing_text: existing_text.clone(),
                                             });
@@ -118,6 +119,9 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
         serde_json::to_string_pretty(&mcmeta)?,
     )?;
 
+    // Note: 建议在资源包根目录放置 pack.png 作为资源包图标；
+    // 没有图标时 Minecraft 仍可使用该资源包，但不会在选择界面显示预览图。
+
     // Generate language files per mod
     let mut conflicts = Vec::new();
     for (mod_id, entries) in &by_mod {
@@ -138,7 +142,7 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
                                 conflicts.push(ConflictInfo {
                                     mod_id: mod_id.clone(),
                                     key: e.key.clone(),
-                                    source_text: String::new(),
+                                    source_text: e.source_text.clone(),
                                     dictionary_text: e.text.clone(),
                                     existing_text: existing_text.clone(),
                                 });
@@ -259,7 +263,7 @@ mod tests {
     #[test]
     fn dry_run_returns_stats() {
         let entries = vec![
-            PackEntry { mod_id: "testmod".into(), key: "test.key".into(), text: "你好".into() },
+            PackEntry { mod_id: "testmod".into(), key: "test.key".into(), text: "你好".into(), source_text: "Hello".into() },
         ];
         let options = PackOptions {
             target_language: "zh_cn".into(),

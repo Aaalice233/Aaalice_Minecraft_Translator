@@ -121,9 +121,20 @@ pub fn scan_instance(
     let total_language_files = mods.iter().map(|m| m.language_file_count).sum();
     let total_source_entries = mods.iter().map(|m| m.source_entries).sum();
     let total_target_entries = mods.iter().map(|m| m.target_entries).sum();
+    // Count pending entries using key-by-key comparison (consistent with extract_pending_entries)
     let total_pending_entries: usize = mods
         .iter()
-        .map(|m| m.source_entries.saturating_sub(m.target_entries))
+        .map(|m| {
+            let target_keys: HashSet<&str> = m.entries
+                .iter()
+                .filter(|e| e.language == m.target_language)
+                .map(|e| e.key.as_str())
+                .collect();
+            m.entries
+                .iter()
+                .filter(|e| e.language == m.resolved_source_language && !target_keys.contains(e.key.as_str()))
+                .count()
+        })
         .sum();
 
     // Stage 3b: match resource pack entries against mod source entries

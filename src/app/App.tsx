@@ -22,7 +22,7 @@ import { PlaceholderPage } from "../pages/PlaceholderPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
 import type { PageNavStatus, ScanSummary, Settings } from "../types";
-import { getSettings, loadLatestScanSummary } from "../api/tauri";
+import { getSettings } from "../api/tauri";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
 
@@ -59,10 +59,13 @@ export function App() {
   const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
   const [loadError, setLoadError] = useState("");
   const [navStates, setNavStates] = useState<PageNavStates>({});
-  // Stable nav state updater — stable reference, value-aware to prevent render loops
+  // Stable nav state updater — stable reference, value-aware to prevent render loops.
+  // Never downgrade "completed" → "idle": busy overrides completed, completed
+  // overrides busy, but idle only applies when no stronger state exists.
   const setNav = useCallback((key: PageKey, status: PageNavStatus) => {
     setNavStates((prev) => {
-      if (prev[key] === status) return prev; // same value → skip re-render
+      if (prev[key] === status) return prev;
+      if (status === "idle" && prev[key] === "completed") return prev;
       return { ...prev, [key]: status };
     });
   }, []);
@@ -73,18 +76,6 @@ export function App() {
       .then(setSettings)
       .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
   }, []);
-
-  // On mount, load the most recent persisted scan result
-  useEffect(() => {
-    loadLatestScanSummary()
-      .then((saved) => {
-        if (saved) {
-          setScanSummary(saved);
-          setNav("dashboard", "completed");
-        }
-      })
-      .catch(() => { /* ignore load failure */ });
-  }, [setNav]);
 
   // 智能 tooltip 方向：当元素靠近视口上边缘时自动向下弹出
   useEffect(() => {
@@ -124,6 +115,7 @@ export function App() {
   const dbBusy = useCallback((b: boolean) => setNav("dashboard", b ? "busy" : "idle"), [setNav]);
   const dbCompleted = useCallback((c: boolean) => setNav("dashboard", c ? "completed" : "idle"), [setNav]);
   const jobsBusy = useCallback((b: boolean) => setNav("jobs", b ? "busy" : "idle"), [setNav]);
+  const jobsCompleted = useCallback((c: boolean) => setNav("jobs", c ? "completed" : "idle"), [setNav]);
   const packsBusy = useCallback((b: boolean) => setNav("packages", b ? "busy" : "idle"), [setNav]);
 
   /** 渲染页面实例（懒加载：仅在首次访问时挂载） */
@@ -145,7 +137,7 @@ export function App() {
         return <DictionaryPage language={language} />;
       }
       if (page === "jobs") {
-        return <JobsPage language={language} scanSummary={scanSummary} onScanSummaryChange={setScanSummary} settings={settings!} onBusyChange={jobsBusy} />;
+        return <JobsPage language={language} scanSummary={scanSummary} onScanSummaryChange={setScanSummary} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
       }
       if (page === "validate") {
         return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;

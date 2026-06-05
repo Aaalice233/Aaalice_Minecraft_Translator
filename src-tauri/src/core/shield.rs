@@ -1,3 +1,4 @@
+use crate::core::{jobs, models};
 use regex::Regex;
 use std::sync::OnceLock;
 
@@ -185,6 +186,85 @@ fn protect_with_regex(
     // Append remaining text after last match
     result.push_str(&text[last_end..]);
     result
+}
+
+/// Validate a full translation job's results against its pending entries.
+///
+/// Checks performed:
+/// 1. Every pending entry has a translation result (missing detection)
+/// 2. Every result preserves all placeholders from the source text
+/// 3. Every result is non-empty and syntactically reasonable
+///
+/// `pending` — the frozen list from TranslationJobState.entries.
+/// `results` — all TranslationResult lines loaded from the .jsonl file.
+pub fn validate_translation_results(
+    pending: &[jobs::PendingEntry],
+    results: &[jobs::TranslationResult],
+) -> models::ValidationReport {
+    use std::collections::HashSet;
+
+    let mut report = models::ValidationReport::default();
+    report.total_entries = pending.len();
+
+    // Build a set of keys that have results
+    let result_keys: HashSet<&str> = results.iter().map(|r| r.key.as_str()).collect();
+
+    // Check missing entries and validate existing ones
+    for entry in pending {
+        if !result_keys.contains(entry.key.as_str()) {
+            report.missing += 1;
+            report.format_issues.push(models::ValidationIssue {
+                key: entry.key.clone(),
+                mod_id: entry.mod_id.clone(),
+                source_text: entry.source_text.clone(),
+                target_text: String::new(),
+                issue_type: "missing_result".to_string(),
+                description: "缺少翻译结果".to_string(),
+                severity: "error".to_string(),
+            });
+            continue;
+        }
+
+        // Find the matching result
+        let Some(result) = results.iter().find(|r| r.key == entry.key) else {
+            // Defensive guard — key was confirmed in result_keys above.
+            continue;
+        };
+
+        // Check if result is empty
+        if result.target_text.trim().is_empty() {
+            report.format_issues.push(models::ValidationIssue {
+                key: entry.key.clone(),
+                mod_id: entry.mod_id.clone(),
+                source_text: entry.source_text.clone(),
+                target_text: result.target_text.clone(),
+                issue_type: "empty_result".to_string(),
+                description: "翻译结果为空".to_string(),
+                severity: "error".to_string(),
+            });
+            continue;
+        }
+
+        // Check placeholder preservation
+        let source_shield = protect(&entry.source_text);
+        let valid = validate(&source_shield.tokens, &result.target_text);
+        if !valid {
+            report.failed += 1;
+            report.placeholder_issues.push(models::ValidationIssue {
+                key: entry.key.clone(),
+                mod_id: entry.mod_id.clone(),
+                source_text: entry.source_text.clone(),
+                target_text: result.target_text.clone(),
+                issue_type: "placeholder_missing".to_string(),
+                description: "翻译结果缺少占位符，可能被 LLM 破坏".to_string(),
+                severity: "error".to_string(),
+            });
+        } else {
+            report.passed += 1;
+        }
+    }
+
+    report
 }
 
 #[cfg(test)]

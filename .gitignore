@@ -1,5 +1,7 @@
 # Agent/app state (only ignore ephemeral runtime data)
 .codex/
+.claude/worktrees/
+.claude/tmp/
 .omc/state/
 .omc/tmp/
 .omc/logs/

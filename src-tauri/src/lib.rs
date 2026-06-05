@@ -12,7 +12,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|_app| {
-            core::logging::init_main_log(&core::paths::runtime_root()?)?;
+            let root = core::paths::runtime_root()?;
+            core::logging::init_main_log(&root)?;
+            let _ = core::paths::clear_scan_cache(&root);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -20,7 +22,6 @@ pub fn run() {
             commands::save_settings,
             commands::validate_instance,
             commands::scan_instance,
-            commands::load_latest_scan_summary,
             commands::cancel_scan,
             commands::pick_instance_folder,
             commands::open_path,
@@ -38,6 +39,11 @@ pub fn run() {
             // Translation
             commands::start_translation,
             commands::cancel_translation,
+            commands::clear_jobs_cache,
+            commands::get_translation_job,
+            commands::load_latest_translation_job,
+            commands::validate_translation,
+            commands::generate_pack_from_job,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Aaalice MC Translator");
