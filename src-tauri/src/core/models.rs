@@ -227,6 +227,75 @@ pub struct TokenUsage {
     pub total_tokens: u64,
 }
 
+/// Pipeline 阶段标识
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub enum PipelinePhase {
+    #[serde(rename = "scanning")]
+    Scanning,
+    #[serde(rename = "extracting")]
+    Extracting,
+    #[serde(rename = "dictionary")]
+    Dictionary,
+    #[serde(rename = "translating")]
+    Translating,
+    #[serde(rename = "completed")]
+    Completed,
+}
+
+/// Pipeline 统一进度事件
+#[derive(Clone, Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineProgress {
+    pub current: usize,
+    pub total: usize,
+    pub phase: PipelinePhase,
+    pub mod_name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sub_step: Option<String>,
+    pub stage_status: StageStatus,
+}
+
+/// LLM 配置（从 Settings 提取，用于 PipelineConfig）
+#[derive(Clone, Debug)]
+pub struct LlmConfig {
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub temperature: f32,
+    pub max_tokens: u32,
+    pub concurrency: usize,
+    pub batch_size: usize,
+    pub timeout_secs: u64,
+    pub retry_count: u32,
+    pub rate_limit_rpm: u32,
+    pub prefer_user_dict: bool,
+}
+
+/// Pipeline 配置
+#[derive(Clone, Debug)]
+pub struct PipelineConfig {
+    pub root: std::path::PathBuf,
+    pub instance_path: String,
+    pub source_language: String,
+    pub target_language: String,
+    pub scan_job_id: Option<String>,
+    pub i18n_pack_name: Option<String>,
+    pub vm_pack_name: Option<String>,
+    pub llm: Option<LlmConfig>,
+}
+
+/// Pipeline 结果
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PipelineResult {
+    pub completed: usize,
+    pub dict_count: usize,
+    pub llm_count: usize,
+    pub token_usage: TokenUsage,
+    pub actual_source_language: String,
+    pub job_id: String,
+}
+
 // ── P6: Validation types ───────────────────────────────────────────
 
 /// A single issue found during translation validation.
