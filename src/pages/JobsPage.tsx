@@ -34,7 +34,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
 
-  const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && status === "idle";
+  const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed");
 
   // Sync translation busy state to parent (sidebar)
   useEffect(() => {
@@ -291,11 +291,17 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
         <div className="scan-progress">
           <div className="scan-progress-header">
             <strong className="scan-progress-mod" style={{ maxWidth: 300, flex: 1, margin: 0 }}>
-              {translateProgress?.modName && translateProgress.phase === "translating"
-                ? translateProgress.modName
+              {translateProgress?.phase === "scanning"
+                ? `正在扫描: ${translateProgress.modName || ""}`
+                : translateProgress?.phase === "extracting"
+                ? "正在提取待翻译条目..."
+                : translateProgress?.phase === "dictionary"
+                ? "正在词典匹配..."
+                : translateProgress?.phase === "translating"
+                ? `正在翻译${translateProgress.subStep ? " (" + translateProgress.subStep + ")" : ""}`
                 : translateProgress
-                  ? stageLabel(translateProgress.phase)
-                  : t(language, "jobs.translating")}
+                ? stageLabel(translateProgress.phase)
+                : t(language, "jobs.translating")}
             </strong>
             <span>
               {translateProgress
@@ -315,11 +321,9 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
               }}
             />
           </div>
-          {translateProgress?.subStep && translateProgress.modName ? (
-            <small className="scan-progress-mod">{translateProgress.modName} — {translateProgress.subStep}</small>
-          ) : translateProgress?.subStep ? (
+          {translateProgress?.subStep && translateProgress.phase !== "translating" ? (
             <small className="scan-progress-mod">{translateProgress.subStep}</small>
-          ) : translateProgress?.modName ? (
+          ) : translateProgress?.modName && translateProgress.phase === "scanning" ? (
             <small className="scan-progress-mod">{translateProgress.modName}</small>
           ) : null}
           {status === "completed" && (
