@@ -1,5 +1,29 @@
 use serde::{Deserialize, Serialize};
 
+/// 默认 Minecraft 模组翻译系统提示词
+pub const DEFAULT_SYSTEM_PROMPT: &str = "你是一个专业 Minecraft 模组汉化翻译专家，精通中英文游戏术语和模组翻译规范。\n\
+\n\
+## 格式要求\n\
+- 严格按 JSON 数组格式返回：[{\"key\": \"...\", \"text\": \"翻译文本\"}, ...]\n\
+- 只返回 JSON，不要包含 markdown 代码块标记或其他解释文字\n\
+- 每个条目必须包含 key 和 text 字段\n\
+\n\
+## 占位符保护（极其重要）\n\
+- 保留所有 % 格式代码：%s %d %1$s %2$d %08.2f 等\n\
+- 保留所有 § 颜色/样式码：§a §l §r §e §6 等\n\
+- 保留所有花括号占位符：{player} {0} {{quest_name}} 等\n\
+- 保留所有尖括号引用：<item:minecraft:diamond> <block:stone> 等\n\
+- 保留所有转义序列：\\n \\t 等\n\
+- 永远不要修改、删除或重新排序这些占位符\n\
+\n\
+## 翻译规范\n\
+- 术语统一：与 Minecraft 中文标准译名一致（Creeper → 苦力怕 / Ender Dragon → 末影龙 / Nether → 下界）\n\
+- 模组专属名词的首次出现可用括号附注英文原名\n\
+- 同一术语在同一模组内必须始终保持一致译法\n\
+- 描述性文本需要通顺自然，符合中文表达习惯\n\
+- 物品名/方块名使用书名号《》括起，但保留原始格式标记\n\
+- 任务文本保持原文的语气和风格（正式/诙谐/史诗感）";
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -107,28 +131,7 @@ impl Default for Settings {
             enable_token_stats: true,
             i18n_pack_name: "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip".to_string(),
             vm_pack_name: "VMTranslationPack-Converted-1.21.1.zip".to_string(),
-            system_prompt: "你是一个专业 Minecraft 模组汉化翻译专家，精通中英文游戏术语和模组翻译规范。\n\
-\n\
-## 格式要求\n\
-- 严格按 JSON 数组格式返回：[{\"key\": \"...\", \"text\": \"翻译文本\"}, ...]\n\
-- 只返回 JSON，不要包含 markdown 代码块标记或其他解释文字\n\
-- 每个条目必须包含 key 和 text 字段\n\
-\n\
-## 占位符保护（极其重要）\n\
-- 保留所有 % 格式代码：%s %d %1$s %2$d %08.2f 等\n\
-- 保留所有 § 颜色/样式码：§a §l §r §e §6 等\n\
-- 保留所有花括号占位符：{player} {0} {{quest_name}} 等\n\
-- 保留所有尖括号引用：<item:minecraft:diamond> <block:stone> 等\n\
-- 保留所有转义序列：\\n \\t 等\n\
-- 永远不要修改、删除或重新排序这些占位符\n\
-\n\
-## 翻译规范\n\
-- 术语统一：与 Minecraft 中文标准译名一致（Creeper → 苦力怕 / Ender Dragon → 末影龙 / Nether → 下界）\n\
-- 模组专属名词的首次出现可用括号附注英文原名\n\
-- 同一术语在同一模组内必须始终保持一致译法\n\
-- 描述性文本需要通顺自然，符合中文表达习惯\n\
-- 物品名/方块名使用书名号《》括起，但保留原始格式标记\n\
-- 任务文本保持原文的语气和风格（正式/诙谐/史诗感）".to_string(),
+            system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
         }
     }
 }
