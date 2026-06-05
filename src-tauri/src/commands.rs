@@ -7,7 +7,7 @@ use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::core::{
-    dictionary, llm, pipeline,
+    dictionary, llm,
     logging,
     models::{
         InstanceValidation, LanguageEntry, LlmModel, LlmModelsResponse, ScanProgress,
@@ -15,7 +15,7 @@ use crate::core::{
     },
     jobs,
     packer,
-    paths, scanner, settings,
+    paths, scanner, settings, shield,
 };
 
 static SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
@@ -572,7 +572,7 @@ pub async fn start_translation(
             let (entry, mod_name) = pending_entries[i];
 
             // Skip pure-placeholder text (e.g. "%s %s")
-            if pipeline::is_placeholder_only(&entry.text) {
+            if shield::is_placeholder_only(&entry.text) {
                 batch_results.push(jobs::TranslationResult {
                     key: entry.key.clone(),
                     source_text: entry.text.clone(),

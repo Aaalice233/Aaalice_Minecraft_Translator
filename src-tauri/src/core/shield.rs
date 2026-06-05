@@ -99,6 +99,23 @@ pub fn validate(original_tokens: &[ShieldToken], translated: &str) -> bool {
         .all(|token| translated.contains(&token.original))
 }
 
+/// Check if text consists entirely of placeholders (no meaningful content).
+/// Such text does not need translation.
+pub fn is_placeholder_only(text: &str) -> bool {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+    // Protect the text, then remove all shield tokens. If nothing meaningful remains, skip.
+    let protected = protect(trimmed);
+    let mut stripped = protected.protected.clone();
+    for token in &protected.tokens {
+        stripped = stripped.replace(&token.token, "");
+    }
+    let remaining: String = stripped.chars().filter(|c| !c.is_whitespace()).collect();
+    remaining.is_empty()
+}
+
 /// Validate a single text entry: protect → check all tokens are unique → return validation result
 pub fn validate_entry(text: &str) -> EntryValidation {
     let result = protect(text);
@@ -384,6 +401,20 @@ mod tests {
         let validation = validate_entry("§a欢迎 {player}！耗时 %dms");
         assert!(validation.is_valid);
         assert_eq!(validation.token_count, 3);
+    }
+
+    #[test]
+    fn detects_placeholder_only_text() {
+        assert!(is_placeholder_only("%s %s"));
+        assert!(is_placeholder_only("%1$s %2$d"));
+        assert!(is_placeholder_only(""));
+        assert!(!is_placeholder_only("按住 %s 打开"));
+    }
+
+    #[test]
+    fn empty_text_is_placeholder_only() {
+        assert!(is_placeholder_only(""));
+        assert!(is_placeholder_only("  "));
     }
 
     #[test]
