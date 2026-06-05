@@ -174,6 +174,25 @@ impl LlmClient {
                     }
                 }
                 Err(e) => {
+                    // RATE_LIMITED errors should NOT be retried — they mean "slow down"
+                    // Return immediately so the caller can adapt concurrency.
+                    // Keep the "RATE_LIMITED" prefix intact for the caller to detect.
+                    if e.starts_with("RATE_LIMITED") {
+                        let results: Vec<TranslateResult> = entries
+                            .iter()
+                            .map(|entry| TranslateResult {
+                                key: entry.key.clone(),
+                                original_text: entry.text.clone(),
+                                translated_text: entry.text.clone(),
+                                success: false,
+                                error: Some(e.clone()),
+                            })
+                            .collect();
+                        if let Some(cb) = on_batch_complete {
+                            cb(&results);
+                        }
+                        return (results, None);
+                    }
                     last_error = format!("API 请求失败: {e}");
                     continue;
                 }
@@ -181,19 +200,23 @@ impl LlmClient {
         }
 
         // All retries exhausted — mark all entries as failed
-        (
-            entries
-                .iter()
-                .map(|e| TranslateResult {
-                    key: e.key.clone(),
-                    original_text: e.text.clone(),
-                    translated_text: e.text.clone(),
-                    success: false,
-                    error: Some(last_error.clone()),
-                })
-                .collect(),
-            None,
-        )
+        let results: Vec<TranslateResult> = entries
+            .iter()
+            .map(|e| TranslateResult {
+                key: e.key.clone(),
+                original_text: e.text.clone(),
+                translated_text: e.text.clone(),
+                success: false,
+                error: Some(last_error.clone()),
+            })
+            .collect();
+
+        // Call on_complete so frontend doesn't see entries stuck in Translating state
+        if let Some(cb) = on_batch_complete {
+            cb(&results);
+        }
+
+        (results, None)
     }
 }
 
