@@ -1,17 +1,21 @@
 import { Boxes, Copy, FileArchive, Eye, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { copyPackToInstance, generatePackFromJob, generateTranslationPack, loadLatestTranslationJob } from "../api/tauri";
+import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import type { AppLanguage, CopyResult, PackResult, ScanSummary, TranslationJobState } from "../types";
 
 interface Props {
   language: AppLanguage;
-  scanSummary: ScanSummary | null;
-  settings: { instancePath: string };
+  scanSummary?: ScanSummary | null;
+  settings?: { instancePath: string };
   onBusyChange?: (busy: boolean) => void;
 }
 
-export function PackagesPage({ language, scanSummary, settings, onBusyChange }: Props) {
+export function PackagesPage({ language, scanSummary: _scanSummary, settings: _settings, onBusyChange: _onBusyChange }: Props) {
+  const { state, dispatch } = useAppState();
+  const scanSummary = _scanSummary !== undefined ? _scanSummary : state.scanSummary;
+  const settings = _settings ?? state.settings!;
   const [packResult, setPackResult] = useState<PackResult | null>(null);
   const [copyResult, setCopyResult] = useState<CopyResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -41,10 +45,10 @@ export function PackagesPage({ language, scanSummary, settings, onBusyChange }: 
     return () => { cancelled = true; };
   }, []);
 
-  // Sync packaging busy state to parent (sidebar)
+  // Sync packaging busy state to sidebar nav
   useEffect(() => {
-    onBusyChange?.(loading);
-  }, [loading, onBusyChange]);
+    dispatch({ type: "SET_NAV_STATE", payload: { key: "packages", status: loading ? "busy" : "idle" } });
+  }, [loading, dispatch]);
 
   const canGenerate = scanSummary && scanSummary.actualPendingEntries > 0 && !loading;
 

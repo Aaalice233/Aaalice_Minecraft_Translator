@@ -4,12 +4,13 @@ import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import type { AppLanguage, ScanProgressEvent, ScanSummary, Settings } from "../types";
 import type { TranslationKey } from "../i18n/translations";
+import { useAppState } from "../app/AppContext";
 
 interface Props {
-  settings: Settings;
-  scanSummary: ScanSummary | null;
-  onSettingsChange: (settings: Settings) => void;
-  onScanSummaryChange: (summary: ScanSummary) => void;
+  settings?: Settings;
+  scanSummary?: ScanSummary | null;
+  onSettingsChange?: (settings: Settings) => void;
+  onScanSummaryChange?: (summary: ScanSummary) => void;
   language: AppLanguage;
   onBusyChange?: (busy: boolean) => void;
   /** Notify sidebar that scanning completed (or was reset). */
@@ -17,14 +18,15 @@ interface Props {
 }
 
 export function DashboardPage({
-  settings,
-  scanSummary,
-  onSettingsChange,
-  onScanSummaryChange,
+  settings: _settings,
+  scanSummary: _scanSummary,
+  onSettingsChange: _onSettingsChange,
+  onScanSummaryChange: _onScanSummaryChange,
   language,
-  onBusyChange,
-  onCompleteChange,
 }: Props) {
+  const { state, dispatch } = useAppState();
+  const settings = _settings ?? state.settings!;
+  const scanSummary = _scanSummary !== undefined ? _scanSummary : state.scanSummary;
   const [instancePath, setInstancePath] = useState(settings.instancePath);
   const [isScanning, setIsScanning] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -32,26 +34,26 @@ export function DashboardPage({
   const [error, setError] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Sync scanning busy state to parent (sidebar)
+  // Sync scanning busy state to sidebar nav
   useEffect(() => {
-    onBusyChange?.(isScanning);
-  }, [isScanning, onBusyChange]);
+    dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: isScanning ? "busy" : "idle" } });
+  }, [isScanning, dispatch]);
 
-  // Notify parent when scan completes (has valid result, not cancelled, not currently scanning)
+  // Notify sidebar nav when scan completes (has valid result, not cancelled, not currently scanning)
   const prevIsScanning = useRef(isScanning);
   useEffect(() => {
     if (prevIsScanning.current && !isScanning && scanSummary && !scanSummary.cancelled && !error) {
-      onCompleteChange?.(true);
+      dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "completed" } });
     }
     prevIsScanning.current = isScanning;
-  }, [isScanning, scanSummary, error, onCompleteChange]);
+  }, [isScanning, scanSummary, error, dispatch]);
 
   // When instance path changes, clear completed state (user is setting up a new scan target)
   useEffect(() => {
     if (instancePath && settings.instancePath && instancePath !== settings.instancePath) {
-      onCompleteChange?.(false);
+      dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "idle" } });
     }
-  }, [instancePath, settings.instancePath, onCompleteChange]);
+  }, [instancePath, settings.instancePath, dispatch]);
 
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string | { min?: number; max?: number }>>({});
@@ -209,7 +211,7 @@ export function DashboardPage({
   async function handleScan() {
     setIsScanning(true);
     setIsCancelling(false);
-    onCompleteChange?.(false); // clear completed state on re-scan
+    dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "idle" } }); // clear completed state on re-scan
     setScanProgress(null);
     setError("");
     setSortConfig(null);
@@ -217,14 +219,14 @@ export function DashboardPage({
     setOpenFilter(null);
     try {
       const nextSettings = { ...settings, instancePath };
-      onSettingsChange(nextSettings);
+      dispatch({ type: "SET_SETTINGS", payload: nextSettings });
       await saveSettings(nextSettings);
       const summary = await scanInstance(
         instancePath,
         nextSettings.sourceLanguage,
         nextSettings.targetLanguage,
       );
-      onScanSummaryChange(summary);
+      dispatch({ type: "SET_SCAN_SUMMARY", payload: summary });
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : String(scanError));
     } finally {
