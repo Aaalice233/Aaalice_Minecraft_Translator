@@ -97,10 +97,27 @@ impl LlmClient {
 
         let url = format!("{}/v1/chat/completions", self.base_url.trim_end_matches('/'));
 
-        let client = reqwest::blocking::Client::builder()
+        let client = match reqwest::blocking::Client::builder()
             .timeout(Duration::from_secs(self.timeout_secs.max(30)))
             .build()
-            .expect("LLM HTTP client 创建失败");
+        {
+            Ok(c) => c,
+            Err(build_err) => {
+                return (
+                    entries
+                        .iter()
+                        .map(|entry| TranslateResult {
+                            key: entry.key.clone(),
+                            original_text: entry.text.clone(),
+                            translated_text: entry.text.clone(),
+                            success: false,
+                            error: Some(format!("HTTP client 创建失败: {build_err}")),
+                        })
+                        .collect(),
+                    None,
+                );
+            }
+        };
 
         // Retry loop
         let mut last_error = String::new();

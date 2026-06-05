@@ -36,21 +36,29 @@ pub async fn start_translation(
 
     let progress_tx_work = progress_tx.clone();
     let log_tx_work = log_tx.clone();
+    let job_id_progress = job_id.clone();
+    let job_id_log = job_id.clone();
 
-    // Reader: progress events → Tauri events
+    // Reader: progress events → Tauri events (checks cancel to stop early)
     let app_emit = app.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(progress) = progress_rx.recv() {
+            if crate::core::pipeline::is_translation_cancelled(&job_id_progress) {
+                break;
+            }
             if let Err(err) = app_emit.emit("translate-progress", &progress) {
                 eprintln!("translate-progress emit error: {err}");
             }
         }
     });
 
-    // Reader: log entries → Tauri events
+    // Reader: log entries → Tauri events (checks cancel to stop early)
     let app_emit_log = app.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(entry) = log_rx.recv() {
+            if crate::core::pipeline::is_translation_cancelled(&job_id_log) {
+                break;
+            }
             if let Err(err) = app_emit_log.emit("translate-log-entry", &entry) {
                 eprintln!("translate-log-entry emit error: {err}");
             }

@@ -77,7 +77,7 @@ pub async fn scan_instance(
                 let _ = std::fs::create_dir_all(parent);
             }
             if let Err(err) = std::fs::write(&job_path, json) {
-                eprintln!("扫描结果写入失败 ({}): {err}", job_path.display());
+                let _ = crate::core::logging::append_main(&root_for_save, format!("扫描结果写入失败 ({}): {err}", job_path.display()));
             }
         }
     }
