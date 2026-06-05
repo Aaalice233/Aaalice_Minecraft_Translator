@@ -323,6 +323,41 @@ pub struct PipelineResult {
     pub job_id: String,
 }
 
+/// 条目级翻译进度状态
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum EntryStatus {
+    /// 仅占位符，已跳过
+    #[serde(rename = "skip")]
+    Skip,
+    /// 词典命中
+    #[serde(rename = "dictionaryHit")]
+    DictionaryHit,
+    /// 等待 LLM 翻译
+    #[serde(rename = "pending")]
+    Pending,
+    /// 正在翻译
+    #[serde(rename = "translating")]
+    Translating,
+    /// LLM 翻译完成
+    #[serde(rename = "completed")]
+    Completed,
+    /// 翻译失败
+    #[serde(rename = "failed")]
+    Failed,
+}
+
+/// 单一条目的翻译进度事件
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryProgress {
+    pub key: String,
+    pub mod_name: String,
+    pub source_text: String,
+    pub target_text: Option<String>,
+    pub status: EntryStatus,
+}
+
 // ── P6: Validation types ───────────────────────────────────────────
 
 /// A single issue found during translation validation.

@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crate::core::models::*;
 use crate::core::{dictionary, jobs, logging, paths, scanner, shield};
-use crate::core::llm::{LlmClient, TranslationEntry};
+use crate::core::llm::{LlmClient, TranslateResult, TranslationEntry};
 
 // ── Cancel mechanism ──────────────────────────────────────────
 
@@ -67,6 +67,31 @@ pub fn extract_pending_entries(summary: &ScanSummary) -> Vec<(&LanguageEntry, &s
     pending
 }
 
+/// 按 mod_id 分组，每组内按 batch_size 切割（设置值是最大值）
+fn group_batches<'a>(
+    entries: &[(&'a LanguageEntry, &'a str)],
+    batch_size: usize,
+) -> Vec<Vec<(&'a LanguageEntry, &'a str)>> {
+    use std::collections::HashMap;
+
+    let mut by_mod: HashMap<&str, Vec<(&LanguageEntry, &str)>> = HashMap::new();
+    for item in entries {
+        by_mod.entry(item.0.mod_id.as_str()).or_default().push(*item);
+    }
+
+    let mut mod_ids: Vec<&str> = by_mod.keys().copied().collect();
+    mod_ids.sort();
+
+    let mut batches = Vec::new();
+    for mod_id in &mod_ids {
+        let group = by_mod.get(mod_id).unwrap();
+        for chunk in group.chunks(batch_size.max(1)) {
+            batches.push(chunk.to_vec());
+        }
+    }
+    batches
+}
+
 // ── Main pipeline ─────────────────────────────────────────────
 
 /// Run the full translation pipeline. Emits progress and log events through channels.
@@ -75,6 +100,7 @@ pub fn run_pipeline(
     job_id: &str,
     progress_tx: mpsc::Sender<PipelineProgress>,
     log_tx: mpsc::Sender<TranslateLogEntry>,
+    entry_progress_tx: mpsc::Sender<EntryProgress>,
 ) -> Result<PipelineResult, String> {
     // ── Phase 1: Acquire scan result ──────────────────────────
     let _ = progress_tx.send(PipelineProgress {
@@ -155,6 +181,13 @@ pub fn run_pipeline(
                 mod_name: entry.mod_id.clone(),
                 source_type: "skipped".into(),
             });
+            let _ = entry_progress_tx.send(EntryProgress {
+                key: entry.key.clone(),
+                mod_name: file_name.to_string(),
+                source_text: entry.text.clone(),
+                target_text: Some(entry.text.clone()),
+                status: EntryStatus::Skip,
+            });
         } else {
             let source_hash = dictionary::hash_text(&entry.text);
             match dictionary::search_by_hash(&dict_conn, &source_hash, &config.target_language) {
@@ -182,6 +215,13 @@ pub fn run_pipeline(
                             mod_name: entry.mod_id.clone(),
                             source_type: "dictionary".into(),
                         });
+                        let _ = entry_progress_tx.send(EntryProgress {
+                            key: entry.key.clone(),
+                            mod_name: file_name.to_string(),
+                            source_text: entry.text.clone(),
+                            target_text: Some(de.target_text.clone()),
+                            status: EntryStatus::DictionaryHit,
+                        });
                     } else {
                         llm_only_entries.push((entry, file_name));
                     }
@@ -203,6 +243,17 @@ pub fn run_pipeline(
     }
 
     let dict_count = processed - llm_only_entries.len();
+
+    // 发射待翻译条目的初始状态
+    for (entry, file_name) in &llm_only_entries {
+        let _ = entry_progress_tx.send(EntryProgress {
+            key: entry.key.clone(),
+            mod_name: file_name.to_string(),
+            source_text: entry.text.clone(),
+            target_text: None,
+            status: EntryStatus::Pending,
+        });
+    }
 
     let _ = progress_tx.send(PipelineProgress {
         current: processed, total,
@@ -230,14 +281,12 @@ pub fn run_pipeline(
 
     if !llm_only_entries.is_empty() {
         let llm_cfg = config.llm.as_ref().ok_or_else(|| "LLM 未配置，但有待翻译条目需要 LLM 翻译".to_string())?;
-        let effective_batch_size = llm_cfg.batch_size.min(llm_only_entries.len());
-        let total_llm_batches = llm_only_entries.len().div_ceil(effective_batch_size);
-        let wave_size = llm_cfg.concurrency.min(total_llm_batches);
-        let inter_batch_delay_ms = if llm_cfg.rate_limit_rpm > 0 && wave_size > 0 {
-            (60000.0 / (llm_cfg.rate_limit_rpm as f64 / wave_size as f64)).max(0.0) as u64
-        } else {
-            0
-        };
+        let effective_batch_size = llm_cfg.batch_size.max(1);
+
+        // 智能分批：按 mod_id 分组
+        let smart_batches = group_batches(&llm_only_entries, effective_batch_size);
+        let total_llm_batches = smart_batches.len();
+        let initial_concurrency = llm_cfg.concurrency.min(total_llm_batches).max(1);
 
         let client = LlmClient {
             base_url: llm_cfg.base_url.clone(),
@@ -250,14 +299,13 @@ pub fn run_pipeline(
             retry_count: llm_cfg.retry_count,
             timeout_secs: llm_cfg.timeout_secs,
             system_prompt: llm_cfg.system_prompt.clone(),
-            effective_concurrency: std::sync::atomic::AtomicUsize::new(llm_cfg.concurrency),
+            effective_concurrency: std::sync::atomic::AtomicUsize::new(initial_concurrency),
             consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
         };
 
         client.validate()?;
 
-        // Build key → (mod_id, file_name) mapping before the LLM loop,
-        // so LLM results retain metadata even though TranslateResult doesn't carry it.
+        // Build key → (mod_id, file_name) mapping
         let key_to_meta: std::collections::HashMap<&str, (&str, &str)> = llm_only_entries
             .iter()
             .map(|(entry, file_name)| (entry.key.as_str(), (entry.mod_id.as_str(), *file_name)))
@@ -271,60 +319,94 @@ pub fn run_pipeline(
             stage_status: StageStatus::Running,
         });
 
-        for wave_start in (0..total_llm_batches).step_by(wave_size) {
+        // 自适应并发波浪循环
+        let mut batch_index = 0usize;
+        loop {
+            if batch_index >= total_llm_batches {
+                break;
+            }
             if is_translation_cancelled(job_id) {
                 break;
             }
-            let wave_end = (wave_start + wave_size).min(total_llm_batches);
 
-            // Build wave of batches
-            let wave_batches: Vec<Vec<TranslationEntry>> = (wave_start..wave_end)
+            let current_conc = client.effective_concurrency.load(Ordering::SeqCst).max(1);
+            let wave_count = current_conc.min(total_llm_batches - batch_index);
+
+            // Build wave: each batch is a Vec<TranslationEntry>
+            let wave_batches: Vec<(usize, String, Vec<TranslationEntry>)> = (batch_index..batch_index + wave_count)
                 .map(|bi| {
-                    let start = bi * effective_batch_size;
-                    let end = (start + effective_batch_size).min(llm_only_entries.len());
-                    llm_only_entries[start..end]
-                        .iter()
-                        .map(|(entry, _)| TranslationEntry {
-                            key: entry.key.clone(),
-                            text: entry.text.clone(),
-                            mod_id: entry.mod_id.clone(),
-                            source_lang: entry.language.clone(),
-                            target_lang: config.target_language.clone(),
-                        })
-                        .collect()
+                    let batch = &smart_batches[bi];
+                    let mod_name = batch.first().map(|(_, f)| f.to_string()).unwrap_or_default();
+                    let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| TranslationEntry {
+                        key: entry.key.clone(),
+                        text: entry.text.clone(),
+                        mod_id: entry.mod_id.clone(),
+                        source_lang: entry.language.clone(),
+                        target_lang: config.target_language.clone(),
+                    }).collect();
+                    (bi, mod_name, entries)
                 })
                 .collect();
 
-            // Dispatch batches concurrently in this wave
-            let wave_results: Vec<(Vec<jobs::TranslationResult>, TokenUsage)> = std::thread::scope(|s| {
-                wave_batches
-                    .iter()
-                    .map(|batch| {
-                        s.spawn(|| {
-                            let (results, token_usage) = client.translate_batch(batch, None);
-                            let token = token_usage.unwrap_or_default();
-                            // Convert TranslateResult to TranslationResult
-                            let converted: Vec<jobs::TranslationResult> = results
-                                .into_iter()
-                                .map(|r| jobs::TranslationResult {
-                                    key: r.key,
-                                    source_text: r.original_text,
-                                    target_text: r.translated_text,
-                                    mod_id: String::new(),
-                                    mod_name: String::new(),
-                                    source_type: if r.success { "llm".to_string() } else { "failed".to_string() },
-                                })
-                                .collect();
-                            (converted, token)
-                        })
+            // Emit Translating status for all entries in this wave
+            for (_, _, batch_entries) in &wave_batches {
+                for te in batch_entries {
+                    let fname = key_to_meta.get(te.key.as_str()).map(|&(_, f)| f).unwrap_or("");
+                    let _ = entry_progress_tx.send(EntryProgress {
+                        key: te.key.clone(),
+                        mod_name: fname.to_string(),
+                        source_text: te.text.clone(),
+                        target_text: None,
+                        status: EntryStatus::Translating,
+                    });
+                }
+            }
+
+            // Dispatch wave concurrently. Each batch fires on_batch_complete itself.
+            let wave_results: Vec<(Vec<jobs::TranslationResult>, TokenUsage, bool)> = std::thread::scope(|s| {
+                wave_batches.iter().map(|(_bi, mod_name, batch_entries)| {
+                    s.spawn(|| {
+                        let entry_progress_tx = &entry_progress_tx;
+                        let mod_name = mod_name.clone();
+                        let mod_name_ref: &str = &mod_name;
+
+                        let on_complete = |results: &[TranslateResult]| {
+                            for r in results {
+                                let status = if r.success { EntryStatus::Completed } else { EntryStatus::Failed };
+                                let _ = entry_progress_tx.send(EntryProgress {
+                                    key: r.key.clone(),
+                                    mod_name: mod_name_ref.to_string(),
+                                    source_text: r.original_text.clone(),
+                                    target_text: Some(r.translated_text.clone()),
+                                    status,
+                                });
+                            }
+                        };
+
+                        let (results, token_usage) = client.translate_batch(batch_entries, Some(&on_complete));
+                        let token = token_usage.unwrap_or_default();
+                        let all_rate_limited = results.iter().all(|r| {
+                            !r.success && r.error.as_deref().map_or(false, |e| e.starts_with("RATE_LIMITED"))
+                        });
+
+                        let converted: Vec<jobs::TranslationResult> = results.into_iter()
+                            .map(|r| jobs::TranslationResult {
+                                key: r.key,
+                                source_text: r.original_text,
+                                target_text: r.translated_text,
+                                mod_id: String::new(),
+                                mod_name: String::new(),
+                                source_type: if r.success { "llm".to_string() } else { "failed".to_string() },
+                            })
+                            .collect();
+
+                        (converted, token, all_rate_limited)
                     })
-                    .collect::<Vec<_>>()
-                    .into_iter()
-                    .filter_map(|h| h.join().ok())
-                    .collect()
+                }).collect::<Vec<_>>().into_iter().filter_map(|h| h.join().ok()).collect()
             });
 
-            // Restore mod_id/mod_name from the pre-built lookup table
+            // Process results and check rate limit
+            let mut wave_has_429 = false;
             let set_mod_meta = |entry: &mut jobs::TranslationResult| {
                 if let Some(&(mid, fname)) = key_to_meta.get(entry.key.as_str()) {
                     if entry.mod_id.is_empty() { entry.mod_id = mid.to_string(); }
@@ -332,8 +414,7 @@ pub fn run_pipeline(
                 }
             };
 
-            for (results, token) in &wave_results {
-                // Token usage: add ONCE per batch, not per-entry
+            for (results, token, rate_limited) in &wave_results {
                 accumulated_token_usage.prompt_tokens += token.prompt_tokens;
                 accumulated_token_usage.completion_tokens += token.completion_tokens;
                 accumulated_token_usage.total_tokens += token.total_tokens;
@@ -355,23 +436,53 @@ pub fn run_pipeline(
                 }
                 llm_count += wave_llm_count;
                 processed += wave_llm_count;
+
+                if *rate_limited {
+                    wave_has_429 = true;
+                }
             }
 
+            // Rate limit adaptation
+            if wave_has_429 {
+                client.consecutive_429s.fetch_add(1, Ordering::SeqCst);
+                let count = client.consecutive_429s.load(Ordering::SeqCst);
+                let current = client.effective_concurrency.load(Ordering::SeqCst);
+                let reduced = (current / 2).max(1);
+                client.effective_concurrency.store(reduced, Ordering::SeqCst);
+                let wait_secs = match count {
+                    1 => 30u64,
+                    2 => 60,
+                    _ => 120,
+                };
+                std::thread::sleep(Duration::from_secs(wait_secs));
+            } else {
+                client.consecutive_429s.store(0, Ordering::SeqCst);
+                // 试探性恢复并发
+                let current = client.effective_concurrency.load(Ordering::SeqCst);
+                if current < initial_concurrency {
+                    client.effective_concurrency.store(current + 1, Ordering::SeqCst);
+                }
+            }
+
+            batch_index += wave_count;
+
             let _ = progress_tx.send(PipelineProgress {
-                current: wave_end.min(total_llm_batches),
+                current: batch_index.min(total_llm_batches),
                 total: total_llm_batches,
                 phase: PipelinePhase::Translating,
                 mod_name: String::new(),
-                sub_step: Some(format!("{}/{} 批次", wave_end.min(total_llm_batches), total_llm_batches)),
+                sub_step: Some(format!("{}/{} 批次", batch_index.min(total_llm_batches), total_llm_batches)),
                 stage_status: StageStatus::Running,
             });
 
             let _ = jobs::batch_append_results(&config.root, job_id, &batch_results);
             batch_results.clear();
 
-            let next_wave_start = wave_start + wave_size;
-            if next_wave_start < total_llm_batches && inter_batch_delay_ms > 0 {
-                std::thread::sleep(Duration::from_millis(inter_batch_delay_ms));
+            if batch_index < total_llm_batches && llm_cfg.rate_limit_rpm > 0 {
+                let delay_ms = (60000.0 / (llm_cfg.rate_limit_rpm as f64 / current_conc as f64)).max(0.0) as u64;
+                if delay_ms > 0 {
+                    std::thread::sleep(Duration::from_millis(delay_ms.min(5000)));
+                }
             }
         }
     }

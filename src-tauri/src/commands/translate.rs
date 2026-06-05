@@ -4,7 +4,7 @@ use tauri::Emitter;
 
 use crate::core::{
     logging,
-    models::{LlmConfig, PipelineConfig, PipelineProgress, TranslateLogEntry},
+    models::{EntryProgress, LlmConfig, PipelineConfig, PipelineProgress, TranslateLogEntry},
     paths, pipeline, settings,
 };
 
@@ -30,14 +30,17 @@ pub async fn start_translation(
     logging::append_main(&root, format!("翻译任务创建成功，任务 ID: {job_id}"))
         .map_err(to_message)?;
 
-    // Channels: progress events + log entries
+    // Channels: progress events + log entries + entry-level progress
     let (progress_tx, progress_rx) = mpsc::channel::<PipelineProgress>();
     let (log_tx, log_rx) = mpsc::channel::<TranslateLogEntry>();
+    let (entry_progress_tx, entry_progress_rx) = mpsc::channel::<EntryProgress>();
 
     let progress_tx_work = progress_tx.clone();
     let log_tx_work = log_tx.clone();
+    let entry_progress_tx_work = entry_progress_tx.clone();
     let job_id_progress = job_id.clone();
     let job_id_log = job_id.clone();
+    let job_id_entry = job_id.clone();
 
     // Reader: progress events → Tauri events (checks cancel to stop early)
     let app_emit = app.clone();
@@ -61,6 +64,19 @@ pub async fn start_translation(
             }
             if let Err(err) = app_emit_log.emit("translate-log-entry", &entry) {
                 eprintln!("translate-log-entry emit error: {err}");
+            }
+        }
+    });
+
+    // Reader: entry-level progress → Tauri events
+    let app_emit_entry = app.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        while let Ok(progress) = entry_progress_rx.recv() {
+            if crate::core::pipeline::is_translation_cancelled(&job_id_entry) {
+                break;
+            }
+            if let Err(err) = app_emit_entry.emit("entry-progress", &progress) {
+                eprintln!("entry-progress emit error: {err}");
             }
         }
     });
@@ -104,7 +120,7 @@ pub async fn start_translation(
 
     // Run pipeline on blocking thread
     let result = tauri::async_runtime::spawn_blocking(move || {
-        pipeline::run_pipeline(config, &job_id, progress_tx_work, log_tx_work)
+        pipeline::run_pipeline(config, &job_id, progress_tx_work, log_tx_work, entry_progress_tx_work)
     })
     .await
     .map_err(|e| e.to_string())??;
