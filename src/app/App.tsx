@@ -21,8 +21,8 @@ import { PackagesPage } from "../pages/PackagesPage";
 import { PlaceholderPage } from "../pages/PlaceholderPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
-import type { PageNavStatus, ScanSummary, Settings } from "../types";
 import { getSettings } from "../api/tauri";
+import { AppProvider, useAppState } from "./AppContext";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
 
@@ -36,8 +36,6 @@ type PageKey =
   | "hardcoded"
   | "settings"
   | "logs";
-
-type PageNavStates = Partial<Record<PageKey, PageNavStatus>>;
 
 const DISABLED_NAV: ReadonlySet<PageKey> = new Set(["ftb", "hardcoded"] as const);
 
@@ -54,28 +52,25 @@ const navItems = [
 ] as const satisfies ReadonlyArray<{ key: PageKey; labelKey: TranslationKey; icon: LucideIcon }>;
 
 export function App() {
+  return (
+    <AppProvider>
+      <AppShell />
+    </AppProvider>
+  );
+}
+
+function AppShell() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
   const [loadError, setLoadError] = useState("");
-  const [navStates, setNavStates] = useState<PageNavStates>({});
-  // Stable nav state updater — stable reference, value-aware to prevent render loops.
-  // Never downgrade "completed" → "idle": busy overrides completed, completed
-  // overrides busy, but idle only applies when no stronger state exists.
-  const setNav = useCallback((key: PageKey, status: PageNavStatus) => {
-    setNavStates((prev) => {
-      if (prev[key] === status) return prev;
-      if (status === "idle" && prev[key] === "completed") return prev;
-      return { ...prev, [key]: status };
-    });
-  }, []);
+  const { state, dispatch } = useAppState();
+  const { settings, scanSummary, navStates } = state;
   const language = normalizeAppLanguage(settings?.appLanguage);
 
   useEffect(() => {
     getSettings()
-      .then(setSettings)
+      .then((s) => dispatch({ type: "SET_SETTINGS", payload: s }))
       .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
-  }, []);
+  }, [dispatch]);
 
   // 智能 tooltip 方向：当元素靠近视口上边缘时自动向下弹出
   useEffect(() => {
@@ -112,11 +107,11 @@ export function App() {
   }, [activePage]);
 
   // Stable per-page callbacks — created once, never cause extra re-renders
-  const dbBusy = useCallback((b: boolean) => setNav("dashboard", b ? "busy" : "idle"), [setNav]);
-  const dbCompleted = useCallback((c: boolean) => setNav("dashboard", c ? "completed" : "idle"), [setNav]);
-  const jobsBusy = useCallback((b: boolean) => setNav("jobs", b ? "busy" : "idle"), [setNav]);
-  const jobsCompleted = useCallback((c: boolean) => setNav("jobs", c ? "completed" : "idle"), [setNav]);
-  const packsBusy = useCallback((b: boolean) => setNav("packages", b ? "busy" : "idle"), [setNav]);
+  const dbBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: b ? "busy" : "idle" } }), [dispatch]);
+  const dbCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: c ? "completed" : "idle" } }), [dispatch]);
+  const jobsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: b ? "busy" : "idle" } }), [dispatch]);
+  const jobsCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: c ? "completed" : "idle" } }), [dispatch]);
+  const packsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "packages", status: b ? "busy" : "idle" } }), [dispatch]);
 
   /** 渲染页面实例（懒加载：仅在首次访问时挂载） */
   const renderPage = useCallback(
@@ -125,10 +120,10 @@ export function App() {
       const isActive = activePage === page;
 
       if (page === "dashboard") {
-        return <DashboardPage settings={settings!} onSettingsChange={setSettings} scanSummary={scanSummary} onScanSummaryChange={setScanSummary} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
+        return <DashboardPage settings={settings!} onSettingsChange={(s) => dispatch({ type: "SET_SETTINGS", payload: s })} scanSummary={scanSummary} onScanSummaryChange={(s) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s })} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
       }
       if (page === "settings") {
-        return <SettingsPage settings={settings!} onSettingsChange={setSettings} />;
+        return <SettingsPage settings={settings!} onSettingsChange={(s) => dispatch({ type: "SET_SETTINGS", payload: s })} />;
       }
       if (page === "logs") {
         return <LogsPage scanSummary={scanSummary} language={language} />;
@@ -137,7 +132,7 @@ export function App() {
         return <DictionaryPage language={language} />;
       }
       if (page === "jobs") {
-        return <JobsPage language={language} scanSummary={scanSummary} onScanSummaryChange={setScanSummary} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
+        return <JobsPage language={language} scanSummary={scanSummary} onScanSummaryChange={(s) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s })} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
       }
       if (page === "validate") {
         return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
