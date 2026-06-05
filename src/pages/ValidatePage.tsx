@@ -33,6 +33,7 @@ export function ValidatePage({ language, onConfirm }: Props) {
         className="primary-button"
         onClick={onConfirm}
         type="button"
+        data-tooltip={t(language, "tooltip.validate")}
       >
         <PackageCheck size={18} />
         确认打包

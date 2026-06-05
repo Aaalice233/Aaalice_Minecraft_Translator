@@ -75,6 +75,7 @@ export function PackagesPage({ language, scanSummary, settings }: Props) {
             disabled={!canGenerate}
             onClick={() => handleGenerate(true)}
             type="button"
+            data-tooltip={t(language, "tooltip.dryRun")}
           >
             <Eye size={17} />
             {t(language, "packages.dryRun")}
@@ -84,6 +85,7 @@ export function PackagesPage({ language, scanSummary, settings }: Props) {
             disabled={!canGenerate}
             onClick={() => handleGenerate(false)}
             type="button"
+            data-tooltip={t(language, "tooltip.generatePack")}
           >
             <FileArchive size={18} />
             {t(language, "packages.generate")}
@@ -147,10 +149,10 @@ export function PackagesPage({ language, scanSummary, settings }: Props) {
           </div>
           <p>{t(language, "packages.confirmMessage", { path: settings.instancePath })}</p>
           <div className="page-header-button" style={{ marginTop: 12 }}>
-            <button className="ghost-button" onClick={() => setShowConfirm(false)} type="button">
+            <button className="ghost-button" onClick={() => setShowConfirm(false)} type="button" data-tooltip={t(language, "tooltip.stageCancel")}>
               {t(language, "common.cancel")}
             </button>
-            <button className="primary-button" onClick={handleCopyToInstance} type="button">
+            <button className="primary-button" onClick={handleCopyToInstance} type="button" data-tooltip={t(language, "tooltip.copyToInstance")}>
               <Copy size={17} />
               {t(language, "packages.copyToInstance")}
             </button>

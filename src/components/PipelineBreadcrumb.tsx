@@ -52,6 +52,15 @@ export function PipelineBreadcrumb({
               disabled={isCurrent || status === "locked"}
               onClick={() => !isCurrent && onNavigate(stage)}
               type="button"
+              data-tooltip={
+                isCurrent
+                  ? t(language, "tooltip.currentPage")
+                  : status === "completed"
+                    ? t(language, "tooltip.stageCompleted")
+                    : status === "locked"
+                      ? t(language, "tooltip.stageLocked")
+                      : t(language, `tooltip.stage${stage.charAt(0).toUpperCase() + stage.slice(1)}` as any)
+              }
             >
               {STATUS_ICON[status] && (
                 <span className="pipeline-stage-icon">{STATUS_ICON[status]}</span>

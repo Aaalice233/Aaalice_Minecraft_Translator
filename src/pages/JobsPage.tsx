@@ -200,12 +200,13 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings 
             disabled={!canTranslate}
             onClick={handleStart}
             type="button"
+            data-tooltip={t(language, "tooltip.startTranslation")}
           >
             <Play size={18} />
             {isRunning ? t(language, "jobs.running") : t(language, "jobs.start")}
           </button>
           {isRunning && (
-            <button className="ghost-button danger" onClick={handleCancel} type="button">
+            <button className="ghost-button danger" onClick={handleCancel} type="button" data-tooltip={t(language, "tooltip.stopTranslation")}>
               <Square size={17} />
               {t(language, "jobs.stop")}
             </button>
@@ -329,7 +330,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings 
             value={filterTerm}
             onChange={(e) => setFilterTerm(e.target.value)}
           />
-          <button className="ghost-button danger" onClick={clearLog} type="button" style={{ height: 30 }}>
+          <button className="ghost-button danger" onClick={clearLog} type="button" style={{ height: 30 }} data-tooltip={t(language, "tooltip.clearLog")}>
             <Trash2 size={14} />
             {t(language, "jobs.logPanel.clear")}
           </button>

@@ -187,6 +187,7 @@ export function App() {
                 disabled={DISABLED_NAV.has(item.key)}
                 onClick={() => setActivePage(item.key)}
                 type="button"
+                data-tooltip={item.key === activePage ? t(language, "tooltip.currentPage") : t(language, "tooltip.nav", { page: t(language, item.labelKey) })}
               >
                 <Icon size={18} />
                 <span>{t(language, item.labelKey)}</span>
@@ -224,6 +225,7 @@ export function App() {
             disabled={!nextStage || activeStage === nextStage || (currentStage === "scan" && !scanSummary)}
             onClick={handleNextStage}
             type="button"
+            data-tooltip={t(language, "tooltip.nextStage")}
           >
             {currentStage === "pack"
               ? t(language, "pipeline.pack")

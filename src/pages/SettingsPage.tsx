@@ -103,7 +103,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
           <h1>{t(language, "settings.title")}</h1>
           <p>{t(language, "settings.subtitle")}</p>
         </div>
-        <button className="primary-button" onClick={handleSave} type="button">
+        <button className="primary-button" onClick={handleSave} type="button" data-tooltip={t(language, "tooltip.saveSettings")}>
           <Save size={18} />
           {t(language, "settings.save")}
         </button>
@@ -122,6 +122,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key)}
                 type="button"
+                data-tooltip={t(language, tab.labelKey)}
               >
                 <Icon size={17} />
                 <span>{t(language, tab.labelKey)}</span>
@@ -230,6 +231,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                     disabled={isFetchingModels || !draft.baseUrl || !draft.apiKey}
                     onClick={handleFetchModels}
                     type="button"
+                    data-tooltip={t(language, "tooltip.fetchModels")}
                   >
                     <RefreshCcw size={17} />
                     {t(language, "settings.fetchModels")}

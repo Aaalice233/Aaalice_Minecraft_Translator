@@ -5,6 +5,7 @@
 .omc/logs/
 .omc/research/
 .omc/sessions/
+.omc/project-memory.json
 src-tauri/.omc/
 
 # Build outputs

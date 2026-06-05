@@ -28,6 +28,7 @@ export type TranslationKey =
   | "dashboard.instancePath"
   | "dashboard.instancePlaceholder"
   | "dashboard.pickInstance"
+  | "dashboard.pickInstanceError"
   | "dashboard.rescan"
   | "dashboard.moreWarnings"
   | "dashboard.stats.mods"
@@ -208,7 +209,36 @@ export type TranslationKey =
   | "dashboard.cancelledMessage"
   | "placeholder.disabled"
   | "placeholder.subtitle"
-  | "placeholder.empty";
+  | "placeholder.empty"
+  | "tooltip.scan"
+  | "tooltip.cancelScan"
+  | "tooltip.pickInstance"
+  | "tooltip.rescan"
+  | "tooltip.saveSettings"
+  | "tooltip.fetchModels"
+  | "tooltip.generatePack"
+  | "tooltip.dryRun"
+  | "tooltip.copyToInstance"
+  | "tooltip.startTranslation"
+  | "tooltip.stopTranslation"
+  | "tooltip.clearLog"
+  | "tooltip.export"
+  | "tooltip.import"
+  | "tooltip.search"
+  | "tooltip.delete"
+  | "tooltip.nextStage"
+  | "tooltip.filter"
+  | "tooltip.clearFilter"
+  | "tooltip.validate"
+  | "tooltip.nav"
+  | "tooltip.stageCancel"
+  | "tooltip.stageScan"
+  | "tooltip.stageTranslate"
+  | "tooltip.stageValidate"
+  | "tooltip.stagePack"
+  | "tooltip.stageCompleted"
+  | "tooltip.stageLocked"
+  | "tooltip.currentPage";
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -271,6 +301,7 @@ const zhCn: TranslationMap = {
   "dashboard.instancePath": "实例路径",
   "dashboard.instancePlaceholder": "E:/PCL2/.minecraft/versions/Aaalice Craft",
   "dashboard.pickInstance": "选择实例",
+  "dashboard.pickInstanceError": "选择实例失败：",
   "dashboard.rescan": "重新扫描",
   "dashboard.moreWarnings": "还有 {count} 条扫描提示，完整内容已写入任务日志。",
   "dashboard.stats.mods": "已扫描模组",
@@ -452,6 +483,35 @@ const zhCn: TranslationMap = {
   "placeholder.disabled": "未启用",
   "placeholder.subtitle": "第一阶段只保留入口；功能会在后续阶段接入主链路。",
   "placeholder.empty": "当前阶段不执行此模块的自动处理。",
+  "tooltip.scan": "开始扫描模组的语言文件",
+  "tooltip.cancelScan": "取消正在进行的扫描",
+  "tooltip.pickInstance": "选择 Minecraft 实例目录",
+  "tooltip.rescan": "重新扫描所有模组",
+  "tooltip.saveSettings": "保存并应用当前的设置更改",
+  "tooltip.fetchModels": "从 API 拉取可用模型列表",
+  "tooltip.generatePack": "生成翻译资源包",
+  "tooltip.dryRun": "预览将生成的翻译内容",
+  "tooltip.copyToInstance": "将资源包复制到实例目录",
+  "tooltip.startTranslation": "开始翻译待处理的条目",
+  "tooltip.stopTranslation": "停止正在进行的翻译任务",
+  "tooltip.clearLog": "清空所有翻译日志条目",
+  "tooltip.export": "将词典条目导出为文件",
+  "tooltip.import": "从文件导入词典条目",
+  "tooltip.search": "搜索匹配的词典条目",
+  "tooltip.delete": "永久删除此条目",
+  "tooltip.nextStage": "进入流水线的下一阶段",
+  "tooltip.filter": "按此列筛选",
+  "tooltip.clearFilter": "清除此列的筛选条件",
+  "tooltip.validate": "确认打包并生成资源包",
+  "tooltip.nav": "导航到 {page} 页面",
+  "tooltip.stageCancel": "取消当前阶段的跳转",
+  "tooltip.stageScan": "跳转到扫描阶段",
+  "tooltip.stageTranslate": "跳转到翻译阶段",
+  "tooltip.stageValidate": "跳转到校验阶段",
+  "tooltip.stagePack": "跳转到打包阶段",
+  "tooltip.stageCompleted": "此阶段已完成",
+  "tooltip.stageLocked": "此阶段尚未解锁",
+  "tooltip.currentPage": "当前所在页面",
 };
 
 const enUs: TranslationMap = {
@@ -481,6 +541,7 @@ const enUs: TranslationMap = {
   "dashboard.scan": "Start scan",
   "dashboard.instancePath": "Instance path",
   "dashboard.pickInstance": "Choose instance",
+  "dashboard.pickInstanceError": "Failed to pick instance: ",
   "dashboard.rescan": "Rescan",
   "dashboard.moreWarnings": "{count} more scan warnings were written to the job log.",
   "dashboard.stats.mods": "Scanned mods",
@@ -598,6 +659,35 @@ const enUs: TranslationMap = {
   "placeholder.disabled": "Disabled",
   "placeholder.subtitle": "Phase 1 keeps this entry visible; the workflow will be connected later.",
   "placeholder.empty": "This module does not run automatic processing in the current phase.",
+  "tooltip.scan": "Start scanning mod language files",
+  "tooltip.cancelScan": "Cancel the current scan",
+  "tooltip.pickInstance": "Select Minecraft instance directory",
+  "tooltip.rescan": "Rescan all mods",
+  "tooltip.saveSettings": "Save and apply current settings",
+  "tooltip.fetchModels": "Fetch available models from the API",
+  "tooltip.generatePack": "Generate translation resource pack",
+  "tooltip.dryRun": "Preview translation contents",
+  "tooltip.copyToInstance": "Copy resource pack to instance directory",
+  "tooltip.startTranslation": "Start translating pending entries",
+  "tooltip.stopTranslation": "Stop the running translation task",
+  "tooltip.clearLog": "Clear all translation log entries",
+  "tooltip.export": "Export dictionary entries to file",
+  "tooltip.import": "Import dictionary entries from file",
+  "tooltip.search": "Search matching dictionary entries",
+  "tooltip.delete": "Permanently delete this entry",
+  "tooltip.nextStage": "Proceed to the next pipeline stage",
+  "tooltip.filter": "Filter by this column",
+  "tooltip.clearFilter": "Clear this column's filter",
+  "tooltip.validate": "Confirm packaging and generate resource pack",
+  "tooltip.nav": "Navigate to {page} page",
+  "tooltip.stageCancel": "Cancel current stage navigation",
+  "tooltip.stageScan": "Go to scan stage",
+  "tooltip.stageTranslate": "Go to translate stage",
+  "tooltip.stageValidate": "Go to validate stage",
+  "tooltip.stagePack": "Go to pack stage",
+  "tooltip.stageCompleted": "This stage is completed",
+  "tooltip.stageLocked": "This stage is locked",
+  "tooltip.currentPage": "You are here",
 };
 
 const jaJp: TranslationMap = {
@@ -627,6 +717,7 @@ const jaJp: TranslationMap = {
   "dashboard.scan": "スキャン開始",
   "dashboard.instancePath": "インスタンスパス",
   "dashboard.pickInstance": "選択",
+  "dashboard.pickInstanceError": "インスタンス選択に失敗しました：",
   "dashboard.rescan": "再スキャン",
   "dashboard.moreWarnings": "ほかに {count} 件のスキャン警告があります。詳細はジョブログに記録されました。",
   "dashboard.stats.mods": "スキャン済み Mod",
@@ -722,6 +813,35 @@ const jaJp: TranslationMap = {
   "placeholder.disabled": "無効",
   "placeholder.subtitle": "フェーズ1では入口のみ表示します。機能は後続フェーズで主フローに接続します。",
   "placeholder.empty": "現在のフェーズではこのモジュールの自動処理は実行しません。",
+  "tooltip.scan": "Mod の言語ファイルをスキャンします",
+  "tooltip.cancelScan": "進行中のスキャンをキャンセル",
+  "tooltip.pickInstance": "Minecraft インスタンスディレクトリを選択",
+  "tooltip.rescan": "すべての Mod を再スキャン",
+  "tooltip.saveSettings": "設定を保存して適用",
+  "tooltip.fetchModels": "API から利用可能なモデルを取得",
+  "tooltip.generatePack": "翻訳リソースパックを生成",
+  "tooltip.dryRun": "翻訳内容をプレビュー",
+  "tooltip.copyToInstance": "リソースパックをインスタンスにコピー",
+  "tooltip.startTranslation": "未翻訳項目の翻訳を開始",
+  "tooltip.stopTranslation": "実行中の翻訳を停止",
+  "tooltip.clearLog": "すべての翻訳ログをクリア",
+  "tooltip.export": "辞書をファイルにエクスポート",
+  "tooltip.import": "ファイルから辞書をインポート",
+  "tooltip.search": "辞書を検索",
+  "tooltip.delete": "この項目を完全に削除",
+  "tooltip.nextStage": "次のパイプライン段階へ進む",
+  "tooltip.filter": "この列でフィルター",
+  "tooltip.clearFilter": "この列のフィルターをクリア",
+  "tooltip.validate": "パッケージを確認して生成",
+  "tooltip.nav": "{page} ページに移動",
+  "tooltip.stageCancel": "現在の段階の移動をキャンセル",
+  "tooltip.stageScan": "スキャン段階へ移動",
+  "tooltip.stageTranslate": "翻訳段階へ移動",
+  "tooltip.stageValidate": "検証段階へ移動",
+  "tooltip.stagePack": "パック段階へ移動",
+  "tooltip.stageCompleted": "この段階は完了しました",
+  "tooltip.stageLocked": "この段階はロックされています",
+  "tooltip.currentPage": "現在のページ",
 };
 
 const koKr: TranslationMap = {
@@ -751,6 +871,7 @@ const koKr: TranslationMap = {
   "dashboard.scan": "스캔 시작",
   "dashboard.instancePath": "인스턴스 경로",
   "dashboard.pickInstance": "인스턴스 선택",
+  "dashboard.pickInstanceError": "인스턴스 선택 실패: ",
   "dashboard.rescan": "다시 스캔",
   "dashboard.moreWarnings": "스캔 경고가 {count}개 더 있으며 전체 내용은 작업 로그에 기록되었습니다.",
   "dashboard.stats.mods": "스캔한 모드",
@@ -846,6 +967,35 @@ const koKr: TranslationMap = {
   "placeholder.disabled": "비활성화",
   "placeholder.subtitle": "1단계에서는 진입점만 표시하며 기능은 이후 단계에서 주 흐름에 연결됩니다.",
   "placeholder.empty": "현재 단계에서는 이 모듈의 자동 처리를 실행하지 않습니다.",
+  "tooltip.scan": "모드 언어 파일 스캔 시작",
+  "tooltip.cancelScan": "진행 중인 스캔 취소",
+  "tooltip.pickInstance": "Minecraft 인스턴스 디렉토리 선택",
+  "tooltip.rescan": "모든 모드 다시 스캔",
+  "tooltip.saveSettings": "현재 설정 저장 및 적용",
+  "tooltip.fetchModels": "API에서 사용 가능한 모델 가져오기",
+  "tooltip.generatePack": "번역 리소스 팩 생성",
+  "tooltip.dryRun": "번역 내용 미리보기",
+  "tooltip.copyToInstance": "리소스 팩을 인스턴스에 복사",
+  "tooltip.startTranslation": "대기 중인 항목 번역 시작",
+  "tooltip.stopTranslation": "실행 중인 번역 작업 중지",
+  "tooltip.clearLog": "모든 번역 로그 지우기",
+  "tooltip.export": "사전 항목을 파일로 내보내기",
+  "tooltip.import": "파일에서 사전 항목 가져오기",
+  "tooltip.search": "사전 항목 검색",
+  "tooltip.delete": "이 항목을 영구 삭제",
+  "tooltip.nextStage": "파이프라인의 다음 단계로 이동",
+  "tooltip.filter": "이 열로 필터링",
+  "tooltip.clearFilter": "이 열의 필터 지우기",
+  "tooltip.validate": "패키징 확인 및 리소스 팩 생성",
+  "tooltip.nav": "{page} 페이지로 이동",
+  "tooltip.stageCancel": "현재 단계 이동 취소",
+  "tooltip.stageScan": "스캔 단계로 이동",
+  "tooltip.stageTranslate": "번역 단계로 이동",
+  "tooltip.stageValidate": "검증 단계로 이동",
+  "tooltip.stagePack": "패킹 단계로 이동",
+  "tooltip.stageCompleted": "이 단계가 완료됨",
+  "tooltip.stageLocked": "이 단계가 잠겨 있음",
+  "tooltip.currentPage": "현재 페이지",
 };
 
 
@@ -879,6 +1029,7 @@ const ruRu: TranslationMap = {
   "dashboard.instancePath": "Путь к экземпляру",
   "dashboard.instancePlaceholder": "E:/PCL2/.minecraft/versions/Aaalice Craft",
   "dashboard.pickInstance": "Выбрать экземпляр",
+  "dashboard.pickInstanceError": "Не удалось выбрать экземпляр: ",
   "dashboard.rescan": "Пересканировать",
   "dashboard.moreWarnings": "Еще {count} предупреждений сканирования в журнале задачи.",
   "dashboard.stats.mods": "Просканировано модов",
@@ -1059,6 +1210,35 @@ const ruRu: TranslationMap = {
   "placeholder.disabled": "Отключено",
   "placeholder.subtitle": "Фаза 1 держит модуль видимым; интеграция позже.",
   "placeholder.empty": "Модуль не запускает автообработку в текущей фазе.",
+  "tooltip.scan": "Начать сканирование языковых файлов модов",
+  "tooltip.cancelScan": "Отменить текущее сканирование",
+  "tooltip.pickInstance": "Выбрать директорию экземпляра Minecraft",
+  "tooltip.rescan": "Пересканировать все моды",
+  "tooltip.saveSettings": "Сохранить и применить настройки",
+  "tooltip.fetchModels": "Получить список моделей из API",
+  "tooltip.generatePack": "Сгенерировать ресурс-пак перевода",
+  "tooltip.dryRun": "Предпросмотр содержимого перевода",
+  "tooltip.copyToInstance": "Скопировать ресурс-пак в экземпляр",
+  "tooltip.startTranslation": "Начать перевод ожидающих записей",
+  "tooltip.stopTranslation": "Остановить текущий перевод",
+  "tooltip.clearLog": "Очистить все записи журнала перевода",
+  "tooltip.export": "Экспортировать словарь в файл",
+  "tooltip.import": "Импортировать словарь из файла",
+  "tooltip.search": "Поиск записей в словаре",
+  "tooltip.delete": "Удалить эту запись навсегда",
+  "tooltip.nextStage": "Перейти к следующему этапу конвейера",
+  "tooltip.filter": "Фильтр по этому столбцу",
+  "tooltip.clearFilter": "Очистить фильтр этого столбца",
+  "tooltip.validate": "Подтвердить упаковку и сгенерировать пак",
+  "tooltip.nav": "Перейти на страницу {page}",
+  "tooltip.stageCancel": "Отменить навигацию текущего этапа",
+  "tooltip.stageScan": "Перейти к этапу сканирования",
+  "tooltip.stageTranslate": "Перейти к этапу перевода",
+  "tooltip.stageValidate": "Перейти к этапу проверки",
+  "tooltip.stagePack": "Перейти к этапу упаковки",
+  "tooltip.stageCompleted": "Этот этап завершен",
+  "tooltip.stageLocked": "Этот этап заблокирован",
+  "tooltip.currentPage": "Текущая страница",
 };
 const translations: Record<AppLanguage, TranslationMap> = {
   zh_cn: zhCn,

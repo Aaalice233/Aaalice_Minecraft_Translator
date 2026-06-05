@@ -175,7 +175,7 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
 pub fn pick_instance_folder(app: tauri::AppHandle, locale: Option<String>) -> Result<Option<String>, String> {
     // locale is accepted for future use; native dialog locale is OS-controlled
     let _ = locale;
-    match app.dialog().file().set_title("Выбрать экземпляр").blocking_pick_folder() {
+    match app.dialog().file().set_title("选择实例").blocking_pick_folder() {
         Some(path) => {
             let path_str = path.into_path().map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_default();

@@ -254,6 +254,7 @@ export function DashboardPage({
             disabled={isCancelling}
             onClick={isScanning ? handleCancel : handleScan}
             type="button"
+            data-tooltip={t(language, isScanning ? "tooltip.cancelScan" : "tooltip.scan")}
           >
             {isCancelling ? (
               <Loader2 size={18} className="spin" />
@@ -283,6 +284,7 @@ export function DashboardPage({
 <button
         className="ghost-button"
         type="button"
+        data-tooltip={t(language, "tooltip.pickInstance")}
         onClick={async () => {
           try {
             const { invoke } = await import("@tauri-apps/api/core");
@@ -293,14 +295,14 @@ export function DashboardPage({
               setInstancePath(selected);
             }
           } catch (err) {
-            console.error("Failed to pick folder:", err);
+            setError(t(language, "dashboard.pickInstanceError") + (err instanceof Error ? err.message : String(err)));
           }
         }}
         >
         <FolderOpen size={17} />
         {t(language, "dashboard.pickInstance")}
         </button>
-        <button className="ghost-button" disabled={isScanning} onClick={handleScan} type="button">
+        <button className="ghost-button" disabled={isScanning} onClick={handleScan} type="button" data-tooltip={t(language, "tooltip.rescan")}>
           <RefreshCcw size={17} />
           {t(language, "dashboard.rescan")}
         </button>
@@ -427,6 +429,7 @@ export function DashboardPage({
                             onClick={(e) => { e.stopPropagation(); toggleFilter(col.key); }}
                             type="button"
                             aria-label={`Filter ${col.label}`}
+                            data-tooltip={t(language, "tooltip.filter")}
                           >
                             <Filter size={13} />
                           </button>
@@ -443,6 +446,7 @@ export function DashboardPage({
                                   className="filter-popover-clear"
                                   onClick={() => { handleFilterChange(col.key, null); }}
                                   type="button"
+                                  data-tooltip={t(language, "tooltip.clearFilter")}
                                 >
                                   <X size={13} />
                                 </button>

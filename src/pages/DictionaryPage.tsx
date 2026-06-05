@@ -109,11 +109,11 @@ export function DictionaryPage({ language }: Props) {
           </p>
         </div>
         <div className="page-header-button">
-          <button className="ghost-button" type="button" disabled={!isTauriRuntime()}>
+          <button className="ghost-button" type="button" disabled={!isTauriRuntime()} data-tooltip={t(language, "tooltip.export")}>
             <Download size={17} />
             {t(language, "dictionary.export")}
           </button>
-          <button className="ghost-button" type="button" disabled={!isTauriRuntime()}>
+          <button className="ghost-button" type="button" disabled={!isTauriRuntime()} data-tooltip={t(language, "tooltip.import")}>
             <Upload size={17} />
             {t(language, "dictionary.import")}
           </button>
@@ -144,7 +144,7 @@ export function DictionaryPage({ language }: Props) {
           <option value="cfpa">{t(language, "dictionary.typeCfpa")}</option>
           <option value="llm">{t(language, "dictionary.typeLlm")}</option>
         </select>
-        <button className="ghost-button" onClick={handleSearch} type="button">
+        <button className="ghost-button" onClick={handleSearch} type="button" data-tooltip={t(language, "tooltip.search")}>
           <Search size={17} />
           {t(language, "dictionary.search")}
         </button>
@@ -211,6 +211,7 @@ export function DictionaryPage({ language }: Props) {
                       className="ghost-button danger"
                       onClick={() => entry.id && handleDelete(entry.id)}
                       type="button"
+                      data-tooltip={t(language, "tooltip.delete")}
                     >
                       {t(language, "common.delete")}
                     </button>
