@@ -12,7 +12,6 @@
 // Atomicity: job state files are written via tmp + rename so a crash during
 // write corrupts at most one incomplete batch.
 
-use std::collections::HashSet;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -108,7 +107,15 @@ impl JobManager {
         std::fs::create_dir_all(&jobs_dir)
             .map_err(|e| format!("创建 jobs 目录失败: {e}"))?;
 
-        let entries = extract_pending_entries(&summary);
+        let entries = crate::core::pipeline::extract_pending_entries(&summary)
+            .into_iter()
+            .map(|(entry, file_name)| PendingEntry {
+                key: entry.key.clone(),
+                source_text: entry.text.clone(),
+                mod_id: entry.mod_id.clone(),
+                mod_name: file_name.to_string(),
+            })
+            .collect();
         let completed = 0usize;
         let failed = 0usize;
 
@@ -325,36 +332,6 @@ pub fn batch_append_results(
 
 // ── Free functions ──────────────────────────────────────────────────
 
-/// Extract pending-entries from a ScanSummary.
-///
-/// Pending = source-language entries whose key does NOT appear in the
-/// target-language set.
-pub fn extract_pending_entries(summary: &ScanSummary) -> Vec<PendingEntry> {
-    let mut result = Vec::new();
-    for mod_result in &summary.mods {
-        let target_keys: HashSet<&str> = mod_result
-            .entries
-            .iter()
-            .filter(|e| e.language == mod_result.target_language)
-            .map(|e| e.key.as_str())
-            .collect();
-
-        for entry in &mod_result.entries {
-            if entry.language == mod_result.resolved_source_language
-                && !target_keys.contains(entry.key.as_str())
-            {
-                result.push(PendingEntry {
-                    key: entry.key.clone(),
-                    source_text: entry.text.clone(),
-                    mod_id: entry.mod_id.clone(),
-                    mod_name: mod_result.file_name.clone(),
-                });
-            }
-        }
-    }
-    result
-}
-
 /// RFC 3339-ish timestamp string.
 pub fn now_rfc3339() -> String {
     // Simple local time without pulling in chrono.
@@ -488,7 +465,15 @@ mod tests {
             cancelled: false,
         };
 
-        let pending = extract_pending_entries(&summary);
+        let pending: Vec<PendingEntry> = crate::core::pipeline::extract_pending_entries(&summary)
+            .into_iter()
+            .map(|(entry, file_name)| PendingEntry {
+                key: entry.key.clone(),
+                source_text: entry.text.clone(),
+                mod_id: entry.mod_id.clone(),
+                mod_name: file_name.to_string(),
+            })
+            .collect();
         assert_eq!(pending.len(), 2);
         assert!(pending.iter().any(|e| e.key == "item.b"));
         assert!(pending.iter().any(|e| e.key == "item.c"));
