@@ -176,6 +176,9 @@ export interface TranslateLogEntry {
   sourceType: string;
 }
 
+/** 侧边栏导航项的三态：空闲 / 运行中 / 已完成 */
+export type PageNavStatus = "idle" | "busy" | "completed";
+
 export type JobStatus =
   | "idle"
   | "scanning"
@@ -208,36 +211,6 @@ export interface TranslationJob {
   tokenUsage: TokenUsage;
   etaSecs?: number;
 }
-
-// ── P3.5: Pipeline types ────────────────────────────
-
-export type PipelineStage = "scan" | "translate" | "validate" | "pack";
-
-export type StageStatus =
-  | "locked"
-  | "active"
-  | "completed"
-  | "failed_partial"
-  | "failed_total";
-
-export interface PipelineState {
-  currentStage: PipelineStage;
-  stageStatuses: Record<PipelineStage, StageStatus>;
-}
-
-export const PIPELINE_STAGES: readonly PipelineStage[] = [
-  "scan",
-  "translate",
-  "validate",
-  "pack",
-] as const;
-
-export const STAGE_TO_PAGE: Record<PipelineStage, string> = {
-  scan: "dashboard",
-  translate: "jobs",
-  validate: "validate",
-  pack: "packages",
-};
 
 // ── P4: Pack types ────────────────────────────────────────────────
 

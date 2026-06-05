@@ -170,16 +170,20 @@ pub fn scan_instance(
         });
     }
 
-    // Stage 4: log — only write if not cancelled
+    // Stage 4: log — only write if not cancelled.
+    // Emit per-mod progress so the frontend shows realtime granularity
+    // instead of a single 0/1→1/1 jump (which felt frozen for seconds).
     if !cancel.load(Ordering::SeqCst) {
+        let total_mods = mods.len();
         progress(ScanProgress {
             current: 0,
-            total: 1,
+            total: total_mods,
             mod_name: String::new(),
             phase: "log".to_string(),
             sub_step: None,
             stage_status: StageStatus::Running,
         });
+
         logging::append_job(
             root,
             &job_id,
@@ -195,8 +199,8 @@ pub fn scan_instance(
             ),
         )?;
 
-        // Per-mod breakdown
-        for mod_result in &mods {
+        // Per-mod breakdown with per-mod progress emission
+        for (i, mod_result) in mods.iter().enumerate() {
             let pending = mod_result.source_entries.saturating_sub(mod_result.target_entries);
             logging::append_job(
                 root,
@@ -206,6 +210,15 @@ pub fn scan_instance(
                     mod_result.file_name, mod_result.source_entries, mod_result.target_entries, pending
                 ),
             )?;
+
+            progress(ScanProgress {
+                current: i + 1,
+                total: total_mods,
+                mod_name: mod_result.file_name.clone(),
+                phase: "log".to_string(),
+                sub_step: None,
+                stage_status: StageStatus::Running,
+            });
         }
 
         // Total summary
@@ -223,8 +236,8 @@ pub fn scan_instance(
         )?;
 
         progress(ScanProgress {
-            current: 1,
-            total: 1,
+            current: total_mods,
+            total: total_mods,
             mod_name: String::new(),
             phase: "log".to_string(),
             sub_step: None,

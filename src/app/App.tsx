@@ -1,16 +1,18 @@
 import {
   BookOpen,
   Boxes,
+  CheckCircle,
   FileText,
   HardHat,
   Home,
   ListChecks,
+  Loader2,
   PackageCheck,
   ScanLine,
   Settings as SettingsIcon,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardPage } from "../pages/DashboardPage";
 import { DictionaryPage } from "../pages/DictionaryPage";
 import { JobsPage } from "../pages/JobsPage";
@@ -19,22 +21,10 @@ import { PackagesPage } from "../pages/PackagesPage";
 import { PlaceholderPage } from "../pages/PlaceholderPage";
 import { SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
-import { PipelineBreadcrumb } from "../components/PipelineBreadcrumb";
-import { usePipeline } from "./usePipeline";
-import type { ScanSummary, Settings } from "../types";
-import type { PipelineStage } from "../types";
-import { getSettings } from "../api/tauri";
+import type { PageNavStatus, ScanSummary, Settings } from "../types";
+import { getSettings, loadLatestScanSummary } from "../api/tauri";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
-import { STAGE_TO_PAGE } from "../types";
-
-/** 页面到流水线阶段的反向映射，非流水线页面返回 undefined */
-const PAGE_TO_STAGE: Partial<Record<PageKey, PipelineStage>> = {
-  dashboard: "scan",
-  jobs: "translate",
-  validate: "validate",
-  packages: "pack",
-};
 
 type PageKey =
   | "dashboard"
@@ -46,6 +36,8 @@ type PageKey =
   | "hardcoded"
   | "settings"
   | "logs";
+
+type PageNavStates = Partial<Record<PageKey, PageNavStatus>>;
 
 const DISABLED_NAV: ReadonlySet<PageKey> = new Set(["ftb", "hardcoded"] as const);
 
@@ -66,18 +58,15 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [scanSummary, setScanSummary] = useState<ScanSummary | null>(null);
   const [loadError, setLoadError] = useState("");
+  const [navStates, setNavStates] = useState<PageNavStates>({});
+  // Stable nav state updater — stable reference, value-aware to prevent render loops
+  const setNav = useCallback((key: PageKey, status: PageNavStatus) => {
+    setNavStates((prev) => {
+      if (prev[key] === status) return prev; // same value → skip re-render
+      return { ...prev, [key]: status };
+    });
+  }, []);
   const language = normalizeAppLanguage(settings?.appLanguage);
-
-  const {
-    currentStage,
-    stageStatuses,
-    nextStage,
-    advanceStage,
-    resetPipeline,
-  } = usePipeline();
-
-  // 面包屑高亮跟随当前页面：用户在哪个页面就高亮对应阶段
-  const activeStage = PAGE_TO_STAGE[activePage] ?? currentStage;
 
   useEffect(() => {
     getSettings()
@@ -85,94 +74,92 @@ export function App() {
       .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
   }, []);
 
-  // ── 扫描完成处理 ────────────────────────────────
-  // 不自动推进阶段，用户通过"下一阶段"按钮手动控制
-  // 这里仅跟踪最新 scanSummary 供"下一阶段"按钮做守卫检查
+  // On mount, load the most recent persisted scan result
+  useEffect(() => {
+    loadLatestScanSummary()
+      .then((saved) => {
+        if (saved) {
+          setScanSummary(saved);
+          setNav("dashboard", "completed");
+        }
+      })
+      .catch(() => { /* ignore load failure */ });
+  }, [setNav]);
 
-  const handleStageNavigate = (stage: import("../types").PipelineStage) => {
-    const page = STAGE_TO_PAGE[stage];
-    if (page) {
-      setActivePage(page as PageKey);
-    }
-  };
+  // 智能 tooltip 方向：当元素靠近视口上边缘时自动向下弹出
+  useEffect(() => {
+    const TOOLTIP_TOP_THRESHOLD = 60;
+    const handler = (e: MouseEvent) => {
+      const el = (e.target as HTMLElement).closest<HTMLElement>("[data-tooltip]");
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      if (rect.top < TOOLTIP_TOP_THRESHOLD) {
+        el.setAttribute("data-tooltip-direction", "down");
+      } else {
+        el.removeAttribute("data-tooltip-direction");
+      }
+    };
+    document.addEventListener("mouseover", handler);
+    return () => document.removeEventListener("mouseover", handler);
+  }, []);
 
-  /** 下一阶段按钮点击处理 */
-  const handleNextStage = () => {
-    if (!nextStage) return;
+  // 页面栈：记录已懒加载过的页面
+  const [mountedPages, setMountedPages] = useState<Set<PageKey>>(() => new Set(["dashboard"]));
+  const prevPageRef = useRef(activePage);
 
-    // 基本守卫：扫描阶段必须有扫描结果
-    if (currentStage === "scan" && !scanSummary) return;
+  // 当 activePage 变化时，标记该页已挂载
+  useEffect(() => {
+    if (activePage !== prevPageRef.current) {
+      prevPageRef.current = activePage;
+      setMountedPages((prev) => {
+        if (prev.has(activePage)) return prev;
+        const next = new Set(prev);
+        next.add(activePage);
+        return next;
+      });
+    }
+  }, [activePage]);
 
-    advanceStage();
-    setActivePage(STAGE_TO_PAGE[nextStage] as PageKey);
-  };
+  // Stable per-page callbacks — created once, never cause extra re-renders
+  const dbBusy = useCallback((b: boolean) => setNav("dashboard", b ? "busy" : "idle"), [setNav]);
+  const dbCompleted = useCallback((c: boolean) => setNav("dashboard", c ? "completed" : "idle"), [setNav]);
+  const jobsBusy = useCallback((b: boolean) => setNav("jobs", b ? "busy" : "idle"), [setNav]);
+  const packsBusy = useCallback((b: boolean) => setNav("packages", b ? "busy" : "idle"), [setNav]);
 
-  const content = useMemo(() => {
-    if (!settings) {
-      return <div className="empty-state">{loadError || t(language, "app.loadingSettings")}</div>;
-    }
+  /** 渲染页面实例（懒加载：仅在首次访问时挂载） */
+  const renderPage = useCallback(
+    (page: PageKey) => {
+      if (!mountedPages.has(page)) return null;
+      const isActive = activePage === page;
 
-    if (activePage === "dashboard") {
-      return (
-        <DashboardPage
-          settings={settings}
-          onSettingsChange={setSettings}
-          scanSummary={scanSummary}
-          onScanSummaryChange={setScanSummary}
-          onScanStart={() => {
-            if (currentStage !== "scan") resetPipeline();
-          }}
-          language={language}
-        />
-      );
-    }
-    if (activePage === "settings") {
-      return <SettingsPage settings={settings} onSettingsChange={setSettings} />;
-    }
-    if (activePage === "logs") {
-      return <LogsPage scanSummary={scanSummary} language={language} />;
-    }
-    if (activePage === "dictionary") {
-      return <DictionaryPage language={language} />;
-    }
-    if (activePage === "jobs") {
-      return (
-        <JobsPage
-          language={language}
-          scanSummary={scanSummary}
-          onScanSummaryChange={setScanSummary}
-          settings={settings}
-        />
-      );
-    }
-    if (activePage === "validate") {
-      return (
-        <ValidatePage
-          language={language}
-          onConfirm={() => {
-            advanceStage();
-            setActivePage("packages");
-          }}
-        />
-      );
-    }
-    if (activePage === "packages") {
-      return <PackagesPage language={language} scanSummary={scanSummary} settings={settings} />;
-    }
+      if (page === "dashboard") {
+        return <DashboardPage settings={settings!} onSettingsChange={setSettings} scanSummary={scanSummary} onScanSummaryChange={setScanSummary} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
+      }
+      if (page === "settings") {
+        return <SettingsPage settings={settings!} onSettingsChange={setSettings} />;
+      }
+      if (page === "logs") {
+        return <LogsPage scanSummary={scanSummary} language={language} />;
+      }
+      if (page === "dictionary") {
+        return <DictionaryPage language={language} />;
+      }
+      if (page === "jobs") {
+        return <JobsPage language={language} scanSummary={scanSummary} onScanSummaryChange={setScanSummary} settings={settings!} onBusyChange={jobsBusy} />;
+      }
+      if (page === "validate") {
+        return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
+      }
+      if (page === "packages") {
+        return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
+      }
+      return <PlaceholderPage pageKey={page} language={language} />;
+    },
+    [activePage, language, scanSummary, settings, mountedPages, dbBusy, dbCompleted, jobsBusy, packsBusy],
+  );
 
-    return <PlaceholderPage pageKey={activePage} language={language} />;
-  }, [activePage, language, loadError, scanSummary, settings, advanceStage, currentStage, resetPipeline]);
-
-  // ── 语言对显示 ──────────────────────────────────
-  const langPairLabel = useMemo(() => {
-    if (!settings) return "";
-    const source =
-      scanSummary && settings.sourceLanguage === "auto"
-        ? scanSummary.sourceLanguage
-        : settings.sourceLanguage;
-    const target = scanSummary?.targetLanguage ?? settings.targetLanguage;
-    return t(language, "pipeline.langPair", { source, target });
-  }, [language, settings, scanSummary]);
+  // 加载完成前显示 loading
+  const isLoading = !settings;
 
   return (
     <div className="app-shell" lang={localeByAppLanguage[language]}>
@@ -180,17 +167,22 @@ export function App() {
         <nav className="nav-list">
           {navItems.map((item) => {
             const Icon = item.icon;
+            const navStatus = navStates[item.key] ?? "idle";
+            const isBusy = navStatus === "busy";
+            const isCompleted = navStatus === "completed";
             return (
               <button
-                className={`nav-item${item.key === activePage ? " active" : ""}${DISABLED_NAV.has(item.key) ? " disabled" : ""}`}
+                className={`nav-item${item.key === activePage ? " active" : ""}${isBusy ? " busy" : ""}${isCompleted ? " completed" : ""}${DISABLED_NAV.has(item.key) ? " disabled" : ""}`}
                 key={item.key}
                 disabled={DISABLED_NAV.has(item.key)}
                 onClick={() => setActivePage(item.key)}
                 type="button"
-                data-tooltip={item.key === activePage ? t(language, "tooltip.currentPage") : t(language, "tooltip.nav", { page: t(language, item.labelKey) })}
+                data-tooltip={isBusy ? t(language, "tooltip.busy", { page: t(language, item.labelKey) }) : isCompleted ? t(language, "tooltip.completed", { page: t(language, item.labelKey) }) : item.key === activePage ? t(language, "tooltip.currentPage") : t(language, "tooltip.nav", { page: t(language, item.labelKey) })}
               >
-                <Icon size={18} />
+                {isBusy ? <Loader2 size={18} className="spin nav-icon-busy" /> : isCompleted ? <CheckCircle size={18} className="nav-icon-completed" /> : <Icon size={18} />}
                 <span>{t(language, item.labelKey)}</span>
+                {isBusy && <span className="nav-busy-dot" />}
+                {isCompleted && <span className="nav-completed-mark" />}
               </button>
             );
           })}
@@ -203,38 +195,20 @@ export function App() {
       </aside>
 
       <main className="main">
-        <div className="topbar">
-          <div className="topbar-info">
-            <span className="topbar-info-path">
-              {settings?.instancePath || t(language, "app.noInstance")}
-            </span>
-            {settings && (
-              <span className="topbar-info-langpair">{langPairLabel}</span>
-            )}
+        {isLoading ? (
+          <div className="empty-state">{loadError || t(language, "app.loadingSettings")}</div>
+        ) : (
+          <div className="page-stack">
+            {(["dashboard", "settings", "logs", "dictionary", "jobs", "validate", "packages", "ftb", "hardcoded"] as PageKey[]).map((page) => (
+              <div
+                key={page}
+                className={`page-layer${activePage === page ? " active" : ""}`}
+              >
+                {renderPage(page)}
+              </div>
+            ))}
           </div>
-
-          <PipelineBreadcrumb
-            currentStage={activeStage}
-            stageStatuses={stageStatuses}
-            onNavigate={handleStageNavigate}
-            language={language}
-          />
-
-          <button
-            className={`next-stage-button${currentStage === "pack" ? " final" : ""}`}
-            disabled={!nextStage || activeStage === nextStage || (currentStage === "scan" && !scanSummary)}
-            onClick={handleNextStage}
-            type="button"
-            data-tooltip={t(language, "tooltip.nextStage")}
-          >
-            {currentStage === "pack"
-              ? t(language, "pipeline.pack")
-              : nextStage
-                ? `${t(language, "pipeline.nextStage")}: ${t(language, `pipeline.${nextStage}` as const)}`
-                : t(language, "pipeline.nextStage")}
-          </button>
-        </div>
-        {content}
+        )}
       </main>
     </div>
   );

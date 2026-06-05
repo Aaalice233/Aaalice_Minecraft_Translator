@@ -75,6 +75,12 @@ export async function scanInstance(
   return tauriInvoke<ScanSummary>("scan_instance", { path, sourceLanguage, targetLanguage });
 }
 
+/** Load the most recently persisted scan result from disk (if any). */
+export async function loadLatestScanSummary(): Promise<ScanSummary | null> {
+  if (!isTauriRuntime()) return null;
+  return tauriInvoke<ScanSummary | null>("load_latest_scan_summary");
+}
+
 export async function cancelScan(): Promise<void> {
   if (!isTauriRuntime()) {
     return; // browser mode no-op

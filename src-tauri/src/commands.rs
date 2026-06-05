@@ -73,6 +73,9 @@ pub async fn scan_instance(
         .map(|s| (s.i18n_pack_name.clone(), s.vm_pack_name.clone()))
         .unwrap_or_default();
 
+    // Clone root before moving into the blocking closure
+    let root_for_save = root.clone();
+
     // Run the actual scan on a blocking thread; the scanner sends progress
     // updates through the channel instead of calling emit directly.
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -95,7 +98,67 @@ pub async fn scan_instance(
     // Drop our sender so the channel closes, letting the reader task exit.
     drop(progress_tx);
 
-    result.map_err(to_message)
+    let summary = result.map_err(to_message)?;
+
+    // Persist scan result to data/jobs/scan_{jobId}.json
+    match serde_json::to_string_pretty(&summary) {
+        Ok(json) => {
+            let job_path = paths::job_state_path(&root_for_save, &summary.job_id);
+            if let Some(parent) = job_path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(err) = std::fs::write(&job_path, json) {
+                eprintln!("扫描结果写入失败 ({}): {err}", job_path.display());
+            }
+        }
+        Err(err) => {
+            eprintln!("扫描结果序列化失败: {err}");
+        }
+    }
+
+    Ok(summary)
+}
+
+/// Load the most recent persisted scan result from data/jobs/.
+/// Returns None if no scan result file exists.
+#[tauri::command]
+pub fn load_latest_scan_summary() -> Result<Option<ScanSummary>, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let jobs_dir = paths::jobs_dir(&root);
+
+    if !jobs_dir.is_dir() {
+        return Ok(None);
+    }
+
+    let mut entries: Vec<_> = std::fs::read_dir(&jobs_dir)
+        .map_err(to_message)?
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_string_lossy()
+                .starts_with("scan_")
+                && e.path().extension().is_some_and(|ext| ext == "json")
+        })
+        .collect();
+
+    // Sort by modification time, newest first
+    entries.sort_by(|a, b| {
+        b.metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .cmp(&a.metadata().and_then(|m| m.modified()).ok())
+    });
+
+    let latest = entries.into_iter().next();
+    match latest {
+        Some(entry) => {
+            let content = std::fs::read_to_string(entry.path()).map_err(to_message)?;
+            serde_json::from_str(&content)
+                .map(Some)
+                .map_err(to_message)
+        }
+        None => Ok(None),
+    }
 }
 
 /// Request cancellation of the current scan.

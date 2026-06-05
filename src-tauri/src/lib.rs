@@ -20,6 +20,7 @@ pub fn run() {
             commands::save_settings,
             commands::validate_instance,
             commands::scan_instance,
+            commands::load_latest_scan_summary,
             commands::cancel_scan,
             commands::pick_instance_folder,
             commands::open_path,

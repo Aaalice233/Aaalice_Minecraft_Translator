@@ -114,6 +114,56 @@ select {
   pointer-events: none;
 }
 
+/* ── Nav busy state (running task indicator) ──── */
+.nav-item.busy {
+  background: #e2f1e8;
+  color: #0f6a43;
+  font-weight: 600;
+  position: relative;
+}
+.nav-item.busy .nav-icon-busy {
+  display: inline-flex;
+  animation: spin 1.2s linear infinite;
+  transform-origin: center;
+}
+.nav-item.busy .nav-busy-dot {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1f8a5b;
+  margin-left: auto;
+  flex-shrink: 0;
+  animation: busy-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes busy-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.65); }
+}
+
+/* ── Nav completed state (task done) ──────────── */
+.nav-item.completed {
+  background: #e2f1e8;
+  color: #0f6a43;
+  font-weight: 600;
+  position: relative;
+}
+.nav-item.completed .nav-icon-completed {
+  display: inline-flex;
+  color: #1f8a5b;
+}
+.nav-item.completed .nav-completed-mark {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1f8a5b;
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
 .sidebar-footer {
   display: flex;
   justify-content: space-between;
@@ -137,151 +187,21 @@ select {
   min-width: 0;
 }
 
-.topbar {
-  display: flex;
-  align-items: center;
+/* ── Page Stack (keep-alive) ──────────────────── */
+.page-stack {
   position: relative;
-  height: 56px;
-  border-bottom: 1px solid #ded8cc;
-  background: rgba(255, 255, 255, 0.78);
-  padding: 0 28px;
+}
+
+.page-layer {
+  display: none;
+}
+
+.page-layer.active {
+  display: block;
 }
 
 .page {
   padding: 22px 28px 28px;
-}
-
-/* ── Pipeline Breadcrumb ───────────────────────── */
-
-.pipeline-breadcrumb {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
-
-.pipeline-stage-wrap {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.pipeline-arrow {
-  color: #ccc6b8;
-  font-size: 13px;
-  user-select: none;
-}
-
-.pipeline-stage-node {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 28px;
-  border: 0;
-  border-radius: 5px;
-  background: transparent;
-  color: #6b665d;
-  padding: 0 8px;
-  cursor: pointer;
-  font-size: 13px;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
-
-.pipeline-stage-node:hover:not(:disabled) {
-  background: #efeade;
-}
-
-.pipeline-stage-node:disabled {
-  cursor: default;
-}
-
-.pipeline-stage-icon {
-  font-size: 12px;
-  line-height: 1;
-}
-
-/* Status variants */
-.pipeline-stage-completed {
-  color: #0f6a43;
-}
-
-.pipeline-stage-active {
-  color: #1f8a5b;
-  font-weight: 700;
-}
-
-.pipeline-stage-failed-partial {
-  color: #b87932;
-}
-
-.pipeline-stage-failed-total {
-  color: #b8423a;
-}
-
-.pipeline-stage-locked {
-  color: #6b665d;
-  opacity: 0.55;
-  cursor: default;
-}
-
-.pipeline-stage-node.is-current {
-  background: #e2f1e8;
-}
-
-/* ── Next Stage Button ──────────────────────────── */
-
-.next-stage-button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 32px;
-  margin-left: auto;
-  border: 1px solid #166b48;
-  border-radius: 6px;
-  background: #1f8a5b;
-  color: #fff;
-  padding: 0 14px;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.15s;
-}
-
-.next-stage-button:hover:not(:disabled) {
-  background: #166b48;
-}
-
-.next-stage-button:disabled {
-  opacity: 0.55;
-  cursor: default;
-}
-
-.next-stage-button.final {
-  background: #6b665d;
-  border-color: #6b665d;
-}
-
-/* ── Topbar Info ────────────────────────────────── */
-
-.topbar-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.topbar-info-path {
-  font-weight: 700;
-  font-size: 13px;
-}
-
-.topbar-info-langpair {
-  color: #6b665d;
-  font-size: 12px;
 }
 
 .page-header {
@@ -1143,13 +1063,14 @@ th.sorted-default .sort-indicator {
   background: #1e1d1a;
   color: #f7f4ec;
   font-size: 12px;
-  line-height: 1.3;
+  line-height: 1.4;
   padding: 5px 10px;
   border-radius: 4px;
-  white-space: nowrap;
-  max-width: 320px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 80px;
+  max-width: min(600px, 90vw);
+  width: max-content;
+  overflow-wrap: break-word;
+  text-align: center;
   pointer-events: none;
   z-index: 999;
   opacity: 0;

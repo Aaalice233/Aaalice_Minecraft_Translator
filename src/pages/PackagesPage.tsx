@@ -1,5 +1,5 @@
 import { Boxes, Copy, FileArchive, Eye } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { copyPackToInstance, generateTranslationPack } from "../api/tauri";
 import { t } from "../i18n/translations";
 import type { AppLanguage, CopyResult, PackResult, ScanSummary } from "../types";
@@ -8,14 +8,20 @@ interface Props {
   language: AppLanguage;
   scanSummary: ScanSummary | null;
   settings: { instancePath: string };
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function PackagesPage({ language, scanSummary, settings }: Props) {
+export function PackagesPage({ language, scanSummary, settings, onBusyChange }: Props) {
   const [packResult, setPackResult] = useState<PackResult | null>(null);
   const [copyResult, setCopyResult] = useState<CopyResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState("");
+
+  // Sync packaging busy state to parent (sidebar)
+  useEffect(() => {
+    onBusyChange?.(loading);
+  }, [loading, onBusyChange]);
 
   const canGenerate = scanSummary && scanSummary.actualPendingEntries > 0 && !loading;
 
@@ -149,7 +155,7 @@ export function PackagesPage({ language, scanSummary, settings }: Props) {
           </div>
           <p>{t(language, "packages.confirmMessage", { path: settings.instancePath })}</p>
           <div className="page-header-button" style={{ marginTop: 12 }}>
-            <button className="ghost-button" onClick={() => setShowConfirm(false)} type="button" data-tooltip={t(language, "tooltip.stageCancel")}>
+            <button className="ghost-button" onClick={() => setShowConfirm(false)} type="button" data-tooltip={t(language, "common.cancel")}>
               {t(language, "common.cancel")}
             </button>
             <button className="primary-button" onClick={handleCopyToInstance} type="button" data-tooltip={t(language, "tooltip.copyToInstance")}>

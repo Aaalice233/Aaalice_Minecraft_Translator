@@ -10,8 +10,10 @@ interface Props {
   scanSummary: ScanSummary | null;
   onSettingsChange: (settings: Settings) => void;
   onScanSummaryChange: (summary: ScanSummary) => void;
-  onScanStart?: () => void;
   language: AppLanguage;
+  onBusyChange?: (busy: boolean) => void;
+  /** Notify sidebar that scanning completed (or was reset). */
+  onCompleteChange?: (completed: boolean) => void;
 }
 
 export function DashboardPage({
@@ -19,8 +21,9 @@ export function DashboardPage({
   scanSummary,
   onSettingsChange,
   onScanSummaryChange,
-  onScanStart,
   language,
+  onBusyChange,
+  onCompleteChange,
 }: Props) {
   const [instancePath, setInstancePath] = useState(settings.instancePath);
   const [isScanning, setIsScanning] = useState(false);
@@ -28,6 +31,28 @@ export function DashboardPage({
   const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [error, setError] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Sync scanning busy state to parent (sidebar)
+  useEffect(() => {
+    onBusyChange?.(isScanning);
+  }, [isScanning, onBusyChange]);
+
+  // Notify parent when scan completes (has valid result, not cancelled, not currently scanning)
+  const prevIsScanning = useRef(isScanning);
+  useEffect(() => {
+    if (prevIsScanning.current && !isScanning && scanSummary && !scanSummary.cancelled && !error) {
+      onCompleteChange?.(true);
+    }
+    prevIsScanning.current = isScanning;
+  }, [isScanning, scanSummary, error, onCompleteChange]);
+
+  // When instance path changes, clear completed state (user is setting up a new scan target)
+  useEffect(() => {
+    if (instancePath && settings.instancePath && instancePath !== settings.instancePath) {
+      onCompleteChange?.(false);
+    }
+  }, [instancePath, settings.instancePath, onCompleteChange]);
+
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string | { min?: number; max?: number }>>({});
   const [openFilter, setOpenFilter] = useState<string | null>(null);
@@ -184,12 +209,12 @@ export function DashboardPage({
   async function handleScan() {
     setIsScanning(true);
     setIsCancelling(false);
+    onCompleteChange?.(false); // clear completed state on re-scan
     setScanProgress(null);
     setError("");
     setSortConfig(null);
     setFilters({});
     setOpenFilter(null);
-    onScanStart?.();
     try {
       const nextSettings = { ...settings, instancePath };
       onSettingsChange(nextSettings);
@@ -326,7 +351,7 @@ export function DashboardPage({
           {scanProgress.subStep && (
             <small className="scan-progress-mod">{scanProgress.subStep}</small>
           )}
-          {!scanProgress.subStep && scanProgress.modName && scanProgress.phase === "scan" && (
+          {!scanProgress.subStep && scanProgress.modName && (
             <small className="scan-progress-mod">{scanProgress.modName}</small>
           )}
         </div>

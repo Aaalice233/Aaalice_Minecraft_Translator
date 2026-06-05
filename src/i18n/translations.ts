@@ -5,12 +5,7 @@ export type TranslationKey =
   | "app.brandSubtitle"
   | "app.currentInstance"
   | "app.noInstance"
-  | "pipeline.scan"
-  | "pipeline.translate"
   | "pipeline.validate"
-  | "pipeline.pack"
-  | "pipeline.nextStage"
-  | "pipeline.langPair"
   | "app.ready"
   | "nav.dashboard"
   | "nav.jobs"
@@ -226,19 +221,13 @@ export type TranslationKey =
   | "tooltip.import"
   | "tooltip.search"
   | "tooltip.delete"
-  | "tooltip.nextStage"
   | "tooltip.filter"
   | "tooltip.clearFilter"
   | "tooltip.validate"
   | "tooltip.nav"
-  | "tooltip.stageCancel"
-  | "tooltip.stageScan"
-  | "tooltip.stageTranslate"
-  | "tooltip.stageValidate"
-  | "tooltip.stagePack"
-  | "tooltip.stageCompleted"
-  | "tooltip.stageLocked"
-  | "tooltip.currentPage";
+  | "tooltip.currentPage"
+  | "tooltip.busy"
+  | "tooltip.completed";
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -279,12 +268,7 @@ const zhCn: TranslationMap = {
   "app.currentInstance": "当前实例",
   "app.noInstance": "未选择实例",
   "app.ready": "就绪",
-  "pipeline.scan": "扫描",
-  "pipeline.translate": "翻译",
   "pipeline.validate": "校验",
-  "pipeline.pack": "打包",
-  "pipeline.nextStage": "下一阶段",
-  "pipeline.langPair": "{source} → {target}",
   "nav.dashboard": "扫描",
   "nav.jobs": "翻译",
   "nav.validate": "校验",
@@ -499,19 +483,13 @@ const zhCn: TranslationMap = {
   "tooltip.import": "从文件导入词典条目",
   "tooltip.search": "搜索匹配的词典条目",
   "tooltip.delete": "永久删除此条目",
-  "tooltip.nextStage": "进入流水线的下一阶段",
   "tooltip.filter": "按此列筛选",
   "tooltip.clearFilter": "清除此列的筛选条件",
   "tooltip.validate": "确认打包并生成资源包",
   "tooltip.nav": "导航到 {page} 页面",
-  "tooltip.stageCancel": "取消当前阶段的跳转",
-  "tooltip.stageScan": "跳转到扫描阶段",
-  "tooltip.stageTranslate": "跳转到翻译阶段",
-  "tooltip.stageValidate": "跳转到校验阶段",
-  "tooltip.stagePack": "跳转到打包阶段",
-  "tooltip.stageCompleted": "此阶段已完成",
-  "tooltip.stageLocked": "此阶段尚未解锁",
   "tooltip.currentPage": "当前所在页面",
+  "tooltip.busy": "{page} 正在运行…",
+  "tooltip.completed": "{page} 已完成",
 };
 
 const enUs: TranslationMap = {
@@ -521,12 +499,7 @@ const enUs: TranslationMap = {
   "app.currentInstance": "Current instance",
   "app.noInstance": "No instance selected",
   "app.ready": "Ready",
-  "pipeline.scan": "Scan",
-  "pipeline.translate": "Translate",
   "pipeline.validate": "Validate",
-  "pipeline.pack": "Pack",
-  "pipeline.nextStage": "Next Stage",
-  "pipeline.langPair": "{source} → {target}",
   "nav.dashboard": "Scan",
   "nav.jobs": "Translate",
   "nav.validate": "Validate",
@@ -675,19 +648,13 @@ const enUs: TranslationMap = {
   "tooltip.import": "Import dictionary entries from file",
   "tooltip.search": "Search matching dictionary entries",
   "tooltip.delete": "Permanently delete this entry",
-  "tooltip.nextStage": "Proceed to the next pipeline stage",
   "tooltip.filter": "Filter by this column",
   "tooltip.clearFilter": "Clear this column's filter",
   "tooltip.validate": "Confirm packaging and generate resource pack",
   "tooltip.nav": "Navigate to {page} page",
-  "tooltip.stageCancel": "Cancel current stage navigation",
-  "tooltip.stageScan": "Go to scan stage",
-  "tooltip.stageTranslate": "Go to translate stage",
-  "tooltip.stageValidate": "Go to validate stage",
-  "tooltip.stagePack": "Go to pack stage",
-  "tooltip.stageCompleted": "This stage is completed",
-  "tooltip.stageLocked": "This stage is locked",
   "tooltip.currentPage": "You are here",
+  "tooltip.busy": "{page} is running…",
+  "tooltip.completed": "{page} completed",
 };
 
 const jaJp: TranslationMap = {
@@ -697,12 +664,7 @@ const jaJp: TranslationMap = {
   "app.currentInstance": "現在のインスタンス",
   "app.noInstance": "インスタンス未選択",
   "app.ready": "準備完了",
-  "pipeline.scan": "スキャン",
-  "pipeline.translate": "翻訳",
   "pipeline.validate": "検証",
-  "pipeline.pack": "パック",
-  "pipeline.nextStage": "次の段階",
-  "pipeline.langPair": "{source} → {target}",
   "nav.dashboard": "スキャン",
   "nav.jobs": "翻訳",
   "nav.validate": "検証",
@@ -829,19 +791,13 @@ const jaJp: TranslationMap = {
   "tooltip.import": "ファイルから辞書をインポート",
   "tooltip.search": "辞書を検索",
   "tooltip.delete": "この項目を完全に削除",
-  "tooltip.nextStage": "次のパイプライン段階へ進む",
   "tooltip.filter": "この列でフィルター",
   "tooltip.clearFilter": "この列のフィルターをクリア",
   "tooltip.validate": "パッケージを確認して生成",
   "tooltip.nav": "{page} ページに移動",
-  "tooltip.stageCancel": "現在の段階の移動をキャンセル",
-  "tooltip.stageScan": "スキャン段階へ移動",
-  "tooltip.stageTranslate": "翻訳段階へ移動",
-  "tooltip.stageValidate": "検証段階へ移動",
-  "tooltip.stagePack": "パック段階へ移動",
-  "tooltip.stageCompleted": "この段階は完了しました",
-  "tooltip.stageLocked": "この段階はロックされています",
   "tooltip.currentPage": "現在のページ",
+  "tooltip.busy": "{page} を実行中…",
+  "tooltip.completed": "{page} 完了",
 };
 
 const koKr: TranslationMap = {
@@ -851,12 +807,7 @@ const koKr: TranslationMap = {
   "app.currentInstance": "현재 인스턴스",
   "app.noInstance": "인스턴스가 선택되지 않음",
   "app.ready": "준비됨",
-  "pipeline.scan": "스캔",
-  "pipeline.translate": "번역",
   "pipeline.validate": "검증",
-  "pipeline.pack": "패킹",
-  "pipeline.nextStage": "다음 단계",
-  "pipeline.langPair": "{source} → {target}",
   "nav.dashboard": "스캔",
   "nav.jobs": "번역",
   "nav.validate": "검증",
@@ -983,19 +934,13 @@ const koKr: TranslationMap = {
   "tooltip.import": "파일에서 사전 항목 가져오기",
   "tooltip.search": "사전 항목 검색",
   "tooltip.delete": "이 항목을 영구 삭제",
-  "tooltip.nextStage": "파이프라인의 다음 단계로 이동",
   "tooltip.filter": "이 열로 필터링",
   "tooltip.clearFilter": "이 열의 필터 지우기",
   "tooltip.validate": "패키징 확인 및 리소스 팩 생성",
   "tooltip.nav": "{page} 페이지로 이동",
-  "tooltip.stageCancel": "현재 단계 이동 취소",
-  "tooltip.stageScan": "스캔 단계로 이동",
-  "tooltip.stageTranslate": "번역 단계로 이동",
-  "tooltip.stageValidate": "검증 단계로 이동",
-  "tooltip.stagePack": "패킹 단계로 이동",
-  "tooltip.stageCompleted": "이 단계가 완료됨",
-  "tooltip.stageLocked": "이 단계가 잠겨 있음",
   "tooltip.currentPage": "현재 페이지",
+  "tooltip.busy": "{page} 실행 중…",
+  "tooltip.completed": "{page} 완료",
 };
 
 
@@ -1007,12 +952,7 @@ const ruRu: TranslationMap = {
   "app.currentInstance": "Текущий экземпляр",
   "app.noInstance": "Экземпляр не выбран",
   "app.ready": "Готово",
-  "pipeline.scan": "Сканирование",
-  "pipeline.translate": "Перевод",
   "pipeline.validate": "Проверка",
-  "pipeline.pack": "Упаковка",
-  "pipeline.nextStage": "Следующий этап",
-  "pipeline.langPair": "{source} → {target}",
   "nav.dashboard": "Сканирование",
   "nav.jobs": "Перевод",
   "nav.validate": "Проверка",
@@ -1226,19 +1166,13 @@ const ruRu: TranslationMap = {
   "tooltip.import": "Импортировать словарь из файла",
   "tooltip.search": "Поиск записей в словаре",
   "tooltip.delete": "Удалить эту запись навсегда",
-  "tooltip.nextStage": "Перейти к следующему этапу конвейера",
   "tooltip.filter": "Фильтр по этому столбцу",
   "tooltip.clearFilter": "Очистить фильтр этого столбца",
   "tooltip.validate": "Подтвердить упаковку и сгенерировать пак",
   "tooltip.nav": "Перейти на страницу {page}",
-  "tooltip.stageCancel": "Отменить навигацию текущего этапа",
-  "tooltip.stageScan": "Перейти к этапу сканирования",
-  "tooltip.stageTranslate": "Перейти к этапу перевода",
-  "tooltip.stageValidate": "Перейти к этапу проверки",
-  "tooltip.stagePack": "Перейти к этапу упаковки",
-  "tooltip.stageCompleted": "Этот этап завершен",
-  "tooltip.stageLocked": "Этот этап заблокирован",
   "tooltip.currentPage": "Текущая страница",
+  "tooltip.busy": "{page} выполняется…",
+  "tooltip.completed": "{page} выполнено",
 };
 const translations: Record<AppLanguage, TranslationMap> = {
   zh_cn: zhCn,

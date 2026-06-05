@@ -44,9 +44,10 @@ describe("app shell", () => {
   it("renders dashboard navigation", async () => {
     render(<App />);
 
-    expect(await screen.findByText("Aaalice")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /总览/ })).toBeInTheDocument();
-    expect(screen.getAllByText(/扫描/).length).toBeGreaterThan(0);
+    // 顶栏已移除，检查侧边栏导航是否正常渲染
+    expect(await screen.findByText("扫描")).toBeInTheDocument();
+    expect(screen.getByText("翻译")).toBeInTheDocument();
+    expect(screen.getByText("校验")).toBeInTheDocument();
   });
 });
 

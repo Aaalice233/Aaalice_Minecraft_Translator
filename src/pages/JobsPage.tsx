@@ -17,11 +17,12 @@ interface Props {
   scanSummary: ScanSummary | null;
   onScanSummaryChange: (summary: ScanSummary) => void;
   settings: { instancePath: string; sourceLanguage: string; targetLanguage: string };
+  onBusyChange?: (busy: boolean) => void;
 }
 
 type TranslationStatus = "idle" | "running" | "completed" | "canceled" | "failed";
 
-export function JobsPage({ language, scanSummary, onScanSummaryChange, settings }: Props) {
+export function JobsPage({ language, scanSummary, onScanSummaryChange, settings, onBusyChange }: Props) {
   const [translateProgress, setTranslateProgress] = useState<TranslateProgress | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<TranslationStatus>("idle");
@@ -32,6 +33,11 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings 
   const logContainerRef = useRef<HTMLDivElement>(null);
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && status === "idle";
+
+  // Sync translation busy state to parent (sidebar)
+  useEffect(() => {
+    onBusyChange?.(isRunning);
+  }, [isRunning, onBusyChange]);
 
   // Register translate-progress listener
   useEffect(() => {
