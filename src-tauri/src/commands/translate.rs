@@ -84,6 +84,7 @@ pub async fn start_translation(
         retry_count: s.retry_count as u32,
         rate_limit_rpm: s.rate_limit_rpm,
         prefer_user_dict: s.prefer_user_dictionary,
+        system_prompt: s.system_prompt,
     });
 
     let config = PipelineConfig {
