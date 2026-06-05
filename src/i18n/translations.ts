@@ -115,6 +115,13 @@ export type TranslationKey =
   | "jobs.logPanel.colTarget"
   | "jobs.logPanel.colMod"
   | "jobs.logPanel.colType"
+  | "jobs.logPanel.colStatus"
+  | "jobs.entryStatus.pending"
+  | "jobs.entryStatus.dictionaryHit"
+  | "jobs.entryStatus.skip"
+  | "jobs.entryStatus.translating"
+  | "jobs.entryStatus.completed"
+  | "jobs.entryStatus.failed"
   | "packages.title"
   | "packages.subtitle"
   | "packages.dryRun"
@@ -394,6 +401,13 @@ const zhCn: TranslationMap = {
   "jobs.logPanel.colTarget": "译文",
   "jobs.logPanel.colMod": "模组",
   "jobs.logPanel.colType": "来源",
+  "jobs.logPanel.colStatus": "状态",
+  "jobs.entryStatus.pending": "待翻译",
+  "jobs.entryStatus.dictionaryHit": "词典命中",
+  "jobs.entryStatus.skip": "跳过",
+  "jobs.entryStatus.translating": "翻译中",
+  "jobs.entryStatus.completed": "已完成",
+  "jobs.entryStatus.failed": "失败",
   "packages.title": "资源包打包",
   "packages.subtitle": "生成翻译资源包并部署到实例",
   "packages.dryRun": "预览",
@@ -656,6 +670,13 @@ const enUs: TranslationMap = {
   "jobs.logPanel.colTarget": "Target",
   "jobs.logPanel.colMod": "Mod",
   "jobs.logPanel.colType": "Type",
+  "jobs.logPanel.colStatus": "Status",
+  "jobs.entryStatus.pending": "Pending",
+  "jobs.entryStatus.dictionaryHit": "Dictionary",
+  "jobs.entryStatus.skip": "Skipped",
+  "jobs.entryStatus.translating": "Translating",
+  "jobs.entryStatus.completed": "Completed",
+  "jobs.entryStatus.failed": "Failed",
   "placeholder.disabled": "Disabled",
   "placeholder.subtitle": "Phase 1 keeps this entry visible; the workflow will be connected later.",
   "placeholder.empty": "This module does not run automatic processing in the current phase.",

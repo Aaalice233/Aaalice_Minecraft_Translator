@@ -1100,3 +1100,73 @@ th.sorted-default .sort-indicator {
   from { opacity: 1; }
   to { opacity: 0; }
 }
+
+/* ── Entry status badges ── */
+.badge-pending { background: #6b7280; color: #fff; }
+.badge-dictionary_hit { background: #3b82f6; color: #fff; }
+.badge-skip { background: #9ca3af; color: #fff; }
+.badge-translating { background: #f59e0b; color: #fff; animation: status-pulse 1.5s ease-in-out infinite; }
+.badge-completed { background: #22c55e; color: #fff; }
+.badge-failed { background: #ef4444; color: #fff; }
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* ── Entry status panel ── */
+.entry-status-panel {
+  border: 1px solid #ded8cc;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: #faf8f5;
+}
+.entry-status-panel h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #45413a;
+}
+.entry-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+  font-size: 13px;
+}
+.entry-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.entry-status-bar {
+  flex: 1;
+  height: 8px;
+  background: #efeade;
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 80px;
+}
+.entry-status-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+.entry-status-count {
+  font-variant-numeric: tabular-nums;
+  min-width: 80px;
+  text-align: right;
+  color: #6b665d;
+  font-size: 12px;
+}
+.entry-status-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #efeade;
+  font-size: 12px;
+  font-weight: 600;
+  color: #45413a;
+}

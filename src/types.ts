@@ -169,6 +169,14 @@ export interface TranslateLogEntry {
   sourceType: string;
 }
 
+export interface EntryProgress {
+  key: string;
+  modName: string;
+  sourceText: string;
+  targetText: string | null;
+  status: "pending" | "dictionary_hit" | "skip" | "translating" | "completed" | "failed";
+}
+
 /** 侧边栏导航项的三态：空闲 / 运行中 / 已完成 */
 export type PageNavStatus = "idle" | "busy" | "completed";
 

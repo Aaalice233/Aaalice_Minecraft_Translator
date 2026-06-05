@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle, FileText, Play, Square, Trash2, XCircle } f
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelTranslation, startTranslation } from "../api/tauri";
 import { t } from "../i18n/translations";
-import type { AppLanguage, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
+import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
 
 function csvQuote(val: string): string {
   const q = String.fromCharCode(34);
@@ -10,6 +10,83 @@ function csvQuote(val: string): string {
     return q + val.replace(new RegExp(q, "g"), q + q) + q;
   }
   return val;
+}
+
+function statusLabel(status: string, lang: AppLanguage): string {
+  const key = `jobs.entryStatus.${status}` as any;
+  const label = t(lang, key);
+  return label || status;
+}
+
+interface EntryStatusCounts {
+  pending: number;
+  dictionary_hit: number;
+  skip: number;
+  translating: number;
+  completed: number;
+  failed: number;
+}
+
+function EntryStatusPanel({
+  entryProgressMap,
+  total,
+  language,
+}: {
+  entryProgressMap: Map<string, EntryProgress>;
+  total: number;
+  language: AppLanguage;
+}) {
+  const counts: EntryStatusCounts = useMemo(() => {
+    const c: EntryStatusCounts = {
+      pending: 0, dictionary_hit: 0, skip: 0,
+      translating: 0, completed: 0, failed: 0,
+    };
+    entryProgressMap.forEach((entry) => {
+      const s = entry.status as keyof EntryStatusCounts;
+      if (s in c) c[s]++;
+    });
+    return c;
+  }, [entryProgressMap]);
+
+  if (total === 0) return null;
+
+  const statuses: Array<{ key: keyof EntryStatusCounts; color: string }> = [
+    { key: "pending", color: "#6b7280" },
+    { key: "dictionary_hit", color: "#3b82f6" },
+    { key: "skip", color: "#9ca3af" },
+    { key: "translating", color: "#f59e0b" },
+    { key: "completed", color: "#22c55e" },
+    { key: "failed", color: "#ef4444" },
+  ];
+
+  return (
+    <div className="entry-status-panel">
+      <h3>翻译状态</h3>
+      {statuses.map(({ key, color }) => (
+        <div className="entry-status-row" key={key}>
+          <span className="entry-status-dot" style={{ background: color }} />
+          <span>{statusLabel(key, language)}</span>
+          <div className="entry-status-bar">
+            <div
+              className="entry-status-bar-fill"
+              style={{
+                width: total > 0 ? `${(counts[key] / total) * 100}%` : "0%",
+                background: color,
+                transition: "width 0.3s ease",
+              }}
+            />
+          </div>
+          <span className="entry-status-count">
+            {counts[key]} / {total}
+          </span>
+        </div>
+      ))}
+      <div className="entry-status-total">
+        <span>总计</span>
+        <span>{total} 条</span>
+      </div>
+    </div>
+  );
 }
 
 interface Props {
@@ -30,6 +107,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
   const [translationResult, setTranslationResult] = useState<number | null>(null);
   const [translationError, setTranslationError] = useState<string>("");
   const [logEntries, setLogEntries] = useState<TranslateLogEntry[]>([]);
+  const [entryProgressMap, setEntryProgressMap] = useState<Map<string, EntryProgress>>(new Map());
   const [filterTerm, setFilterTerm] = useState("");
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
@@ -100,6 +178,35 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     };
   }, []);
 
+  // Register translate-entry-progress listener
+  useEffect(() => {
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
+      return;
+    }
+    let unlistenFn: (() => void) | null = null;
+    let cancelled = false;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      if (cancelled) return;
+      listen("translate-entry-progress", (event) => {
+        const entry = event.payload as EntryProgress;
+        setEntryProgressMap((prev) => {
+          const next = new Map(prev);
+          next.set(entry.key, entry);
+          return next;
+        });
+      }).then((unlisten) => {
+        unlistenFn = unlisten;
+        if (cancelled) unlisten();
+      });
+    }).catch((err) => {
+      console.error("translate-entry-progress listener registration failed:", err);
+    });
+    return () => {
+      cancelled = true;
+      unlistenFn?.();
+    };
+  }, []);
+
   // Auto-scroll log panel only when user is near the bottom
   useEffect(() => {
     const container = logContainerRef.current;
@@ -121,6 +228,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     setTranslationResult(null);
     setTranslationError("");
     setLogEntries([]); // clear log from previous run
+    setEntryProgressMap(new Map());
 
     try {
       const result = await startTranslation(
@@ -344,6 +452,15 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
         </div>
       )}
 
+      {/* Entry status panel */}
+      {(isRunning || status === "completed") && (
+        <EntryStatusPanel
+          entryProgressMap={entryProgressMap}
+          total={scanSummary?.actualPendingEntries ?? 0}
+          language={language}
+        />
+      )}
+
       {/* Log panel (always visible) */}
       <div className="log-panel" style={{ marginTop: isRunning || status !== "idle" ? 16 : 0 }}>
         <div className="log-panel-header">
@@ -376,6 +493,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                   <th>{t(language, "jobs.logPanel.colTarget")}</th>
                   <th>{t(language, "jobs.logPanel.colMod")}</th>
                   <th>{t(language, "jobs.logPanel.colType")}</th>
+                  <th>{t(language, "jobs.logPanel.colStatus")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -386,6 +504,14 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                     <td title={entry.targetText}>{entry.targetText}</td>
                     <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
                     <td><span className="badge">{entry.sourceType}</span></td>
+                    <td>
+                      {(() => {
+                        const ep = entryProgressMap.get(entry.key);
+                        const status = ep ? ep.status : (entry.sourceType === "llm" ? "completed" : entry.sourceType);
+                        const label = statusLabel(status, language);
+                        return <span className={`badge badge-${status}`}>{label}</span>;
+                      })()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
