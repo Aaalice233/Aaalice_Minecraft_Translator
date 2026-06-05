@@ -10,6 +10,7 @@ pub fn run() {
         .ok();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|_app| {
             core::logging::init_main_log(&core::paths::runtime_root()?)?;
             Ok(())
@@ -20,6 +21,7 @@ pub fn run() {
             commands::validate_instance,
             commands::scan_instance,
             commands::cancel_scan,
+            commands::pick_instance_folder,
             commands::open_path,
             commands::fetch_llm_models,
             // P2: Dictionary

@@ -1,5 +1,0 @@
-{"t":0,"agent":"a6bef23","agent_type":"security-reviewer","event":"agent_start","parent_mode":"none"}
-{"t":0,"agent":"a81671d","agent_type":"code-reviewer","event":"agent_start","parent_mode":"none"}
-{"t":0,"agent":"a6bef23","agent_type":"security-reviewer","event":"agent_stop","success":true,"duration_ms":63477}
-{"t":0,"agent":"a81671d","agent_type":"code-reviewer","event":"agent_stop","success":true,"duration_ms":161797}
-{"t":0,"agent":"system","event":"skill_invoked","skill_name":"oh-my-claudecode:cancel"}
