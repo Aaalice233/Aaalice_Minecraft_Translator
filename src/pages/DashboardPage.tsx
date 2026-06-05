@@ -1,5 +1,5 @@
-import { AlertTriangle, FolderOpen, Loader2, RefreshCcw, ScanLine, Square } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Filter, FolderOpen, Loader2, RefreshCcw, ScanLine, Square, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import type { AppLanguage, ScanProgressEvent, ScanSummary, Settings } from "../types";
@@ -28,6 +28,10 @@ export function DashboardPage({
   const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [error, setError] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  const [filters, setFilters] = useState<Record<string, string | { min?: number; max?: number }>>({});
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
   const copyFlash = useCallback(async (text: string, key: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -55,6 +59,81 @@ export function DashboardPage({
     [language, scanSummary],
   );
 
+  const processedMods = useMemo(() => {
+    const mods = scanSummary?.mods ?? [];
+    let result = mods;
+
+    // Apply filters
+    const activeFilterKeys = Object.keys(filters);
+    if (activeFilterKeys.length > 0) {
+      result = result.filter((mod) =>
+        activeFilterKeys.every((col) => {
+          const value = filters[col];
+          if (value == null) return true;
+          switch (col) {
+            case "fileName":
+              return typeof value === "string" && mod.fileName.toLowerCase().includes(value.toLowerCase());
+            case "modId":
+              return typeof value === "string" && mod.modId.toLowerCase().includes(value.toLowerCase());
+            case "formats":
+              return typeof value === "string" && (value === "" || mod.formats.some((f) => f === value));
+            case "languageFileCount":
+              if (typeof value === "object" && "min" in value) {
+                return (!value.min || mod.languageFileCount >= Number(value.min)) &&
+                       (!value.max || mod.languageFileCount <= Number(value.max));
+              }
+              return true;
+            case "pending": {
+              const pending = getPending(mod);
+              if (typeof value === "object" && "min" in value) {
+                return (!value.min || pending >= Number(value.min)) &&
+                       (!value.max || pending <= Number(value.max));
+              }
+              return true;
+            }
+            case "hasTargetLanguage":
+              if (value === "") return true;
+              return mod.hasTargetLanguage === (value === "true");
+            default:
+              return true;
+          }
+        }),
+      );
+    }
+
+    // Apply sorting
+    if (sortConfig) {
+      result = [...result].sort((a, b) => {
+        const dir = sortConfig.direction === "asc" ? 1 : -1;
+        let cmp = 0;
+        switch (sortConfig.key) {
+          case "fileName":
+            cmp = a.fileName.localeCompare(b.fileName);
+            break;
+          case "modId":
+            cmp = a.modId.localeCompare(b.modId);
+            break;
+          case "formats":
+            cmp = a.formats.join("/").localeCompare(b.formats.join("/"));
+            break;
+          case "languageFileCount":
+            cmp = a.languageFileCount - b.languageFileCount;
+            break;
+          case "pending":
+            cmp = getPending(a) - getPending(b);
+            break;
+          case "hasTargetLanguage":
+            cmp = Number(a.hasTargetLanguage) - Number(b.hasTargetLanguage);
+            break;
+        }
+        return cmp * dir;
+      });
+    }
+    // if sortConfig is null, keep original backend sort (fileName asc)
+
+    return result;
+  }, [scanSummary?.mods, sortConfig, filters]);
+
   // Register scan-progress listener — only in real Tauri runtime
   useEffect(() => {
     if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
@@ -79,6 +158,18 @@ export function DashboardPage({
     };
   }, []);
 
+  // Click outside to close filter popover
+  useEffect(() => {
+    if (!openFilter) return;
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setOpenFilter(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openFilter]);
+
   async function handleCancel() {
     setIsCancelling(true);
     try {
@@ -95,6 +186,9 @@ export function DashboardPage({
     setIsCancelling(false);
     setScanProgress(null);
     setError("");
+    setSortConfig(null);
+    setFilters({});
+    setOpenFilter(null);
     onScanStart?.();
     try {
       const nextSettings = { ...settings, instancePath };
@@ -112,6 +206,35 @@ export function DashboardPage({
       setIsScanning(false);
       setIsCancelling(false);
     }
+  }
+
+  function handleSort(column: string) {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== column) return { key: column, direction: "asc" };
+      if (prev.direction === "asc") return { key: column, direction: "desc" };
+      return null; // back to default (fileName asc)
+    });
+    setOpenFilter(null);
+  }
+
+  function toggleFilter(column: string) {
+    setOpenFilter((prev) => (prev === column ? null : column));
+  }
+
+  function handleFilterChange(column: string, value: string | { min?: number; max?: number } | null) {
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (value === null || value === "" || (typeof value === "object" && !("min" in value) && !("max" in value))) {
+        delete next[column];
+      } else {
+        next[column] = value;
+      }
+      return next;
+    });
+  }
+
+  function getPending(mod: { sourceEntries: number; targetEntries: number }): number {
+    return Math.max(0, mod.sourceEntries - mod.targetEntries);
   }
 
   return (
@@ -245,22 +368,144 @@ export function DashboardPage({
         <section className="panel">
           <div className="panel-title">
             <h2>{t(language, "dashboard.modsTitle")}</h2>
-            <span>{scanSummary ? scanSummary.mods.length : t(language, "dashboard.waiting")}</span>
+            <span>{scanSummary ? `${processedMods.length} / ${scanSummary.mods.length}` : t(language, "dashboard.waiting")}</span>
           </div>
           <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>{t(language, "dashboard.column.mod")}</th>
-                  <th>{t(language, "dashboard.column.modId")}</th>
-                  <th>{t(language, "dashboard.column.format")}</th>
-                  <th>{t(language, "dashboard.column.langFiles")}</th>
-                  <th>{t(language, "dashboard.column.pending")}</th>
-                  <th>{t(language, "dashboard.column.status")}</th>
+                  {[
+                    { key: "fileName", label: t(language, "dashboard.column.mod") },
+                    { key: "modId", label: t(language, "dashboard.column.modId") },
+                    { key: "formats", label: t(language, "dashboard.column.format") },
+                    { key: "languageFileCount", label: t(language, "dashboard.column.langFiles") },
+                    { key: "pending", label: t(language, "dashboard.column.pending") },
+                    { key: "hasTargetLanguage", label: t(language, "dashboard.column.status") },
+                  ].map((col) => {
+                    const isActiveSort = sortConfig?.key === col.key;
+                    const isDefaultSort = !sortConfig && col.key === "fileName";
+                    const hasActiveFilter = col.key in filters;
+                    return (
+                      <th
+                        key={col.key}
+                        className={[
+                          "sortable",
+                          isActiveSort ? (sortConfig.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
+                          isDefaultSort ? "sorted-default" : "",
+                        ].filter(Boolean).join(" ")}
+                        onClick={() => handleSort(col.key)}
+                      >
+                        <span className="th-filter-wrap">
+                          {col.label}
+                          {(isActiveSort || isDefaultSort) && (
+                            <span className="sort-indicator">
+                              {isActiveSort ? (sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
+                            </span>
+                          )}
+                          <button
+                            className={[
+                              "th-filter-btn",
+                              hasActiveFilter ? "has-filter" : "",
+                              openFilter === col.key ? "active" : "",
+                            ].filter(Boolean).join(" ")}
+                            onClick={(e) => { e.stopPropagation(); toggleFilter(col.key); }}
+                            type="button"
+                            aria-label={`Filter ${col.label}`}
+                          >
+                            <Filter size={13} />
+                          </button>
+                          {openFilter === col.key && (
+                            <div
+                              className={["filter-popover", (col.key === "pending" || col.key === "hasTargetLanguage") ? "popover-right" : ""].filter(Boolean).join(" ")}
+                              ref={filterRef}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={() => {}}
+                            >
+                              <div className="filter-popover-header">
+                                <span>{col.label}</span>
+                                <button
+                                  className="filter-popover-clear"
+                                  onClick={() => { handleFilterChange(col.key, null); }}
+                                  type="button"
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                              {(col.key === "fileName" || col.key === "modId") && (
+                                <input
+                                  type="text"
+                                  value={(filters[col.key] as string) || ""}
+                                  onChange={(e) => handleFilterChange(col.key, e.target.value)}
+                                  placeholder={t(language, "dashboard.filterSearch")}
+                                  autoFocus
+                                />
+                              )}
+                              {col.key === "formats" && (
+                                <select
+                                  value={(filters.formats as string) || ""}
+                                  onChange={(e) => handleFilterChange("formats", e.target.value || null)}
+                                  autoFocus
+                                >
+                                  <option value="">全部格式</option>
+                                  <option value="json">json</option>
+                                  <option value="lang">lang</option>
+                                </select>
+                              )}
+                              {(col.key === "languageFileCount" || col.key === "pending") && (
+                                <div>
+                                  <div className="number-range-row">
+                                    <span>从</span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={(filters[col.key] as any)?.min ?? ""}
+                                      onChange={(e) => {
+                                        const prev = (filters[col.key] as any) || {};
+                                        handleFilterChange(col.key, { min: e.target.value === "" ? undefined : Number(e.target.value), max: prev.max });
+                                      }}
+                                      autoFocus
+                                    />
+                                  </div>
+                                  <div className="number-range-row">
+                                    <span>到</span>
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      value={(filters[col.key] as any)?.max ?? ""}
+                                      onChange={(e) => {
+                                        const prev = (filters[col.key] as any) || {};
+                                        handleFilterChange(col.key, { min: prev.min, max: e.target.value === "" ? undefined : Number(e.target.value) });
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                              {col.key === "hasTargetLanguage" && (
+                                <select
+                                  value={(filters.hasTargetLanguage as string) ?? ""}
+                                  onChange={(e) => handleFilterChange("hasTargetLanguage", e.target.value ?? null)}
+                                  autoFocus
+                                >
+                                  <option value="">全部状态</option>
+                                  <option value="true">{t(language, "dashboard.hasTarget")}</option>
+                                  <option value="false">{t(language, "dashboard.needsTranslation")}</option>
+                                </select>
+                              )}
+                            </div>
+                          )}
+                        </span>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
-                {(scanSummary?.mods ?? []).map((mod) => (
+                {scanSummary && processedMods.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>{t(language, "dashboard.filterEmpty")}</td>
+                  </tr>
+                )}
+                {processedMods.map((mod) => (
                   <tr key={mod.jarPath}>
                     <td
                       className="copy-cell mod-name"
@@ -284,7 +529,7 @@ export function DashboardPage({
                     </td>
                     <td>{mod.formats.join(" / ") || "-"}</td>
                     <td>{mod.languageFileCount}</td>
-                    <td>{Math.max(0, mod.sourceEntries - mod.targetEntries)}</td>
+                    <td>{getPending(mod)}</td>
                     <td>
                       <span className={mod.hasTargetLanguage ? "badge success" : "badge muted"}>
                         {mod.hasTargetLanguage ? t(language, "dashboard.hasTarget") : t(language, "dashboard.needsTranslation")}

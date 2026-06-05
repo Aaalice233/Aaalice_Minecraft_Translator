@@ -50,6 +50,8 @@ export type TranslationKey =
   | "dashboard.column.target"
   | "dashboard.column.pending"
   | "dashboard.column.status"
+  | "dashboard.filterEmpty"
+  | "dashboard.filterSearch"
   | "dashboard.emptyScan"
   | "dashboard.hasTarget"
   | "dashboard.needsTranslation"
@@ -289,6 +291,8 @@ const zhCn: TranslationMap = {
   "dashboard.column.target": "目标",
   "dashboard.column.pending": "待翻译",
   "dashboard.column.status": "状态",
+  "dashboard.filterEmpty": "没有匹配的模组。尝试调整过滤条件。",
+  "dashboard.filterSearch": "搜索...",
   "dashboard.emptyScan": "选择实例并开始扫描后显示结果。",
   "dashboard.hasTarget": "已有目标语言",
   "dashboard.needsTranslation": "待翻译",
@@ -494,6 +498,8 @@ const enUs: TranslationMap = {
   "dashboard.column.target": "Target",
   "dashboard.column.pending": "Pending",
   "dashboard.column.status": "Status",
+  "dashboard.filterEmpty": "No matching mods. Try adjusting filters.",
+  "dashboard.filterSearch": "Search...",
   "dashboard.emptyScan": "Select an instance and start scanning to show results.",
   "dashboard.hasTarget": "Target exists",
   "dashboard.needsTranslation": "Needs translation",
@@ -636,6 +642,8 @@ const jaJp: TranslationMap = {
   "dashboard.column.source": "元",
   "dashboard.column.target": "対象",
   "dashboard.column.status": "状態",
+  "dashboard.filterEmpty": "一致する Mod がありません。フィルターを調整してください。",
+  "dashboard.filterSearch": "検索...",
   "dashboard.emptyScan": "インスタンスを選択してスキャンを開始すると結果が表示されます。",
   "dashboard.hasTarget": "対象言語あり",
   "dashboard.needsTranslation": "翻訳待ち",
@@ -758,6 +766,8 @@ const koKr: TranslationMap = {
   "dashboard.column.source": "원본",
   "dashboard.column.target": "대상",
   "dashboard.column.status": "상태",
+  "dashboard.filterEmpty": "일치하는 모드가 없습니다. 필터를 조정해 보세요.",
+  "dashboard.filterSearch": "검색...",
   "dashboard.emptyScan": "인스턴스를 선택하고 스캔을 시작하면 결과가 표시됩니다.",
   "dashboard.hasTarget": "대상 언어 있음",
   "dashboard.needsTranslation": "번역 필요",
