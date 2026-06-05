@@ -43,6 +43,11 @@ pub struct LlmClient {
     pub batch_size: usize,
     pub retry_count: u32,
     pub timeout_secs: u64,
+    pub system_prompt: String,
+    /// 有效并发数（运行时动态调整，用于限流适应）
+    pub effective_concurrency: std::sync::atomic::AtomicUsize,
+    /// 连续 429 错误计数（达到阈值后主动降速）
+    pub consecutive_429s: std::sync::atomic::AtomicUsize,
 }
 
 impl LlmClient {
@@ -69,6 +74,7 @@ impl LlmClient {
     pub fn translate_batch(
         &self,
         entries: &[TranslationEntry],
+        on_batch_complete: Option<&(dyn Fn(&[TranslateResult]) + Sync)>,
     ) -> (Vec<TranslateResult>, Option<super::models::TokenUsage>) {
         if entries.is_empty() {
             return (Vec::new(), None);
@@ -78,12 +84,12 @@ impl LlmClient {
         let target_lang = &entries[0].target_lang;
         let prompt = build_prompt(entries, source_lang, target_lang);
 
-        let body = serde_json::json!({
+        let mut body = serde_json::json!({
             "model": self.model,
             "messages": [
                 {
                     "role": "system",
-                    "content": "你是 Minecraft 模组翻译助手。严格按 JSON 数组格式返回翻译结果，保留所有格式代码（%s、%d、§a 等）和占位符。只返回 JSON，不要附加任何解释。"
+                    "content": &self.system_prompt
                 },
                 {
                     "role": "user",
@@ -91,9 +97,13 @@ impl LlmClient {
                 }
             ],
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens.max(2048),
             "response_format": { "type": "json_object" },
         });
+
+        // max_tokens = 0 表示不限制，交给 API 服务端决定输出上限
+        if self.max_tokens > 0 {
+            body["max_tokens"] = serde_json::json!(self.max_tokens);
+        }
 
         let url = format!("{}/v1/chat/completions", self.base_url.trim_end_matches('/'));
 
@@ -132,8 +142,31 @@ impl LlmClient {
             match send_request(&client, &url, &self.api_key, &body) {
                 Ok(response_body) => {
                     let token_usage = extract_token_usage(&response_body);
-                    match parse_response(&response_body, entries) {
-                        Ok(results) => return (results, token_usage),
+                    // 从 API 响应结构中提取 content 字段
+                    let content_str = match response_body
+                        .get("choices")
+                        .and_then(|c| c.as_array())
+                        .and_then(|c| c.first())
+                        .and_then(|c| c.get("message"))
+                        .and_then(|m| m.get("content"))
+                        .and_then(|c| c.as_str())
+                    {
+                        Some(s) => s,
+                        None => {
+                            last_error = format!(
+                                "API 响应结构异常: choices/message/content 路径缺失: {}",
+                                serde_json::to_string(&response_body).unwrap_or_default()
+                            );
+                            continue;
+                        }
+                    };
+                    match healing_parse_response(content_str, entries) {
+                        Ok(results) => {
+                            if let Some(cb) = on_batch_complete {
+                                cb(&results);
+                            }
+                            return (results, token_usage);
+                        }
                         Err(e) => {
                             last_error = format!("解析响应失败: {e}");
                             continue;
@@ -226,6 +259,15 @@ fn send_request(
         .map_err(|e| format!("HTTP 请求失败: {e}"))?;
 
     let status = response.status();
+    if status == 429 {
+        let retry_after = response
+            .headers()
+            .get("retry-after")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(30);
+        return Err(format!("RATE_LIMITED:{}", retry_after));
+    }
     if !status.is_success() {
         let status_code = status.as_u16();
         let response_text = response.text().unwrap_or_default();
@@ -247,6 +289,132 @@ fn extract_token_usage(response_body: &Value) -> Option<super::models::TokenUsag
         completion_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
         total_tokens: usage.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
     })
+}
+
+/// 多层容错解析 LLM 响应文本
+fn healing_parse_response(
+    content: &str,
+    entries: &[TranslationEntry],
+) -> Result<Vec<TranslateResult>, String> {
+    if content.trim().is_empty() {
+        return Err("LLM 返回内容为空".to_string());
+    }
+
+    // 第 1 层：直接解析
+    if let Ok(val) = serde_json::from_str::<Value>(content) {
+        return parse_translations_from_value(&val, entries);
+    }
+
+    // 第 2 层：修复常见错误后解析
+    let fixed = fix_json_errors(content);
+    if fixed != content {
+        if let Ok(val) = serde_json::from_str::<Value>(&fixed) {
+            return parse_translations_from_value(&val, entries);
+        }
+    }
+
+    // 第 3 层：提取 markdown 代码块
+    if let Some(start) = content.find("```") {
+        let after = &content[start + 3..];
+        let code = if let Some(end) = after.find("```") {
+            &after[..end]
+        } else {
+            after
+        };
+        let trimmed = code.trim().trim_start_matches("json").trim();
+        if !trimmed.is_empty() {
+            let fixed = fix_json_errors(trimmed);
+            if let Ok(val) = serde_json::from_str::<Value>(&fixed) {
+                return parse_translations_from_value(&val, entries);
+            }
+        }
+    }
+
+    // 第 4 层：逐行解析
+    let mut pairs = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim().trim_end_matches(',').trim();
+        if trimmed.starts_with('{') && trimmed.contains("\"key\"") {
+            let fixed = fix_json_errors(trimmed);
+            if let Ok(v) = serde_json::from_str::<Value>(&fixed) {
+                if let (Some(key), Some(text)) = (
+                    v.get("key").and_then(|k| k.as_str()),
+                    v.get("text").or(v.get("translation")).and_then(|t| t.as_str()),
+                ) {
+                    pairs.push((key.to_string(), text.to_string()));
+                }
+            }
+        }
+    }
+
+    if !pairs.is_empty() {
+        return Ok(map_results(pairs, entries));
+    }
+
+    Err(format!("无法解析 LLM 响应: {}", &content[..content.len().min(200)]))
+}
+
+/// 修复常见 JSON 格式错误
+fn fix_json_errors(s: &str) -> String {
+    let mut s = s.to_string();
+    // 去掉 markdown 代码块标记
+    s = s.replace("```json", "").replace("```", "");
+    // 去掉尾部逗号（JSON 不允许）
+    s = s.trim().to_string();
+    if s.ends_with(',') {
+        s.pop();
+    }
+    // 去掉闭合括号前的多余逗号（如 {"key":"a","text":"b",} 或 [{"key":"a"},]）
+    while s.contains(",]") || s.contains(",}") {
+        s = s.replace(",]", "]");
+        s = s.replace(",}", "}");
+    }
+    // 替换单引号为双引号（只在非转义上下文中）
+    s = s.replace('\'', "\"");
+    s
+}
+
+/// 从已解析的 Value 中提取 translations 数组
+fn parse_translations_from_value(parsed: &Value, entries: &[TranslationEntry]) -> Result<Vec<TranslateResult>, String> {
+    let translations = parsed
+        .get("translations")
+        .or_else(|| if parsed.is_array() { Some(parsed) } else { None })
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "JSON 缺少 translations 数组".to_string())?;
+
+    let mut pairs = Vec::new();
+    for item in translations {
+        let key = item.get("key").and_then(|k| k.as_str()).unwrap_or_default();
+        let text = item.get("text").or(item.get("translation")).and_then(|t| t.as_str()).unwrap_or_default();
+        if !key.is_empty() && !text.is_empty() {
+            pairs.push((key.to_string(), text.to_string()));
+        }
+    }
+
+    Ok(map_results(pairs, entries))
+}
+
+/// 将 (key, text) 对映射回 entries 顺序
+fn map_results(pairs: Vec<(String, String)>, entries: &[TranslationEntry]) -> Vec<TranslateResult> {
+    let map: std::collections::HashMap<&str, &str> = pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    entries.iter().map(|e| {
+        match map.get(e.key.as_str()) {
+            Some(text) => TranslateResult {
+                key: e.key.clone(),
+                original_text: e.text.clone(),
+                translated_text: text.to_string(),
+                success: true,
+                error: None,
+            },
+            None => TranslateResult {
+                key: e.key.clone(),
+                original_text: e.text.clone(),
+                translated_text: e.text.clone(),
+                success: false,
+                error: Some("LLM 响应中未找到该条目".to_string()),
+            },
+        }
+    }).collect()
 }
 
 /// Extract the assistant's message content from the API response and
@@ -443,5 +611,140 @@ mod tests {
         assert!(prompt.contains("item.a"));
         assert!(prompt.contains("英文"));
         assert!(prompt.contains("简体中文"));
+    }
+
+    // ── healing_parse_response tests ─────────────────────────────────
+
+    fn sample_entries() -> Vec<TranslationEntry> {
+        vec![
+            TranslationEntry {
+                key: "item.a".into(),
+                text: "Item A".into(),
+                mod_id: "test".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+            },
+            TranslationEntry {
+                key: "item.b".into(),
+                text: "Item B".into(),
+                mod_id: "test".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+            },
+        ]
+    }
+
+    #[test]
+    fn healing_normal_valid_json() {
+        let content = r#"{"translations": [{"key": "item.a", "text": "物品A"}, {"key": "item.b", "text": "物品B"}]}"#;
+        let results = healing_parse_response(content, &sample_entries()).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].translated_text, "物品A");
+        assert_eq!(results[1].translated_text, "物品B");
+        assert!(results[0].success);
+        assert!(results[1].success);
+    }
+
+    #[test]
+    fn healing_trailing_comma() {
+        // 带尾部逗号的 JSON
+        let content = r#"{"translations": [{"key": "item.a", "text": "物品A",}, {"key": "item.b", "text": "物品B",},]}"#;
+        let results = healing_parse_response(content, &sample_entries()).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].translated_text, "物品A");
+        assert_eq!(results[1].translated_text, "物品B");
+    }
+
+    #[test]
+    fn healing_single_quotes() {
+        // 单引号替换为双引号
+        let content = r#"{'translations': [{'key': 'item.a', 'text': '物品A'}, {'key': 'item.b', 'text': '物品B'}]}"#;
+        let results = healing_parse_response(content, &sample_entries()).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].translated_text, "物品A");
+        assert_eq!(results[1].translated_text, "物品B");
+    }
+
+    #[test]
+    fn healing_markdown_code_block() {
+        let content = "```json\n{\"translations\": [{\"key\": \"item.a\", \"text\": \"物品A\"}, {\"key\": \"item.b\", \"text\": \"物品B\"}]}\n```";
+        let results = healing_parse_response(content, &sample_entries()).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].translated_text, "物品A");
+        assert_eq!(results[1].translated_text, "物品B");
+    }
+
+    #[test]
+    fn healing_markdown_code_block_with_label() {
+        let content = "```json\n{\"translations\": [{\"key\": \"item.a\", \"text\": \"物品A\"}]}\n```";
+        let entries = vec![
+            TranslationEntry {
+                key: "item.a".into(),
+                text: "Item A".into(),
+                mod_id: "test".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+            },
+        ];
+        let results = healing_parse_response(content, &entries).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].translated_text, "物品A");
+    }
+
+    #[test]
+    fn healing_empty_content() {
+        let result = healing_parse_response("", &sample_entries());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("空"));
+
+        let result = healing_parse_response("  ", &sample_entries());
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn healing_line_by_line_recovery() {
+        // 每一行都是一个独立的对象，但整体不是合法 JSON
+        let content = "{\"key\": \"item.a\", \"text\": \"物品A\"}\n{\"key\": \"item.b\", \"text\": \"物品B\"}";
+        let results = healing_parse_response(content, &sample_entries()).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].translated_text, "物品A");
+        assert_eq!(results[1].translated_text, "物品B");
+    }
+
+    #[test]
+    fn healing_partial_recovery() {
+        // 只有部分条目可恢复
+        let content = "{\"key\": \"item.a\", \"text\": \"物品A\"}\n垃圾行\n{\"key\": \"item.b\", \"text\": \"物品B\"}";
+        let results = healing_parse_response(content, &sample_entries()).unwrap();
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].translated_text, "物品A");
+        assert_eq!(results[1].translated_text, "物品B");
+    }
+
+    #[test]
+    fn healing_translation_field() {
+        // 使用 translation 而非 text 字段
+        let content = r#"{"translations": [{"key": "item.a", "translation": "物品A"}]}"#;
+        let entries = vec![
+            TranslationEntry {
+                key: "item.a".into(),
+                text: "Item A".into(),
+                mod_id: "test".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+            },
+        ];
+        let results = healing_parse_response(content, &entries).unwrap();
+        assert_eq!(results[0].translated_text, "物品A");
+    }
+
+    #[test]
+    fn healing_missing_entry_marked_failed() {
+        let content = r#"{"translations": [{"key": "item.a", "text": "物品A"}]}"#;
+        let results = healing_parse_response(content, &sample_entries()).unwrap();
+        assert!(results[0].success);
+        assert!(!results[1].success);
+        assert_eq!(results[0].translated_text, "物品A");
+        assert_eq!(results[1].translated_text, "Item B"); // fallback = source
     }
 }

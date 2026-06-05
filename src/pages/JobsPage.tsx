@@ -34,7 +34,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
 
-  const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed");
+  const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
 
   // Sync translation busy state to parent (sidebar)
   useEffect(() => {

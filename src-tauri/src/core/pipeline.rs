@@ -249,15 +249,25 @@ pub fn run_pipeline(
             batch_size: llm_cfg.batch_size,
             retry_count: llm_cfg.retry_count,
             timeout_secs: llm_cfg.timeout_secs,
+            system_prompt: llm_cfg.system_prompt.clone(),
+            effective_concurrency: std::sync::atomic::AtomicUsize::new(llm_cfg.concurrency),
+            consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
         };
 
         client.validate()?;
+
+        // Build key → (mod_id, file_name) mapping before the LLM loop,
+        // so LLM results retain metadata even though TranslateResult doesn't carry it.
+        let key_to_meta: std::collections::HashMap<&str, (&str, &str)> = llm_only_entries
+            .iter()
+            .map(|(entry, file_name)| (entry.key.as_str(), (entry.mod_id.as_str(), *file_name)))
+            .collect();
 
         let _ = progress_tx.send(PipelineProgress {
             current: 0, total: total_llm_batches,
             phase: PipelinePhase::Translating,
             mod_name: String::new(),
-            sub_step: Some("0/0 批次".into()),
+            sub_step: Some(format!("0/{total_llm_batches} 批次")),
             stage_status: StageStatus::Running,
         });
 
@@ -291,7 +301,7 @@ pub fn run_pipeline(
                     .iter()
                     .map(|batch| {
                         s.spawn(|| {
-                            let (results, token_usage) = client.translate_batch(batch);
+                            let (results, token_usage) = client.translate_batch(batch, None);
                             let token = token_usage.unwrap_or_default();
                             // Convert TranslateResult to TranslationResult
                             let converted: Vec<jobs::TranslationResult> = results
@@ -314,14 +324,26 @@ pub fn run_pipeline(
                     .collect()
             });
 
+            // Restore mod_id/mod_name from the pre-built lookup table
+            let set_mod_meta = |entry: &mut jobs::TranslationResult| {
+                if let Some(&(mid, fname)) = key_to_meta.get(entry.key.as_str()) {
+                    if entry.mod_id.is_empty() { entry.mod_id = mid.to_string(); }
+                    if entry.mod_name.is_empty() { entry.mod_name = fname.to_string(); }
+                }
+            };
+
             for (results, token) in &wave_results {
-                for entry in results {
+                // Token usage: add ONCE per batch, not per-entry
+                accumulated_token_usage.prompt_tokens += token.prompt_tokens;
+                accumulated_token_usage.completion_tokens += token.completion_tokens;
+                accumulated_token_usage.total_tokens += token.total_tokens;
+
+                let mut wave_llm_count = 0usize;
+                for mut entry in results.iter().cloned() {
                     if entry.source_type == "llm" {
-                        llm_count += 1;
+                        wave_llm_count += 1;
                     }
-                    accumulated_token_usage.prompt_tokens += token.prompt_tokens;
-                    accumulated_token_usage.completion_tokens += token.completion_tokens;
-                    accumulated_token_usage.total_tokens += token.total_tokens;
+                    set_mod_meta(&mut entry);
                     let _ = log_tx.send(TranslateLogEntry {
                         key: entry.key.clone(),
                         source_text: entry.source_text.clone(),
@@ -329,11 +351,11 @@ pub fn run_pipeline(
                         mod_name: entry.mod_name.clone(),
                         source_type: entry.source_type.clone(),
                     });
-                    batch_results.push(entry.clone());
+                    batch_results.push(entry);
                 }
+                llm_count += wave_llm_count;
+                processed += wave_llm_count;
             }
-
-            processed += llm_count;
 
             let _ = progress_tx.send(PipelineProgress {
                 current: wave_end.min(total_llm_batches),

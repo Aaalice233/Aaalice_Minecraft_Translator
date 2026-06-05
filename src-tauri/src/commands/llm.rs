@@ -87,6 +87,9 @@ pub fn check_llm_connection(base_url: String, api_key: String, model: String) ->
         batch_size: 1,
         retry_count: 1,
         timeout_secs: 30,
+        system_prompt: String::new(),
+        effective_concurrency: std::sync::atomic::AtomicUsize::new(1),
+        consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
     };
     client.validate()?;
     Ok(true)

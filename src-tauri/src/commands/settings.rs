@@ -10,6 +10,6 @@ pub fn get_settings() -> Result<Settings, String> {
 }
 
 #[tauri::command]
-pub fn save_settings(s: Settings) -> Result<(), String> {
-    settings::save_settings(&paths::runtime_root().map_err(to_message)?, &s).map_err(to_message)
+pub fn save_settings(settings: Settings) -> Result<(), String> {
+    settings::save_settings(&paths::runtime_root().map_err(to_message)?, &settings).map_err(to_message)
 }
