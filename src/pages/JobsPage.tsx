@@ -4,6 +4,14 @@ import { cancelTranslation, startTranslation } from "../api/tauri";
 import { t } from "../i18n/translations";
 import type { AppLanguage, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
 
+function csvQuote(val: string): string {
+  const q = String.fromCharCode(34);
+  if (val.indexOf(",") >= 0 || val.indexOf(q) >= 0 || val.indexOf(" ") >= 0) {
+    return q + val.replace(new RegExp(q, "g"), q + q) + q;
+  }
+  return val;
+}
+
 interface Props {
   language: AppLanguage;
   scanSummary: ScanSummary | null;
@@ -161,7 +169,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings 
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
       await navigator.clipboard.writeText(
-        `${entry.key}: ${entry.sourceText} -> ${entry.targetText}`,
+        `${csvQuote(entry.key)} | ${csvQuote(entry.sourceText)} | ${csvQuote(entry.targetText)} | ${csvQuote(entry.modName)}`,
       );
     } catch {
       // clipboard not available
@@ -344,8 +352,8 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings 
                 {filteredEntries.map((entry, idx) => (
                   <tr key={`${entry.key}-${idx}`} className="copy-log-row" onClick={() => copyEntry(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
                     <td>{entry.key}</td>
-                    <td>{entry.sourceText}</td>
-                    <td>{entry.targetText}</td>
+                    <td title={entry.sourceText}>{entry.sourceText}</td>
+                    <td title={entry.targetText}>{entry.targetText}</td>
                     <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
                     <td><span className="badge">{entry.sourceType}</span></td>
                   </tr>

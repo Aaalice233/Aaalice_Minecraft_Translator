@@ -280,9 +280,25 @@ export function DashboardPage({
             placeholder={t(language, "dashboard.instancePlaceholder")}
           />
         </label>
-        <button className="ghost-button" type="button">
-          <FolderOpen size={17} />
-          {t(language, "dashboard.pickInstance")}
+<button
+        className="ghost-button"
+        type="button"
+        onClick={async () => {
+          try {
+            const { invoke } = await import("@tauri-apps/api/core");
+            const selected: string | null = await invoke("pick_instance_folder", {
+                locale: localeByAppLanguage[language],
+              });
+            if (selected) {
+              setInstancePath(selected);
+            }
+          } catch (err) {
+            console.error("Failed to pick folder:", err);
+          }
+        }}
+        >
+        <FolderOpen size={17} />
+        {t(language, "dashboard.pickInstance")}
         </button>
         <button className="ghost-button" disabled={isScanning} onClick={handleScan} type="button">
           <RefreshCcw size={17} />
