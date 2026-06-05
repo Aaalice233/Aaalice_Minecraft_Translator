@@ -369,8 +369,18 @@ fn fix_json_errors(s: &str) -> String {
         s = s.replace(",]", "]");
         s = s.replace(",}", "}");
     }
-    // 替换单引号为双引号（只在非转义上下文中）
-    s = s.replace('\'', "\"");
+    // 只在 JSON 结构边界处将单引号替换为双引号
+    // （避免误伤文本内容中的撇号，如 "Miner's Helmet"）
+    s = s.replace(":'", ":\"");
+    s = s.replace("':", "\":");
+    s = s.replace("',", "\",");
+    s = s.replace("'}", "\"}");
+    s = s.replace("' ]", "\" ]");
+    s = s.replace("']", "\"]");
+    s = s.replace("{'", "{\"");
+    s = s.replace("['", "[\"");
+    s = s.replace(": '", ": \"");
+    s = s.replace(", '", ", \"");
     s
 }
 
@@ -417,201 +427,11 @@ fn map_results(pairs: Vec<(String, String)>, entries: &[TranslationEntry]) -> Ve
     }).collect()
 }
 
-/// Extract the assistant's message content from the API response and
-/// parse it back into per-entry results.
-fn parse_response(
-    response_body: &Value,
-    entries: &[TranslationEntry],
-) -> Result<Vec<TranslateResult>, String> {
-    // Navigate: response.choices[0].message.content
-    let content = response_body
-        .get("choices")
-        .and_then(|c| c.as_array())
-        .and_then(|c| c.first())
-        .and_then(|c| c.get("message"))
-        .and_then(|m| m.get("content"))
-        .and_then(|c| c.as_str())
-        .ok_or_else(|| {
-            format!(
-                "API 响应结构异常: choices/message/content 路径缺失: {}",
-                serde_json::to_string(&response_body).unwrap_or_default()
-            )
-        })?;
-
-    // Try to parse the content as JSON
-    let parsed: Value = serde_json::from_str(content)
-        .map_err(|e| format!("LLM 返回的不是有效 JSON: {e}\n原始内容: {content}"))?;
-
-    // Extract the translation array
-    let translations = parsed
-        .get("translations")
-        .or_else(|| parsed.as_array().map(|_| &parsed))
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| {
-            format!(
-                "LLM 返回的 JSON 缺少 translations 数组: {}",
-                serde_json::to_string(&parsed).unwrap_or_default()
-            )
-        })?;
-
-    // Build a lookup map from the response
-    let mut result_map: std::collections::HashMap<&str, String> = std::collections::HashMap::new();
-    for item in translations {
-        let key = item
-            .get("key")
-            .and_then(|k| k.as_str())
-            .unwrap_or_default();
-        let text = item
-            .get("text")
-            .or_else(|| item.get("translation"))
-            .and_then(|t| t.as_str())
-            .unwrap_or("");
-        if !key.is_empty() && !text.is_empty() {
-            result_map.insert(key, text.to_string());
-        }
-    }
-
-    // Map results back to input entries
-    let results: Vec<TranslateResult> = entries
-        .iter()
-        .map(|e| {
-            match result_map.get(e.key.as_str()) {
-                Some(translated) => TranslateResult {
-                    key: e.key.clone(),
-                    original_text: e.text.clone(),
-                    translated_text: translated.clone(),
-                    success: true,
-                    error: None,
-                },
-                None => TranslateResult {
-                    key: e.key.clone(),
-                    original_text: e.text.clone(),
-                    translated_text: e.text.clone(),
-                    success: false,
-                    error: Some("LLM 响应中未找到该条目的翻译".to_string()),
-                },
-            }
-        })
-        .collect();
-
-    Ok(results)
-}
-
 // ── Tests ───────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn parses_openai_style_response() {
-        let body: Value = serde_json::from_str(r#"{
-            "choices": [{
-                "message": {
-                    "content": "{\"translations\": [{\"key\": \"item.a\", \"text\": \"物品 A\"}, {\"key\": \"item.b\", \"text\": \"物品 B\"}]}"
-                }
-            }]
-        }"#).unwrap();
-
-        let entries = vec![
-            TranslationEntry {
-                key: "item.a".into(),
-                text: "Item A".into(),
-                mod_id: "test".into(),
-                source_lang: "en_us".into(),
-                target_lang: "zh_cn".into(),
-            },
-            TranslationEntry {
-                key: "item.b".into(),
-                text: "Item B".into(),
-                mod_id: "test".into(),
-                source_lang: "en_us".into(),
-                target_lang: "zh_cn".into(),
-            },
-        ];
-
-        let results = parse_response(&body, &entries).unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].translated_text, "物品 A");
-        assert_eq!(results[1].translated_text, "物品 B");
-        assert!(results[0].success);
-    }
-
-    #[test]
-    fn parses_response_with_translation_field() {
-        let body: Value = serde_json::from_str(r#"{
-            "choices": [{
-                "message": {
-                    "content": "{\"translations\": [{\"key\": \"item.a\", \"translation\": \"物品 A\"}]}"
-                }
-            }]
-        }"#).unwrap();
-
-        let entries = vec![
-            TranslationEntry {
-                key: "item.a".into(),
-                text: "Item A".into(),
-                mod_id: "test".into(),
-                source_lang: "en_us".into(),
-                target_lang: "zh_cn".into(),
-            },
-        ];
-
-        let results = parse_response(&body, &entries).unwrap();
-        assert_eq!(results[0].translated_text, "物品 A");
-    }
-
-    #[test]
-    fn missing_entry_in_response_marked_failed() {
-        let body: Value = serde_json::from_str(r#"{
-            "choices": [{
-                "message": {
-                    "content": "{\"translations\": [{\"key\": \"item.a\", \"text\": \"物品 A\"}]}"
-                }
-            }]
-        }"#).unwrap();
-
-        let entries = vec![
-            TranslationEntry {
-                key: "item.a".into(),
-                text: "Item A".into(),
-                mod_id: "test".into(),
-                source_lang: "en_us".into(),
-                target_lang: "zh_cn".into(),
-            },
-            TranslationEntry {
-                key: "item.b".into(),
-                text: "Item B".into(),
-                mod_id: "test".into(),
-                source_lang: "en_us".into(),
-                target_lang: "zh_cn".into(),
-            },
-        ];
-
-        let results = parse_response(&body, &entries).unwrap();
-        assert!(results[0].success, "item.a 应在响应中");
-        assert!(!results[1].success, "item.b 不在响应中应标记失败");
-        assert_eq!(results[0].translated_text, "物品 A");
-        assert_eq!(results[1].translated_text, "Item B"); // fallback = source
-    }
-
-    #[test]
-    fn build_prompt_includes_entries() {
-        let entries = vec![
-            TranslationEntry {
-                key: "item.a".into(),
-                text: "Item A".into(),
-                mod_id: "test".into(),
-                source_lang: "en_us".into(),
-                target_lang: "zh_cn".into(),
-            },
-        ];
-        let prompt = build_prompt(&entries, "en_us", "zh_cn");
-        assert!(prompt.contains("Item A"));
-        assert!(prompt.contains("item.a"));
-        assert!(prompt.contains("英文"));
-        assert!(prompt.contains("简体中文"));
-    }
 
     // ── healing_parse_response tests ─────────────────────────────────
 
