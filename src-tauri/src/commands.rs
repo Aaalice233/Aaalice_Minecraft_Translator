@@ -4,6 +4,7 @@ use std::sync::{
 };
 
 use tauri::Emitter;
+use tauri_plugin_dialog::DialogExt;
 
 use crate::core::{
     dictionary,
@@ -167,6 +168,21 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
     } else {
         last_error
     })
+}
+
+
+#[tauri::command]
+pub fn pick_instance_folder(app: tauri::AppHandle, locale: Option<String>) -> Result<Option<String>, String> {
+    // locale is accepted for future use; native dialog locale is OS-controlled
+    let _ = locale;
+    match app.dialog().file().set_title("Выбрать экземпляр").blocking_pick_folder() {
+        Some(path) => {
+            let path_str = path.into_path().map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            Ok(Some(path_str))
+        }
+        None => Ok(None),
+    }
 }
 
 fn to_message(err: impl std::fmt::Display) -> String {

@@ -29,7 +29,7 @@ export interface Settings {
   vmPackName: string;
 }
 
-export type AppLanguage = "zh_cn" | "en_us" | "ja_jp" | "ko_kr";
+export type AppLanguage = "zh_cn" | "en_us" | "ja_jp" | "ko_kr" | "ru_ru";
 
 export interface LlmModel {
   id: string;

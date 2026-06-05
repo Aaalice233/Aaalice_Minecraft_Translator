@@ -4,6 +4,8 @@
 .omc/tmp/
 .omc/logs/
 .omc/research/
+.omc/sessions/
+src-tauri/.omc/
 
 # Build outputs
 dist/
