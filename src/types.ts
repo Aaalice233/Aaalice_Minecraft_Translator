@@ -27,6 +27,7 @@ export interface Settings {
   enableTokenStats: boolean;
   i18nPackName: string;
   vmPackName: string;
+  systemPrompt: string;
 }
 
 export type AppLanguage = "zh_cn" | "en_us" | "ja_jp" | "ko_kr" | "ru_ru";

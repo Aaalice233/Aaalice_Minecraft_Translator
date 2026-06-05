@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::core::models::*;
-use crate::core::{dictionary, jobs, logging, paths, scanner, shield};
+use crate::core::{cfpa, dictionary, jobs, logging, paths, scanner, shield};
 use crate::core::llm::{LlmClient, TranslateResult, TranslationEntry};
 
 // ── Cancel mechanism ──────────────────────────────────────────
@@ -337,12 +337,27 @@ pub fn run_pipeline(
                 .map(|bi| {
                     let batch = &smart_batches[bi];
                     let mod_name = batch.first().map(|(_, f)| f.to_string()).unwrap_or_default();
+
+                    // Collect CFPA references for this batch
+                    let mut batch_refs = Vec::new();
+                    let mut seen_ref = std::collections::HashSet::new();
+                    for (entry, _) in batch {
+                        if let Ok(matches) = cfpa::fuzzy_search(&dict_conn, &entry.text, &entry.language, &config.target_language, 5) {
+                            for m in &matches {
+                                if seen_ref.insert(m.source_text.clone()) {
+                                    batch_refs.push((m.source_text.clone(), m.target_text.clone()));
+                                }
+                            }
+                        }
+                    }
+
                     let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| TranslationEntry {
                         key: entry.key.clone(),
                         text: entry.text.clone(),
                         mod_id: entry.mod_id.clone(),
                         source_lang: entry.language.clone(),
                         target_lang: config.target_language.clone(),
+                        references: batch_refs.clone(),
                     }).collect();
                     (bi, mod_name, entries)
                 })

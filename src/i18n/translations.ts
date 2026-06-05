@@ -133,6 +133,8 @@ export type TranslationKey =
   | "packages.replaced"
   | "settings.title"
   | "settings.subtitle"
+  | "settings.systemPrompt"
+  | "settings.systemPromptHint"
   | "settings.save"
   | "settings.saved"
   | "settings.fetchModels"
@@ -165,12 +167,19 @@ export type TranslationKey =
   | "settings.customModel"
   | "settings.pickFromList"
   | "settings.concurrency"
+  | "settings.concurrencyHint"
   | "settings.batchSize"
+  | "settings.batchSizeHint"
   | "settings.batchMaxChars"
+  | "settings.batchMaxCharsHint"
   | "settings.timeoutSecs"
+  | "settings.timeoutSecsHint"
   | "settings.retryCount"
+  | "settings.retryCountHint"
   | "settings.retryDelaySecs"
+  | "settings.retryDelaySecsHint"
   | "settings.rateLimitRpm"
+  | "settings.rateLimitRpmHint"
   | "settings.reuseI18n"
   | "settings.reuseVm"
   | "settings.preferDictionary"
@@ -403,6 +412,8 @@ const zhCn: TranslationMap = {
   "packages.replaced": "（已替换旧版本）",
   "settings.title": "设置中心",
   "settings.subtitle": "常用选项会持久化保存到本地设置文件。",
+  "settings.systemPrompt": "系统提示词",
+  "settings.systemPromptHint": "自定义 AI 翻译助手的角色和行为设定。默认已提供完善的 Minecraft 翻译专家设定，大多数用户无需修改。",
   "settings.save": "保存设置",
   "settings.saved": "设置已保存",
   "settings.fetchModels": "拉取模型",
@@ -435,12 +446,19 @@ const zhCn: TranslationMap = {
   "settings.customModel": "输入自定义模型",
   "settings.pickFromList": "从列表选择",
   "settings.concurrency": "并发请求数",
+  "settings.concurrencyHint": "同时发送的 API 请求数量（默认 10）。程序会自动根据 API 限流情况动态调整，遇 429 自动降级，无需手动操心。",
   "settings.batchSize": "Batch size",
+  "settings.batchSizeHint": "每批最多包含的条目数（默认 80）。较大的 batch 可提高 Token 利用率，但单次响应时间更长。建议保持默认。",
   "settings.batchMaxChars": "每批最大字符数",
+  "settings.batchMaxCharsHint": "每批的最大字符数（默认 120000）。超过此值时自动拆分批次。适用于 API 有上下文窗口限制的情况。",
   "settings.timeoutSecs": "超时时间（秒）",
+  "settings.timeoutSecsHint": "单次 API 请求的超时秒数（默认 180）。翻译大批量时可适当增加。",
   "settings.retryCount": "重试次数",
+  "settings.retryCountHint": "API 请求失败时的重试次数（默认 5）。限流导致的失败有特殊处理。",
   "settings.retryDelaySecs": "重试延迟（秒）",
+  "settings.retryDelaySecsHint": "首次重试前的等待秒数（默认 2）。后续重试的等待时间会翻倍（2→4→8 秒）。",
   "settings.rateLimitRpm": "速率限制（RPM）",
+  "settings.rateLimitRpmHint": "每分钟最多请求数（默认 3000）。0 表示不限速。超过此值时自动等待。",
   "settings.reuseI18n": "检测并复用 i18n 目标语言资源包",
   "settings.reuseVm": "检测并复用 VM 汉化包",
   "settings.preferDictionary": "优先使用用户词典",
@@ -553,6 +571,8 @@ const enUs: TranslationMap = {
   "common.copied": "Copied",
   "settings.title": "Settings",
   "settings.subtitle": "Common options are persisted to the local settings file.",
+  "settings.systemPrompt": "System prompt",
+  "settings.systemPromptHint": "Customize the AI translator's role and behavior. The default provides a complete Minecraft translation expert setup.",
   "settings.save": "Save settings",
   "settings.saved": "Settings saved",
   "settings.fetchModels": "Fetch models",
@@ -583,11 +603,18 @@ const enUs: TranslationMap = {
   "settings.customModel": "Enter custom model",
   "settings.pickFromList": "Pick from list",
   "settings.concurrency": "Concurrent requests",
+  "settings.concurrencyHint": "Concurrent API requests (default 10). Auto-adapts to rate limits — 429 responses trigger automatic backoff.",
+  "settings.batchSizeHint": "Max entries per batch (default 80). Larger batches use tokens more efficiently but take longer per request.",
   "settings.batchMaxChars": "Max chars per batch",
+  "settings.batchMaxCharsHint": "Max characters per batch (default 120000). Batches exceeding this are auto-split.",
   "settings.timeoutSecs": "Timeout (seconds)",
+  "settings.timeoutSecsHint": "Single request timeout in seconds (default 180). Increase for large batches.",
   "settings.retryCount": "Retry count",
+  "settings.retryCountHint": "Retry count on failure (default 5). Rate limit failures have special handling.",
   "settings.retryDelaySecs": "Retry delay (seconds)",
+  "settings.retryDelaySecsHint": "Initial retry delay in seconds (default 2). Subsequent retries double (2→4→8s).",
   "settings.rateLimitRpm": "Rate limit (RPM)",
+  "settings.rateLimitRpmHint": "Max requests per minute (default 3000). 0 = unlimited.",
   "settings.reuseI18n": "Detect and reuse i18n target-language packs",
   "settings.reuseVm": "Detect and reuse VM translation packs",
   "settings.preferDictionary": "Prefer user dictionary",

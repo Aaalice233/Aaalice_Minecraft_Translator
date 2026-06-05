@@ -30,6 +30,7 @@ const defaultSettings: Settings = {
   enableTokenStats: true,
   i18nPackName: "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
   vmPackName: "VMTranslationPack-Converted-1.21.1.zip",
+  systemPrompt: "",
 };
 
 function isTauriRuntime(): boolean {

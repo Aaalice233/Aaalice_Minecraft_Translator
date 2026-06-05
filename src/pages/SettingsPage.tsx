@@ -281,18 +281,91 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 />
                 <small>{t(language, "settings.maxTokensHint")}</small>
               </label>
+              <label className="field" style={{ gridColumn: "1 / -1" }}>
+                <span>{t(language, "settings.systemPrompt")}</span>
+                <textarea
+                  rows={6}
+                  value={draft.systemPrompt}
+                  onChange={(e) => setDraft({...draft, systemPrompt: e.target.value})}
+                  style={{ fontFamily: "monospace", fontSize: 13, lineHeight: 1.5, width: "100%" }}
+                />
+                <small>{t(language, "settings.systemPromptHint")}</small>
+              </label>
             </div>
           )}
 
           {activeTab === "performance" && (
             <div className="settings-form two-column">
-              <Field label={t(language, "settings.concurrency")} type="number" value={draft.concurrency} onChange={(value) => setDraft({ ...draft, concurrency: Number(value) })} />
-              <Field label={t(language, "settings.batchSize")} type="number" value={draft.batchSize} onChange={(value) => setDraft({ ...draft, batchSize: Number(value) })} />
-              <Field label={t(language, "settings.batchMaxChars")} type="number" value={draft.batchMaxChars} onChange={(value) => setDraft({ ...draft, batchMaxChars: Number(value) })} />
-              <Field label={t(language, "settings.timeoutSecs")} type="number" value={draft.timeoutSecs} onChange={(value) => setDraft({ ...draft, timeoutSecs: Number(value) })} />
-              <Field label={t(language, "settings.retryCount")} type="number" value={draft.retryCount} onChange={(value) => setDraft({ ...draft, retryCount: Number(value) })} />
-              <Field label={t(language, "settings.retryDelaySecs")} type="number" value={draft.retryDelaySecs} onChange={(value) => setDraft({ ...draft, retryDelaySecs: Number(value) })} />
-              <Field label={t(language, "settings.rateLimitRpm")} type="number" value={draft.rateLimitRpm} onChange={(value) => setDraft({ ...draft, rateLimitRpm: Number(value) })} />
+              <label className="field">
+                <span>{t(language, "settings.concurrency")}</span>
+                <input
+                  type="number" min="1" max="100"
+                  value={draft.concurrency}
+                  onChange={(e) => setDraft({...draft, concurrency: Number(e.target.value)})}
+                  data-tooltip={t(language, "settings.concurrencyHint")}
+                />
+                <small>{t(language, "settings.concurrencyHint")}</small>
+              </label>
+              <label className="field">
+                <span>{t(language, "settings.batchSize")}</span>
+                <input
+                  type="number" min="1" max="500"
+                  value={draft.batchSize}
+                  onChange={(e) => setDraft({...draft, batchSize: Number(e.target.value)})}
+                  data-tooltip={t(language, "settings.batchSizeHint")}
+                />
+                <small>{t(language, "settings.batchSizeHint")}</small>
+              </label>
+              <label className="field">
+                <span>{t(language, "settings.batchMaxChars")}</span>
+                <input
+                  type="number" min="1000" max="1000000" step="1000"
+                  value={draft.batchMaxChars}
+                  onChange={(e) => setDraft({...draft, batchMaxChars: Number(e.target.value)})}
+                  data-tooltip={t(language, "settings.batchMaxCharsHint")}
+                />
+                <small>{t(language, "settings.batchMaxCharsHint")}</small>
+              </label>
+              <label className="field">
+                <span>{t(language, "settings.timeoutSecs")}</span>
+                <input
+                  type="number" min="10" max="600"
+                  value={draft.timeoutSecs}
+                  onChange={(e) => setDraft({...draft, timeoutSecs: Number(e.target.value)})}
+                  data-tooltip={t(language, "settings.timeoutSecsHint")}
+                />
+                <small>{t(language, "settings.timeoutSecsHint")}</small>
+              </label>
+              <label className="field">
+                <span>{t(language, "settings.retryCount")}</span>
+                <input
+                  type="number" min="0" max="20"
+                  value={draft.retryCount}
+                  onChange={(e) => setDraft({...draft, retryCount: Number(e.target.value)})}
+                  data-tooltip={t(language, "settings.retryCountHint")}
+                />
+                <small>{t(language, "settings.retryCountHint")}</small>
+              </label>
+              <label className="field">
+                <span>{t(language, "settings.retryDelaySecs")}</span>
+                <input
+                  type="number" min="0.1" max="60" step="0.5"
+                  value={draft.retryDelaySecs}
+                  onChange={(e) => setDraft({...draft, retryDelaySecs: Number(e.target.value)})}
+                  data-tooltip={t(language, "settings.retryDelaySecsHint")}
+                />
+                <small>{t(language, "settings.retryDelaySecsHint")}</small>
+              </label>
+              <label className="field">
+                <span>{t(language, "settings.rateLimitRpm")}</span>
+                <input
+                  type="number" min="0" max="100000"
+                  value={draft.rateLimitRpm}
+                  onChange={(e) => setDraft({...draft, rateLimitRpm: Number(e.target.value)})}
+                  data-tooltip={t(language, "settings.rateLimitRpmHint")}
+                />
+                <small>{t(language, "settings.rateLimitRpmHint")}</small>
+              </label>
             </div>
           )}
 

@@ -19,6 +19,9 @@ pub struct TranslationEntry {
     pub mod_id: String,
     pub source_lang: String,
     pub target_lang: String,
+    /// CFPA 参考词典对照（原文→译文），用于增强 LLM 提示上下文
+    #[serde(skip)]
+    pub references: Vec<(String, String)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,7 +245,15 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
         }
     }
 
-    format!(
+    let entries_json = serde_json::to_string_pretty(
+        &entries.iter().map(|e| serde_json::json!({
+            "key": e.key,
+            "text": e.text,
+            "mod_id": e.mod_id,
+        })).collect::<Vec<_>>()
+    ).unwrap_or_default();
+
+    let mut prompt = format!(
         r#"请将以下 Minecraft 模组文本从 {source_label} ({source_lang}) 翻译为 {target_label} ({target_lang})。
 
 规则：
@@ -257,14 +268,38 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
         target_label = lang_label(target_lang),
         source_lang = source_lang,
         target_lang = target_lang,
-        entries_json = serde_json::to_string_pretty(
-            &entries.iter().map(|e| serde_json::json!({
-                "key": e.key,
-                "text": e.text,
-                "mod_id": e.mod_id,
-            })).collect::<Vec<_>>()
-        ).unwrap_or_default(),
-    )
+        entries_json = entries_json,
+    );
+
+    // Append CFPA reference dictionary if available
+    let all_refs: Vec<&(String, String)> = entries.iter()
+        .flat_map(|e| e.references.iter())
+        .collect();
+
+    if !all_refs.is_empty() {
+        let mut seen = std::collections::HashSet::new();
+        let ref_lines: Vec<String> = all_refs.iter()
+            .filter(|(s, _)| seen.insert(s.clone()))
+            .take(30)
+            .map(|(s, t)| format!("{} → {}", s, t))
+            .collect();
+
+        if !ref_lines.is_empty() {
+            prompt = format!(
+                "{}
+
+## 参考词汇表（CFPA 汉化组词典中可能相关的对照）
+```
+{}
+```
+以上译法供参考，请根据具体模组语境选择最合适的翻译。",
+                prompt,
+                ref_lines.join("\n")
+            );
+        }
+    }
+
+    prompt
 }
 
 /// Send the HTTP request and return the raw response body as a Value.
@@ -466,6 +501,7 @@ mod tests {
                 mod_id: "test".into(),
                 source_lang: "en_us".into(),
                 target_lang: "zh_cn".into(),
+                references: Vec::new(),
             },
             TranslationEntry {
                 key: "item.b".into(),
@@ -473,6 +509,7 @@ mod tests {
                 mod_id: "test".into(),
                 source_lang: "en_us".into(),
                 target_lang: "zh_cn".into(),
+                references: Vec::new(),
             },
         ]
     }
@@ -527,6 +564,7 @@ mod tests {
                 mod_id: "test".into(),
                 source_lang: "en_us".into(),
                 target_lang: "zh_cn".into(),
+                references: Vec::new(),
             },
         ];
         let results = healing_parse_response(content, &entries).unwrap();
@@ -575,6 +613,7 @@ mod tests {
                 mod_id: "test".into(),
                 source_lang: "en_us".into(),
                 target_lang: "zh_cn".into(),
+                references: Vec::new(),
             },
         ];
         let results = healing_parse_response(content, &entries).unwrap();

@@ -1,3 +1,4 @@
+pub mod cfpa;
 pub mod dictionary;
 pub mod jobs;
 pub mod llm;
