@@ -1,3 +1,8 @@
+// Rust 1.96.0 (RFC 3614) 将 .<identifier>" 解析为 prefix literal。
+// 本 crate 在字符串中广泛使用 .json / .lang / .jar / .zip 等扩展名，
+// 这些是非意图的 prefix literal 触发。通过 lint 允许统一抑制。
+#![allow(unknown_lints, rust_2021_prefixes_incompatible_syntax)]
+
 pub mod commands;
 pub mod core;
 

@@ -14,7 +14,7 @@ pub fn clear_jobs_cache() -> Result<(), String> {
     for entry in std::fs::read_dir(&jobs_dir).map_err(to_message)? {
         let entry = entry.map_err(to_message)?;
         let name = entry.file_name().to_string_lossy().to_string();
-        if name.starts_with("scan_") || name.starts_with("translate_") {
+        if name.starts_with("scan_") || name.starts_with("translate_") || name.ends_with(".tmp") {
             let _ = std::fs::remove_file(entry.path());
         }
     }

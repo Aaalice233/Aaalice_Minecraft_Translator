@@ -319,6 +319,7 @@ pub fn run_pipeline(
             stage_status: StageStatus::Running,
         });
 
+        let _completed_batches = std::sync::atomic::AtomicUsize::new(0);
         // 自适应并发波浪循环
         let mut batch_index = 0usize;
         loop {
@@ -377,7 +378,8 @@ pub fn run_pipeline(
                 }
             }
 
-            // Dispatch wave concurrently. Each batch fires on_batch_complete itself.
+            // Dispatch wave concurrently. Each batch fires on_batch_complete itself
+            // and immediately emits PipelineProgress so the UI updates per-batch, not per-wave.
             let wave_results: Vec<(Vec<jobs::TranslationResult>, TokenUsage, bool)> = std::thread::scope(|s| {
                 wave_batches.iter().map(|(_bi, mod_name, batch_entries)| {
                     s.spawn(|| {
@@ -400,6 +402,18 @@ pub fn run_pipeline(
 
                         let (results, token_usage) = client.translate_batch(batch_entries, Some(&on_complete));
                         let token = token_usage.unwrap_or_default();
+
+                        // Emit per-batch progress immediately as each batch finishes
+                        let current = _completed_batches.fetch_add(1, Ordering::SeqCst) + 1;
+                        let _ = progress_tx.send(PipelineProgress {
+                            current,
+                            total: total_llm_batches,
+                            phase: PipelinePhase::Translating,
+                            mod_name: String::new(),
+                            sub_step: Some(format!("{current}/{total_llm_batches} 批次")),
+                            stage_status: StageStatus::Running,
+                        });
+
                         let all_rate_limited = results.iter().all(|r| {
                             !r.success && r.error.as_deref().map_or(false, |e| e.starts_with("RATE_LIMITED"))
                         });
@@ -456,7 +470,6 @@ pub fn run_pipeline(
                     wave_has_429 = true;
                 }
             }
-
             // Rate limit adaptation
             if wave_has_429 {
                 client.consecutive_429s.fetch_add(1, Ordering::SeqCst);
@@ -480,15 +493,6 @@ pub fn run_pipeline(
             }
 
             batch_index += wave_count;
-
-            let _ = progress_tx.send(PipelineProgress {
-                current: batch_index.min(total_llm_batches),
-                total: total_llm_batches,
-                phase: PipelinePhase::Translating,
-                mod_name: String::new(),
-                sub_step: Some(format!("{}/{} 批次", batch_index.min(total_llm_batches), total_llm_batches)),
-                stage_status: StageStatus::Running,
-            });
 
             let _ = jobs::batch_append_results(&config.root, job_id, &batch_results);
             batch_results.clear();

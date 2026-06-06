@@ -2,7 +2,7 @@ import { AlertTriangle, Filter, FolderOpen, Loader2, RefreshCcw, ScanLine, Squar
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
-import type { AppLanguage, ScanProgressEvent, ScanSummary, Settings } from "../types";
+import type { AppLanguage, ModScanResult, ScanProgressEvent, ScanSummary, Settings } from "../types";
 import type { TranslationKey } from "../i18n/translations";
 import { useAppState } from "../app/AppContext";
 
@@ -260,8 +260,44 @@ export function DashboardPage({
     });
   }
 
-  function getPending(mod: { sourceEntries: number; targetEntries: number }): number {
-    return Math.max(0, mod.sourceEntries - mod.targetEntries);
+  // 判断文本中是否含有显著比例的 CJK 字符（与后端 has_substantial_cjk 一致）
+  function hasSubstantialCjk(text: string): boolean {
+    const cjkChars = [...text].filter((c) => {
+      const cp = c.codePointAt(0)!;
+      return (cp >= 0x4e00 && cp <= 0x9fff)
+        || (cp >= 0x3400 && cp <= 0x4dbf)
+        || (cp >= 0x2f800 && cp <= 0x2fa1f);
+    });
+    if (cjkChars.length === 0) return false;
+    const nonWs = [...text].filter((c) => c.trim() !== "").length;
+    return nonWs > 0 && (cjkChars.length / nonWs) > 0.25;
+  }
+
+  // 缓存每个 mod 的 pending 数，避免 O(entries) 迭代
+  const pendingCache = useMemo(() => {
+    const cache = new Map<string, number>();
+    if (!scanSummary) return cache;
+    for (const mod of scanSummary.mods) {
+      // 源语言与目标语言相同时跳过（防止中译中）
+      if (mod.resolvedSourceLanguage === mod.targetLanguage) {
+        cache.set(mod.jarPath, 0);
+        continue;
+      }
+      const targetKeys = new Set(
+        mod.entries.filter((e) => e.language === mod.targetLanguage).map((e) => e.key)
+      );
+      const count = mod.entries.filter(
+        (e) => e.language === mod.resolvedSourceLanguage && !targetKeys.has(e.key)
+          // 跳过源文本中已有显著比例 CJK 字符的条目（虚假 en_us）
+          && !(mod.resolvedSourceLanguage === "en_us" && hasSubstantialCjk(e.text))
+      ).length;
+      cache.set(mod.jarPath, count);
+    }
+    return cache;
+  }, [scanSummary]);
+
+  function getPending(mod: ModScanResult): number {
+    return pendingCache.get(mod.jarPath) ?? 0;
   }
 
   return (
@@ -465,7 +501,6 @@ export function DashboardPage({
                               className={["filter-popover", (col.key === "pending" || col.key === "hasTargetLanguage") ? "popover-right" : ""].filter(Boolean).join(" ")}
                               ref={filterRef}
                               onClick={(e) => e.stopPropagation()}
-                              onKeyDown={() => {}}
                             >
                               <div className="filter-popover-header">
                                 <span>{col.label}</span>

@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../src/app/App";
+import { AppProvider } from "../src/app/AppContext";
 import { DashboardPage } from "../src/pages/DashboardPage";
 import { SettingsPage } from "../src/pages/SettingsPage";
 import type { Settings } from "../src/types";
@@ -55,13 +56,15 @@ describe("app shell", () => {
 describe("dashboard page", () => {
   it("renders scan controls and empty state", () => {
     render(
-      <DashboardPage
-        settings={settings}
-        scanSummary={null}
-        onSettingsChange={() => undefined}
-        onScanSummaryChange={() => undefined}
-        language="zh_cn"
-      />,
+      <AppProvider>
+        <DashboardPage
+          settings={settings}
+          scanSummary={null}
+          onSettingsChange={() => undefined}
+          onScanSummaryChange={() => undefined}
+          language="zh_cn"
+        />
+      </AppProvider>,
     );
 
     expect(screen.getByText("项目扫描概览")).toBeInTheDocument();

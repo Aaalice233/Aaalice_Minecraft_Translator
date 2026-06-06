@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
     fs,
-    hash::{Hash, Hasher},
     io::{self, Read},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -478,6 +477,14 @@ fn scan_mod_jar(path: &Path, source_language: &str, target_language: &str) -> Mo
         .or_else(|| infer_mod_id_from_file_name(&file_name))
         .unwrap_or_else(|| "unknown".to_string());
     let resolved_source_language = resolve_source_language(&entries, source_language, target_language);
+    // 当检测到的源语言与目标语言相同时，该模组可能已被汉化或只有目标语言文件
+    if resolved_source_language == target_language {
+        warnings.push(warning(
+            "source_equals_target",
+            &format!("检测到的源语言 ({resolved_source_language}) 与目标语言相同，该模组可能已被汉化或语言文件配置有误"),
+            path,
+        ));
+    }
     let source_entries = entries
         .iter()
         .filter(|entry| entry.language == resolved_source_language)
@@ -985,6 +992,10 @@ fn resolve_source_language(
         return source_language.to_string();
     }
 
+    if entries.is_empty() {
+        return String::new();
+    }
+
     let available = entries
         .iter()
         .map(|entry| entry.language.as_str())
@@ -1003,7 +1014,7 @@ fn resolve_source_language(
     if available.contains(target_language) {
         return target_language.to_string();
     }
-    "en_us".to_string()
+    String::new()
 }
 
 fn infer_pack_source_type(path: &Path) -> String {
@@ -1045,9 +1056,13 @@ fn warning(code: &str, message: &str, path: &Path) -> ScanWarning {
 }
 
 fn hash_text(text: &str) -> String {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    text.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    // 使用 FNV-1a 算法（与 dictionary.rs 一致），保证跨平台跨进程确定性
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in text.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:016x}", hash)
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ function statusLabel(status: string, lang: AppLanguage): string {
 
 interface EntryStatusCounts {
   pending: number;
-  dictionary_hit: number;
+  dictionaryHit: number;
   skip: number;
   translating: number;
   completed: number;
@@ -38,7 +38,7 @@ function EntryStatusPanel({
 }) {
   const counts: EntryStatusCounts = useMemo(() => {
     const c: EntryStatusCounts = {
-      pending: 0, dictionary_hit: 0, skip: 0,
+      pending: 0, dictionaryHit: 0, skip: 0,
       translating: 0, completed: 0, failed: 0,
     };
     entryProgressMap.forEach((entry) => {
@@ -52,7 +52,7 @@ function EntryStatusPanel({
 
   const statuses: Array<{ key: keyof EntryStatusCounts; color: string }> = [
     { key: "pending", color: "#6b7280" },
-    { key: "dictionary_hit", color: "#3b82f6" },
+    { key: "dictionaryHit", color: "#3b82f6" },
     { key: "skip", color: "#9ca3af" },
     { key: "translating", color: "#f59e0b" },
     { key: "completed", color: "#22c55e" },
@@ -191,7 +191,8 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
         const entry = event.payload as EntryProgress;
         setEntryProgressMap((prev) => {
           const next = new Map(prev);
-          next.set(entry.key, entry);
+          // 使用 modName::key 作为复合键，防止不同模组同名 key 互相覆盖
+          next.set(entry.modName + "::" + entry.key, entry);
           return next;
         });
       }).then((unlisten) => {
@@ -324,7 +325,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
         </div>
         <div className="page-header-button">
           {isRunning ? (
-            <button className="ghost-button danger" onClick={handleCancel} type="button" data-tooltip={t(language, "tooltip.stopTranslation")}>
+            <button className="primary-button danger" onClick={handleCancel} type="button" data-tooltip={t(language, "tooltip.stopTranslation")}>
               <Square size={17} />
               {t(language, "jobs.stop")}
             </button>
@@ -411,12 +412,16 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                 ? stageLabel(translateProgress.phase)
                 : t(language, "jobs.translating")}
             </strong>
-            <span>
-              {translateProgress
-                ? `${translateProgress.current.toLocaleString()} / ${translateProgress.total.toLocaleString()}`
-                : t(language, "jobs.progressFallback")}
-            </span>
-            <span className="percent-label">({progressPercent}%)</span>
+            {translateProgress?.phase !== "translating" && (
+              <span>
+                {translateProgress
+                  ? `${translateProgress.current.toLocaleString()} / ${translateProgress.total.toLocaleString()}`
+                  : t(language, "jobs.progressFallback")}
+              </span>
+            )}
+            {translateProgress?.phase !== "translating" && (
+              <span className="percent-label">({progressPercent}%)</span>
+            )}
           </div>
           <div className="progress-bar-track">
             <div
@@ -456,7 +461,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
       {(isRunning || status === "completed") && (
         <EntryStatusPanel
           entryProgressMap={entryProgressMap}
-          total={scanSummary?.actualPendingEntries ?? 0}
+          total={(scanSummary?.actualPendingEntries ?? 0)}
           language={language}
         />
       )}
@@ -506,8 +511,13 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                     <td><span className="badge">{entry.sourceType}</span></td>
                     <td>
                       {(() => {
-                        const ep = entryProgressMap.get(entry.key);
-                        const status = ep ? ep.status : (entry.sourceType === "llm" ? "completed" : entry.sourceType);
+                        const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
+                        const fallbackStatus =
+                          entry.sourceType === "llm" ? "completed"
+                          : entry.sourceType === "skipped" ? "skip"
+                          : entry.sourceType === "dictionary" ? "dictionaryHit"
+                          : entry.sourceType;
+                        const status = ep ? ep.status : fallbackStatus;
                         const label = statusLabel(status, language);
                         return <span className={`badge badge-${status}`}>{label}</span>;
                       })()}

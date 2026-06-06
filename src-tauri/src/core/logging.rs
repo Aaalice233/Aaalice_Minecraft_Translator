@@ -66,6 +66,10 @@ fn redact_secret(message: &str) -> String {
             let lower = part.to_ascii_lowercase();
             if lower.contains("api_key") || lower.contains("apikey") || lower.contains("authorization") {
                 "[REDACTED]"
+            } else if lower.starts_with("bearer") && part.len() > 10 {
+                "Bearer [REDACTED]"
+            } else if (part.starts_with("sk-") || part.starts_with("sk_")) && part.len() > 10 {
+                "[REDACTED]"
             } else {
                 part
             }

@@ -1103,7 +1103,7 @@ th.sorted-default .sort-indicator {
 
 /* ── Entry status badges ── */
 .badge-pending { background: #6b7280; color: #fff; }
-.badge-dictionary_hit { background: #3b82f6; color: #fff; }
+.badge-dictionaryHit { background: #3b82f6; color: #fff; }
 .badge-skip { background: #9ca3af; color: #fff; }
 .badge-translating { background: #f59e0b; color: #fff; animation: status-pulse 1.5s ease-in-out infinite; }
 .badge-completed { background: #22c55e; color: #fff; }
