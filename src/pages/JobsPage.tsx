@@ -42,8 +42,6 @@ const STATUS_META: Array<{ key: keyof EntryStatusCounts; color: string }> = [
 ];
 
 const MAX_LOG = 10000;
-const ROW_HEIGHT = 30;
-const ROW_BUFFER = 5;
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -102,20 +100,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
 
-  // Measure log body height to calculate visible row count
-  const [visibleRows, setVisibleRows] = useState(0);
-  useEffect(() => {
-    const el = logContainerRef.current;
-    if (!el) return;
-    const update = () => {
-      const h = el.clientHeight;
-      setVisibleRows(Math.ceil(h / ROW_HEIGHT) + ROW_BUFFER);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+
 
   /** Derive entry status from progress map or fall back based on sourceType. */
   function getEntryStatus(entry: TranslateLogEntry): string {
@@ -334,10 +319,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     return result;
   }, [logEntries, filterTerm, filters, sortConfig, entryProgressMap]);
 
-  // Only render as many rows as fit in the visible area (+ buffer)
-  const displayEntries = visibleRows > 0 && filteredEntries.length > visibleRows
-    ? filteredEntries.slice(-visibleRows)
-    : filteredEntries;
+
 
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
@@ -706,7 +688,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                 </tr>
               </thead>
               <tbody>
-                {displayEntries.map((entry, idx) => (
+                {filteredEntries.map((entry, idx) => (
                   <tr key={`${entry.key}-${idx}`} className="copy-log-row" onClick={() => copyEntry(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
                     <td>{entry.key}</td>
                     <td title={entry.sourceText}>{entry.sourceText}</td>
