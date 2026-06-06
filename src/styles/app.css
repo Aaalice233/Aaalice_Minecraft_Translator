@@ -1421,6 +1421,39 @@ th.sorted-default .sort-indicator {
   align-items: center;
   gap: 5px;
 }
+button.essb-legend-item {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.12s;
+  font: inherit;
+  color: inherit;
+}
+button.essb-legend-item:hover {
+  background: #efeade;
+}
+.essb-legend-item.active {
+  font-weight: 700;
+  color: #1f8a5b;
+}
+.essb-legend-item.active .essb-legend-count {
+  color: #1f8a5b;
+}
+.essb-legend-clear {
+  color: #b8423a !important;
+  cursor: pointer;
+  border: 0;
+  background: transparent;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  transition: background 0.12s;
+}
+.essb-legend-clear:hover {
+  background: #fff0ef;
+}
 .essb-legend-dot {
   width: 8px;
   height: 8px;

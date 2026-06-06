@@ -510,12 +510,28 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
               </div>
               <div className="essb-legend">
                 {visibleStatuses.map(({ key, color }) => (
-                  <span className="essb-legend-item" key={key}>
+                  <button
+                    className={["essb-legend-item", filters.status === key ? "active" : ""].filter(Boolean).join(" ")}
+                    key={key}
+                    onClick={() => handleFilterChange("status", filters.status === key ? null : key)}
+                    type="button"
+                    title={filters.status === key ? "点击取消过滤此状态" : "点击过滤此状态"}
+                  >
                     <span className="essb-legend-dot" style={{ backgroundColor: color }} />
                     {statusLabel(key, language)}
                     <span className="essb-legend-count">{entryCounts[key]}</span>
-                  </span>
+                  </button>
                 ))}
+                {filters.status && (
+                  <button
+                    className="essb-legend-item essb-legend-clear"
+                    onClick={() => handleFilterChange("status", null)}
+                    type="button"
+                    title="清除状态过滤"
+                  >
+                    清除过滤
+                  </button>
+                )}
                 <span className="essb-legend-item essb-legend-total">
                   总计 {(scanSummary.actualPendingEntries).toLocaleString()} 条
                 </span>
