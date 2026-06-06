@@ -154,6 +154,7 @@ export type TranslationKey =
   | "settings.fetchModels"
   | "settings.modelsFetched"
   | "settings.autosaveHint"
+  | "settings.provider"
   | "settings.baseUrl"
   | "settings.tab.language"
   | "settings.tab.api"
@@ -449,6 +450,7 @@ const zhCn: TranslationMap = {
   "settings.fetchModels": "拉取模型",
   "settings.modelsFetched": "已从 {url} 拉取 {count} 个模型",
   "settings.autosaveHint": "自动保存需点击右上角保存按钮",
+  "settings.provider": "供应商",
   "settings.baseUrl": "API 地址",
   "settings.tab.language": "语言与翻译",
   "settings.tab.api": "API 设置",
@@ -612,6 +614,7 @@ const enUs: TranslationMap = {
   "settings.fetchModels": "Fetch models",
   "settings.modelsFetched": "Fetched {count} models from {url}",
   "settings.autosaveHint": "Click the save button to persist changes",
+  "settings.provider": "Provider",
   "settings.baseUrl": "Base URL",
   "settings.tab.language": "Language & translation",
   "settings.tab.api": "API",
@@ -796,6 +799,7 @@ const jaJp: TranslationMap = {
   "settings.saved": "設定を保存しました",
   "settings.fetchModels": "モデル取得",
   "settings.autosaveHint": "変更の保存には右上の保存ボタンが必要です",
+  "settings.provider": "プロバイダ",
   "settings.baseUrl": "ベース URL",
   "settings.tab.language": "言語と翻訳",
   "settings.tab.api": "API 設定",
@@ -943,6 +947,7 @@ const koKr: TranslationMap = {
   "settings.saved": "설정이 저장됨",
   "settings.fetchModels": "모델 가져오기",
   "settings.autosaveHint": "변경 사항을 저장하려면 오른쪽 위 저장 버튼을 누르세요",
+  "settings.provider": "공급자",
   "settings.baseUrl": "기본 URL",
   "settings.tab.language": "언어 및 번역",
   "settings.tab.api": "API 설정",
@@ -1176,6 +1181,7 @@ const ruRu: TranslationMap = {
   "settings.fetchModels": "Получить модели",
   "settings.modelsFetched": "Получено {count} моделей из {url}",
   "settings.autosaveHint": "Нажмите кнопку сохранения для изменений",
+  "settings.provider": "Провайдер",
   "settings.baseUrl": "Базовый URL",
   "settings.tab.language": "Язык и перевод",
   "settings.tab.api": "API",

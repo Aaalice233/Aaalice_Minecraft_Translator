@@ -3,6 +3,7 @@ export interface Settings {
   sourceLanguage: string;
   targetLanguage: string;
   instancePath: string;
+  provider: string;
   baseUrl: string;
   apiKey: string;
   model: string;

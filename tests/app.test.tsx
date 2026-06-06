@@ -12,6 +12,7 @@ const settings: Settings = {
   sourceLanguage: "auto",
   targetLanguage: "zh_cn",
   instancePath: "E:/PCL2/.minecraft/versions/Aaalice Craft",
+  provider: "deepseek",
   baseUrl: "https://api.deepseek.com",
   apiKey: "",
   model: "deepseek-v4-flash",

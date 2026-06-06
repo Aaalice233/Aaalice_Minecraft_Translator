@@ -18,7 +18,7 @@ import {
   t,
 } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
-import type { LlmModel, Settings } from "../types";
+import type { AppLanguage, LlmModel, Settings } from "../types";
 
 interface Props {
   settings: Settings;
@@ -184,115 +184,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
             </div>
           )}
 
-          {activeTab === "api" && (
-            <div className="settings-form two-column">
-              <Field
-                label={t(language, "settings.baseUrl")}
-                value={draft.baseUrl}
-                onChange={(value) => setDraft({ ...draft, baseUrl: value })}
-              />
-              <Field
-                label={t(language, "settings.apiKey")}
-                type="password"
-                value={draft.apiKey}
-                onChange={(value) => setDraft({ ...draft, apiKey: value })}
-              />
-              <label className="field">
-                {t(language, "settings.modelLabel")}
-                <div className="inline-control">
-                  {showCustomModel || models.length === 0 ? (
-                    <input
-                      value={draft.model}
-                      onChange={(event) => setDraft({ ...draft, model: event.target.value })}
-                      placeholder={
-                        models.length === 0
-                          ? draft.model
-                          : t(language, "settings.modelPlaceholder")
-                      }
-                    />
-                  ) : (
-                    <select
-                      value={models.some((item) => item.id === draft.model) ? draft.model : ""}
-                      onChange={(event) => setDraft({ ...draft, model: event.target.value })}
-                    >
-                      <option value="" disabled>
-                        {t(language, "settings.selectModel")}
-                      </option>
-                      {models.map((model) => (
-                        <option key={model.id} value={model.id}>
-                          {model.id}
-                          {model.ownedBy ? ` (${model.ownedBy})` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <button
-                    className="ghost-button"
-                    disabled={isFetchingModels || !draft.baseUrl || !draft.apiKey}
-                    onClick={handleFetchModels}
-                    type="button"
-                    data-tooltip={t(language, "tooltip.fetchModels")}
-                  >
-                    <RefreshCcw size={17} />
-                    {t(language, "settings.fetchModels")}
-                  </button>
-                </div>
-                {!showCustomModel && models.length > 0 && (
-                  <button
-                    className="text-button"
-                    onClick={() => setShowCustomModel(true)}
-                    type="button"
-                  >
-                    {t(language, "settings.customModel")}
-                  </button>
-                )}
-                {showCustomModel && (
-                  <button
-                    className="text-button"
-                    onClick={() => setShowCustomModel(false)}
-                    type="button"
-                  >
-                    {t(language, "settings.pickFromList")}
-                  </button>
-                )}
-              </label>
-              <label className="field">
-                <span>{t(language, "settings.temperature")}</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="2"
-                  step="0.1"
-                  value={draft.temperature}
-                  onChange={(event) => setDraft({ ...draft, temperature: Number(event.target.value) })}
-                />
-                <small>{t(language, "settings.temperatureHint")}</small>
-              </label>
-              <label className="field">
-                <span>{t(language, "settings.maxTokens")}</span>
-                <input
-                  type="number"
-                  min="0"
-                  max={999999}
-                  step="1"
-                  value={draft.maxTokens === 0 ? "" : draft.maxTokens}
-                  placeholder={t(language, "settings.maxTokensPlaceholder")}
-                  onChange={(event) => setDraft({ ...draft, maxTokens: event.target.value === "" ? 0 : Number(event.target.value) })}
-                />
-                <small>{t(language, "settings.maxTokensHint")}</small>
-              </label>
-              <label className="field" style={{ gridColumn: "1 / -1" }}>
-                <span>{t(language, "settings.systemPrompt")}</span>
-                <textarea
-                  rows={6}
-                  value={draft.systemPrompt}
-                  onChange={(e) => setDraft({...draft, systemPrompt: e.target.value})}
-                  style={{ fontFamily: "monospace", fontSize: 13, lineHeight: 1.5, width: "100%" }}
-                />
-                <small>{t(language, "settings.systemPromptHint")}</small>
-              </label>
-            </div>
-          )}
+          {activeTab === "api" && <ApiSettingsTab language={language} draft={draft} setDraft={setDraft} models={models} isFetchingModels={isFetchingModels} handleFetchModels={handleFetchModels} showCustomModel={showCustomModel} setShowCustomModel={setShowCustomModel} />}
 
           {activeTab === "performance" && (
             <div className="settings-form two-column">
@@ -530,4 +422,165 @@ function normalizeTranslationLanguage(value: string, allowAuto: boolean): string
     return normalized;
   }
   return null;
+}
+
+const PROVIDER_PRESETS: Record<string, { baseUrl: string; model: string }> = {
+  deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-chat" },
+  openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+};
+
+const PROVIDER_OPTIONS = [
+  { value: "deepseek", label: "DeepSeek" },
+  { value: "openai", label: "OpenAI 兼容" },
+] as const;
+
+interface ApiSettingsTabProps {
+  language: AppLanguage;
+  draft: Settings;
+  setDraft: React.Dispatch<React.SetStateAction<Settings>>;
+  models: LlmModel[];
+  isFetchingModels: boolean;
+  handleFetchModels: () => Promise<void>;
+  showCustomModel: boolean;
+  setShowCustomModel: React.Dispatch<React.SetStateAction<boolean>>;
+}
+
+function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, handleFetchModels, showCustomModel, setShowCustomModel }: ApiSettingsTabProps) {
+  return (
+    <div className="settings-form two-column">
+      {/* Provider selector — full width */}
+      <label className="field" style={{ gridColumn: "1 / -1" }}>
+        <span>{t(language, "settings.provider")}</span>
+        <select
+          value={draft.provider}
+          onChange={(event) => {
+            const provider = event.target.value;
+            const preset = PROVIDER_PRESETS[provider];
+            if (preset) {
+              setDraft((prev) => ({
+                ...prev,
+                provider,
+                baseUrl: preset.baseUrl,
+                model: prev.provider !== provider ? preset.model : prev.model,
+              }));
+            } else {
+              setDraft((prev) => ({ ...prev, provider }));
+            }
+          }}
+        >
+          {PROVIDER_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
+      </label>
+
+      <Field
+        label={t(language, "settings.baseUrl")}
+        value={draft.baseUrl}
+        onChange={(value) => setDraft((prev) => ({ ...prev, baseUrl: value }))}
+      />
+      <Field
+        label={t(language, "settings.apiKey")}
+        type="password"
+        value={draft.apiKey}
+        onChange={(value) => setDraft((prev) => ({ ...prev, apiKey: value }))}
+      />
+
+      <label className="field" style={{ gridColumn: "1 / -1" }}>
+        {t(language, "settings.modelLabel")}
+        <div className="inline-control">
+          {showCustomModel || models.length === 0 ? (
+            <input
+              value={draft.model}
+              onChange={(event) => setDraft((prev) => ({ ...prev, model: event.target.value }))}
+              placeholder={
+                models.length === 0
+                  ? draft.model
+                  : t(language, "settings.modelPlaceholder")
+              }
+            />
+          ) : (
+            <select
+              value={models.some((item) => item.id === draft.model) ? draft.model : ""}
+              onChange={(event) => setDraft((prev) => ({ ...prev, model: event.target.value }))}
+            >
+              <option value="" disabled>
+                {t(language, "settings.selectModel")}
+              </option>
+              {models.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {model.id}
+                  {model.ownedBy ? ` (${model.ownedBy})` : ""}
+                </option>
+              ))}
+            </select>
+          )}
+          <button
+            className="ghost-button"
+            disabled={isFetchingModels || !draft.baseUrl || !draft.apiKey}
+            onClick={handleFetchModels}
+            type="button"
+            data-tooltip={t(language, "tooltip.fetchModels")}
+          >
+            <RefreshCcw size={17} />
+            {t(language, "settings.fetchModels")}
+          </button>
+        </div>
+        {!showCustomModel && models.length > 0 && (
+          <button
+            className="text-button"
+            onClick={() => setShowCustomModel(true)}
+            type="button"
+          >
+            {t(language, "settings.customModel")}
+          </button>
+        )}
+        {showCustomModel && (
+          <button
+            className="text-button"
+            onClick={() => setShowCustomModel(false)}
+            type="button"
+          >
+            {t(language, "settings.pickFromList")}
+          </button>
+        )}
+      </label>
+
+      <label className="field">
+        <span>{t(language, "settings.temperature")}</span>
+        <input
+          type="number"
+          min="0"
+          max="2"
+          step="0.1"
+          value={draft.temperature}
+          onChange={(event) => setDraft((prev) => ({ ...prev, temperature: Number(event.target.value) }))}
+        />
+        <small>{t(language, "settings.temperatureHint")}</small>
+      </label>
+      <label className="field">
+        <span>{t(language, "settings.maxTokens")}</span>
+        <input
+          type="number"
+          min="0"
+          max={999999}
+          step="1"
+          value={draft.maxTokens === 0 ? "" : draft.maxTokens}
+          placeholder={t(language, "settings.maxTokensPlaceholder")}
+          onChange={(event) => setDraft((prev) => ({ ...prev, maxTokens: event.target.value === "" ? 0 : Number(event.target.value) }))}
+        />
+        <small>{t(language, "settings.maxTokensHint")}</small>
+      </label>
+      <label className="field" style={{ gridColumn: "1 / -1" }}>
+        <span>{t(language, "settings.systemPrompt")}</span>
+        <textarea
+          rows={6}
+          value={draft.systemPrompt}
+          onChange={(e) => setDraft((prev) => ({...prev, systemPrompt: e.target.value}))}
+          style={{ fontFamily: "monospace", fontSize: 13, lineHeight: 1.5, width: "100%" }}
+        />
+        <small>{t(language, "settings.systemPromptHint")}</small>
+      </label>
+    </div>
+  );
 }

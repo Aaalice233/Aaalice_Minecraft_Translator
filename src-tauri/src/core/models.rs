@@ -32,6 +32,10 @@ fn default_resource_pack_names() -> Vec<String> {
     ]
 }
 
+fn default_provider() -> String {
+    "deepseek".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
@@ -40,6 +44,8 @@ pub struct Settings {
     pub source_language: String,
     pub target_language: String,
     pub instance_path: String,
+    #[serde(default = "default_provider")]
+    pub provider: String,
     pub base_url: String,
     pub api_key: String,
     pub model: String,
@@ -111,6 +117,7 @@ impl Default for Settings {
             source_language: "auto".to_string(),
             target_language: "zh_cn".to_string(),
             instance_path: "E:/PCL2/.minecraft/versions/Aaalice Craft".to_string(),
+            provider: "deepseek".to_string(),
             base_url: "https://api.deepseek.com".to_string(),
             api_key: String::new(),
             model: "deepseek-v4-flash".to_string(),
