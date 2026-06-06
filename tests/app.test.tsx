@@ -33,8 +33,10 @@ const settings: Settings = {
   enableDebugLog: false,
   enableHttpLog: false,
   enableTokenStats: true,
-  i18nPackName: "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
-  vmPackName: "VMTranslationPack-Converted-1.21.1.zip",
+  resourcePackNames: [
+    "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
+    "VMTranslationPack-Converted-1.21.1.zip",
+  ],
   systemPrompt: "",
 };
 

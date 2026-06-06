@@ -103,11 +103,10 @@ pub async fn start_translation(
     spawn_batched_reader(log_rx, app.clone(), job_id.clone(), "translate-log-entries");
     spawn_batched_reader(entry_progress_rx, app.clone(), job_id.clone(), "translate-entry-progresses");
 
-    // Read settings for pack names and LLM config
     let s = settings::load_settings(&root).ok();
-    let (i18n_pack_name, vm_pack_name) = s
+    let resource_pack_names = s
         .as_ref()
-        .map(|s| (s.i18n_pack_name.clone(), s.vm_pack_name.clone()))
+        .map(|s| s.resource_pack_names.clone())
         .unwrap_or_default();
 
     let llm = s.map(|s| LlmConfig {
@@ -135,8 +134,7 @@ pub async fn start_translation(
         source_language,
         target_language,
         scan_job_id,
-        i18n_pack_name: Some(i18n_pack_name),
-        vm_pack_name: Some(vm_pack_name),
+        resource_pack_names,
         llm,
     };
 

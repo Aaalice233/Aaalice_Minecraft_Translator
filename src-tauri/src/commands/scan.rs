@@ -38,10 +38,9 @@ pub async fn scan_instance(
         }
     });
 
-    let s = settings::load_settings(&root).ok();
-    let (i18n_pack_name, vm_pack_name) = s
-        .as_ref()
-        .map(|s| (s.i18n_pack_name.clone(), s.vm_pack_name.clone()))
+    let resource_pack_names = settings::load_settings(&root)
+        .ok()
+        .map(|s| s.resource_pack_names)
         .unwrap_or_default();
 
     let root_for_save = root.clone();
@@ -52,8 +51,7 @@ pub async fn scan_instance(
             path,
             source_language,
             target_language,
-            i18n_pack_name,
-            vm_pack_name,
+            resource_pack_names,
             &SCAN_CANCEL,
             &|progress: ScanProgress| {
                 let _ = progress_tx_scan.send(progress);

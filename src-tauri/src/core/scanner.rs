@@ -67,8 +67,7 @@ pub fn scan_instance(
     path: String,
     source_language: String,
     target_language: String,
-    i18n_pack_name: String,
-    vm_pack_name: String,
+    resource_pack_names: Vec<String>,
     cancel: &AtomicBool,
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<ScanSummary> {
@@ -109,8 +108,7 @@ pub fn scan_instance(
         scan_resourcepacks(
             &instance_path.join("resourcepacks"),
             &target_language,
-            &i18n_pack_name,
-            &vm_pack_name,
+            &resource_pack_names,
             progress,
         )?
     };
@@ -331,8 +329,7 @@ pub fn scan_mods(
 pub fn scan_resourcepacks(
     resourcepacks_path: &Path,
     target_language: &str,
-    i18n_pack_name: &str,
-    vm_pack_name: &str,
+    resource_pack_names: &[String],
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<Vec<ResourcePackScanResult>> {
     let mut results = Vec::new();
@@ -340,19 +337,27 @@ pub fn scan_resourcepacks(
         return Ok(results);
     }
 
-    let i18n_lower = i18n_pack_name.to_ascii_lowercase();
-    let vm_lower = vm_pack_name.to_ascii_lowercase();
+    let names_lower: Vec<String> = resource_pack_names
+        .iter()
+        .map(|n| n.to_ascii_lowercase())
+        .collect();
+    let stripped_refs: Vec<&str> = names_lower
+        .iter()
+        .map(|lower| {
+            lower
+                .strip_suffix(".zip")
+                .unwrap_or(lower)
+                .trim_end_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '.')
+        })
+        .collect();
     let is_known_pack = |name: &str| -> bool {
         let lower = name.to_ascii_lowercase();
-        // Prefix/suffix strip: remove .zip and version suffixes for comparison
         let stripped = lower
             .strip_suffix(".zip")
             .unwrap_or(&lower)
             .trim_end_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '.');
-        stripped == i18n_lower.trim_end_matches(".zip").trim_end_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '.')
-            || stripped == vm_lower.trim_end_matches(".zip").trim_end_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '.')
-            || lower == i18n_lower
-            || lower == vm_lower
+        names_lower.iter().any(|nl| *nl == lower)
+            || stripped_refs.iter().any(|sr| *sr == stripped)
     };
 
     // Pre-collect known packs and sort by name so progress emission order
@@ -1094,11 +1099,14 @@ mod tests {
 
     #[test]
     fn scans_resource_pack_sources() {
+        let names: Vec<String> = vec![
+            "i18n-example.zip".to_string(),
+            "VM_汉化包".to_string(),
+        ];
         let packs = scan_resourcepacks(
             &fixtures_root().join("resourcepacks"),
             "zh_cn",
-            "i18n-example.zip",
-            "VM_汉化包",
+            &names,
             &|_| {},
         )
         .unwrap();
@@ -1126,11 +1134,14 @@ mod tests {
 
     #[test]
     fn target_language_changes_resource_pack_matching() {
+        let names: Vec<String> = vec![
+            "i18n-example.zip".to_string(),
+            "VM_汉化包".to_string(),
+        ];
         let packs = scan_resourcepacks(
             &fixtures_root().join("resourcepacks"),
             "ja_jp",
-            "i18n-example.zip",
-            "VM_汉化包",
+            &names,
             &|_| {},
         )
         .unwrap();

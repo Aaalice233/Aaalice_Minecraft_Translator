@@ -972,6 +972,28 @@ th.sorted-default .sort-indicator {
   padding: 8px 0;
 }
 
+/* ── Resource pack array editor ──────────────────── */
+.resource-pack-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.resource-pack-row + .resource-pack-row {
+  margin-top: 8px;
+}
+
+.pack-row-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.pack-remove-btn {
+  flex-shrink: 0;
+  min-width: 80px;
+  height: 36px;
+}
+
 .settings-shell {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);

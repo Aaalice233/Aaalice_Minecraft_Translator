@@ -378,24 +378,46 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
               <Toggle label={t(language, "settings.enableFtb")} checked={draft.enableFtbQuests} onChange={(checked) => setDraft({ ...draft, enableFtbQuests: checked })} />
               <hr className="settings-separator" />
               <h3 className="section-label">{t(language, "settings.translationPacks")}</h3>
-              <label className="field">
-                {t(language, "settings.i18nPackName")}
-                <input
-                  value={draft.i18nPackName}
-                  onChange={(event) => setDraft({ ...draft, i18nPackName: event.target.value })}
-                  placeholder="Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip"
-                />
-                <small>{t(language, "settings.i18nPackHint")}</small>
-              </label>
-              <label className="field">
-                {t(language, "settings.vmPackName")}
-                <input
-                  value={draft.vmPackName}
-                  onChange={(event) => setDraft({ ...draft, vmPackName: event.target.value })}
-                  placeholder="VMTranslationPack-Converted-1.21.1.zip"
-                />
-                <small>{t(language, "settings.vmPackHint")}</small>
-              </label>
+              {(draft.resourcePackNames ?? []).map((name, index) => (
+                <div key={index} className="resource-pack-row">
+                  <label className="field pack-row-input">
+                    {t(language, "settings.resourcePackName")} #{index + 1}
+                    <input
+                      value={name}
+                      onChange={(event) => {
+                        const next = [...(draft.resourcePackNames ?? [])];
+                        next[index] = event.target.value;
+                        setDraft({ ...draft, resourcePackNames: next });
+                      }}
+                      placeholder={t(language, "settings.packPlaceholder")}
+                    />
+                  </label>
+                  <button
+                    className="ghost-button danger pack-remove-btn"
+                    onClick={() => {
+                      const next = draft.resourcePackNames.filter((_, i) => i !== index);
+                      setDraft({ ...draft, resourcePackNames: next });
+                    }}
+                    type="button"
+                  >
+                    {t(language, "settings.removePack")}
+                  </button>
+                </div>
+              ))}
+              <button
+                className="ghost-button"
+                onClick={() => {
+                  const next = [...(draft.resourcePackNames ?? []), ""];
+                  setDraft({ ...draft, resourcePackNames: next });
+                }}
+                type="button"
+                style={{ marginTop: 8 }}
+              >
+                + {t(language, "settings.addPack")}
+              </button>
+              <small style={{ display: 'block', marginTop: 6, color: '#6b665d', fontSize: 12 }}>
+                {t(language, "settings.resourcePackHint")}
+              </small>
             </div>
           )}
 

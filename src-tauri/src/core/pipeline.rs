@@ -667,8 +667,7 @@ fn resolve_scan(
         config.instance_path.clone(),
         config.source_language.clone(),
         config.target_language.clone(),
-        config.i18n_pack_name.clone().unwrap_or_default(),
-        config.vm_pack_name.clone().unwrap_or_default(),
+        config.resource_pack_names.clone(),
         &TRANSLATE_CANCEL,
         &relay,
     ).map_err(|e| format!("扫描失败: {e}"))?;

@@ -25,8 +25,7 @@ export interface Settings {
   enableDebugLog: boolean;
   enableHttpLog: boolean;
   enableTokenStats: boolean;
-  i18nPackName: string;
-  vmPackName: string;
+  resourcePackNames: string[];
   systemPrompt: string;
 }
 

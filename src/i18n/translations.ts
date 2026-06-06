@@ -205,10 +205,12 @@ export type TranslationKey =
   | "settings.enableTokens"
   | "settings.defaultInstance"
   | "settings.translationPacks"
-  | "settings.i18nPackName"
-  | "settings.vmPackName"
-  | "settings.i18nPackHint"
-  | "settings.vmPackHint"
+  | "settings.resourcePackName"
+  | "settings.resourcePackHint"
+  | "settings.addPack"
+  | "settings.removePack"
+  | "settings.packPlaceholder"
+  | "settings.packDefaultI18n"
   | "settings.futureAdvanced"
   | "logs.title"
   | "logs.subtitle"
@@ -498,10 +500,12 @@ const zhCn: TranslationMap = {
   "settings.enableTokens": "启用 Token 使用统计",
   "settings.defaultInstance": "默认实例路径",
   "settings.translationPacks": "汉化资源包",
-  "settings.i18nPackName": "i18n 汉化包文件名",
-  "settings.vmPackName": "VM 汉化包文件名",
-  "settings.i18nPackHint": "CFPAOrg 提供的 i18n 汉化资源包，扫描时按此名称精确查找",
-  "settings.vmPackHint": "VM 汉化更新提供的资源包，扫描时按此名称精确查找",
+  "settings.resourcePackName": "资源包文件名",
+  "settings.resourcePackHint": "扫描 resourcepacks/ 时会按此名称在实例中匹配资源包",
+  "settings.addPack": "添加资源包",
+  "settings.removePack": "删除",
+  "settings.packPlaceholder": "例如: Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
+  "settings.packDefaultI18n": "默认含 CFPAOrg (i18n) 和 VM 汉化资源包",
   "settings.futureAdvanced": "词典、打包和实验功能设置会在对应阶段接入。",
   "logs.title": "日志中心",
   "logs.subtitle": "第一阶段已写入 main、job 和 error 日志；完整过滤器在后续阶段接入。",
@@ -656,10 +660,12 @@ const enUs: TranslationMap = {
   "settings.enableTokens": "Enable token usage stats",
   "settings.defaultInstance": "Default instance path",
   "settings.translationPacks": "Translation packs",
-  "settings.i18nPackName": "i18n pack filename",
-  "settings.vmPackName": "VM pack filename",
-  "settings.i18nPackHint": "i18n translation pack from CFPAOrg; scanner looks for this exact filename",
-  "settings.vmPackHint": "VM translation pack; scanner looks for this exact filename",
+  "settings.resourcePackName": "Pack filename",
+  "settings.resourcePackHint": "Scanner matches resource packs in resourcepacks/ by this name",
+  "settings.addPack": "Add pack",
+  "settings.removePack": "Remove",
+  "settings.packPlaceholder": "e.g. Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
+  "settings.packDefaultI18n": "Defaults include CFPAOrg (i18n) and VM translation packs",
   "settings.futureAdvanced": "Dictionary, packaging, and lab settings will be connected in later phases.",
   "logs.title": "Logs",
   "logs.subtitle": "Phase 1 writes main, job, and error logs; full filters arrive later.",
@@ -831,10 +837,12 @@ const jaJp: TranslationMap = {
   "settings.enableTokens": "Token 使用統計を有効化",
   "settings.defaultInstance": "既定のインスタンスパス",
   "settings.translationPacks": "翻訳リソースパック",
-  "settings.i18nPackName": "i18n 翻訳パックのファイル名",
-  "settings.vmPackName": "VM 翻訳パックのファイル名",
-  "settings.i18nPackHint": "CFPAOrg が提供する i18n 翻訳リソースパック。スキャナーはこのファイル名を検索します",
-  "settings.vmPackHint": "VM 翻訳更新が提供するリソースパック。スキャナーはこのファイル名を検索します",
+  "settings.resourcePackName": "リソースパックファイル名",
+  "settings.resourcePackHint": "スキャナーは resourcepacks/ 内をこの名前で検索します",
+  "settings.addPack": "リソースパックを追加",
+  "settings.removePack": "削除",
+  "settings.packPlaceholder": "例: Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
+  "settings.packDefaultI18n": "デフォルトで CFPAOrg (i18n) と VM 翻訳パックを含みます",
   "settings.futureAdvanced": "辞書、パッケージング、実験機能の設定は後続フェーズで接続します。",
   "logs.title": "ログ",
   "logs.subtitle": "フェーズ1では main、job、error ログを書き込みます。完全なフィルターは後続フェーズで接続します。",
@@ -976,10 +984,12 @@ const koKr: TranslationMap = {
   "settings.enableTokens": "Token 사용 통계 활성화",
   "settings.defaultInstance": "기본 인스턴스 경로",
   "settings.translationPacks": "번역 리소스 팩",
-  "settings.i18nPackName": "i18n 번역 팩 파일명",
-  "settings.vmPackName": "VM 번역 팩 파일명",
-  "settings.i18nPackHint": "CFPAOrg의 i18n 번역 리소스 팩. 스캐너가 이 파일명으로 정확히 검색합니다",
-  "settings.vmPackHint": "VM 번역 업데이트 리소스 팩. 스캐너가 이 파일명으로 정확히 검색합니다",
+  "settings.resourcePackName": "리소스 팩 파일명",
+  "settings.resourcePackHint": "스캐너가 resourcepacks/ 에서 이 이름으로 검색합니다",
+  "settings.addPack": "팩 추가",
+  "settings.removePack": "삭제",
+  "settings.packPlaceholder": "예: Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
+  "settings.packDefaultI18n": "기본적으로 CFPAOrg (i18n) 및 VM 번역 팩 포함",
   "settings.futureAdvanced": "사전, 패키징, 실험 기능 설정은 이후 단계에서 연결됩니다.",
   "logs.title": "로그",
   "logs.subtitle": "1단계에서는 main, job, error 로그를 기록하며 전체 필터는 이후 단계에서 연결됩니다.",
@@ -1210,10 +1220,12 @@ const ruRu: TranslationMap = {
   "settings.enableTokens": "Включить статистику токенов",
   "settings.defaultInstance": "Путь к экземпляру по умолчанию",
   "settings.translationPacks": "Ресурс-паки перевода",
-  "settings.i18nPackName": "Имя i18n ресурс-пака",
-  "settings.vmPackName": "Имя VM ресурс-пака",
-  "settings.i18nPackHint": "Ресурс-пак от CFPAOrg; сканер ищет точное имя файла",
-  "settings.vmPackHint": "Ресурс-пак VM; сканер ищет точное имя файла",
+  "settings.resourcePackName": "Имя файла ресурс-пака",
+  "settings.resourcePackHint": "Сканер ищет ресурс-паки в resourcepacks/ по этому имени",
+  "settings.addPack": "Добавить ресурс-пак",
+  "settings.removePack": "Удалить",
+  "settings.packPlaceholder": "например Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
+  "settings.packDefaultI18n": "По умолчанию включает CFPAOrg (i18n) и VM ресурс-паки",
   "settings.futureAdvanced": "Настройки словаря и упаковки будут позже.",
   "logs.title": "Логи",
   "logs.subtitle": "Фаза 1 записывает main, job и error логи.",
