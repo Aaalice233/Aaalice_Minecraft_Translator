@@ -48,8 +48,6 @@ function CollapsibleWarnings({ warnings, language }: { warnings: ScanWarning[]; 
 export function DashboardPage({
   settings: _settings,
   scanSummary: _scanSummary,
-  onSettingsChange: _onSettingsChange,
-  onScanSummaryChange: _onScanSummaryChange,
   language,
 }: Props) {
   const { state, dispatch } = useAppState();
@@ -329,14 +327,20 @@ export function DashboardPage({
            (!range.max || actual <= Number(range.max));
   }
 
-  function getScanButtonState() {
+  function getScanButtonState(): {
+    className: string;
+    disabled: boolean;
+    icon: JSX.Element;
+    text: string;
+    tooltipKey: TranslationKey;
+  } {
     if (isCancelling) {
       return {
         className: "primary-button cancelling",
         disabled: true,
         icon: <Loader2 size={18} className="spin" />,
         text: t(language, "dashboard.cancelling"),
-        tooltipKey: "tooltip.cancelScan" as const,
+        tooltipKey: "tooltip.cancelScan",
       };
     }
     if (isScanning) {
@@ -345,7 +349,7 @@ export function DashboardPage({
         disabled: false,
         icon: <Square size={18} />,
         text: t(language, "dashboard.cancel"),
-        tooltipKey: "tooltip.cancelScan" as const,
+        tooltipKey: "tooltip.cancelScan",
       };
     }
     return {
@@ -353,7 +357,7 @@ export function DashboardPage({
       disabled: false,
       icon: <ScanLine size={18} />,
       text: t(language, "dashboard.scan"),
-      tooltipKey: "tooltip.scan" as const,
+      tooltipKey: "tooltip.scan",
     };
   }
 
@@ -468,16 +472,22 @@ export function DashboardPage({
         ))}
       </div>
 
-      <div className="resource-bar">
-        <span className="resource-bar-label">{t(language, "dashboard.resourceSources")}</span>
-        {(scanSummary?.resourcePacks ?? []).map((pack) => (
-          <span key={pack.path} className="resource-chip">
-            <strong>{pack.name}</strong>
-            <span>{t(language, "dashboard.resourceCount", { files: pack.langFileCount, entries: pack.entryCount })}</span>
-            <span className={`badge ${pack.sourceType}`}>{pack.sourceType}</span>
-          </span>
-        ))}
-        {!scanSummary && <span className="resource-bar-empty">{t(language, "dashboard.emptyResource")}</span>}
+      <div className="resource-section">
+        <div className="resource-section-header">{t(language, "dashboard.resourceSources")}</div>
+        <div className="resource-section-body">
+          {(scanSummary?.resourcePacks ?? []).map((pack) => (
+            <div key={pack.path} className="resource-pack">
+              <div className="resource-pack-top">
+                <span className="resource-pack-name" title={pack.name}>{pack.name}</span>
+                <span className={`badge ${pack.sourceType}`}>{pack.sourceType}</span>
+              </div>
+              <div className="resource-pack-meta">
+                {t(language, "dashboard.resourceCount", { files: pack.langFileCount, entries: pack.entryCount })}
+              </div>
+            </div>
+          ))}
+          {!scanSummary && <div className="resource-section-empty">{t(language, "dashboard.emptyResource")}</div>}
+        </div>
       </div>
 
       <div className="dashboard-grid">

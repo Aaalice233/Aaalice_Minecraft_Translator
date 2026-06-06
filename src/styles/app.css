@@ -910,45 +910,62 @@ th.sorted-default .sort-indicator {
   color: #6b665d;
 }
 
-.resource-bar {
+.resource-section {
+  margin-bottom: 16px;
+  border: 1px solid #ede8dc;
+  border-radius: 6px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.resource-section-header {
+  padding: 10px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  color: #45413a;
+  background: #faf8f5;
+  border-bottom: 1px solid #ede8dc;
+}
+
+.resource-section-body {
+  padding: 6px 14px;
+}
+
+.resource-pack {
+  padding: 8px 0;
+}
+
+.resource-pack + .resource-pack {
+  border-top: 1px solid #efeade;
+}
+
+.resource-pack-top {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  padding: 8px 14px;
-  background: #faf8f5;
-  border: 1px solid #efeade;
-  border-radius: 6px;
-  flex-wrap: wrap;
 }
-.resource-bar-label {
-  font-weight: 700;
-  font-size: 12px;
-  color: #6b665d;
+
+.resource-pack-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: #1e1d1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
-  margin-right: 4px;
+  min-width: 0;
 }
-.resource-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px 4px 10px;
-  background: #fff;
-  border: 1px solid #ded8cc;
-  border-radius: 5px;
+
+.resource-pack-meta {
+  margin-top: 4px;
   font-size: 12px;
-  line-height: 1.4;
+  color: #8a8478;
 }
-.resource-chip .badge {
-  min-height: 20px;
-  font-size: 10px;
-  padding: 0 7px;
-}
-.resource-chip span + span {
-  color: #6b665d;
-}
-.resource-bar-empty {
+
+.resource-section-empty {
   color: #6b665d;
   font-size: 12px;
+  padding: 8px 0;
 }
 
 .settings-shell {
