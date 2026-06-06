@@ -13,7 +13,7 @@ const defaultSettings: Settings = {
   temperature: 1.0,
   maxTokens: 0,
   concurrency: 6,
-  batchSize: 80,
+  batchSize: 100,
   batchMaxChars: 120000,
   timeoutSecs: 120,
   retryCount: 3,
