@@ -100,8 +100,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
 
-
-
   /** Derive entry status from progress map or fall back based on sourceType. */
   function getEntryStatus(entry: TranslateLogEntry): string {
     const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
@@ -318,8 +316,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
 
     return result;
   }, [logEntries, filterTerm, filters, sortConfig, entryProgressMap]);
-
-
 
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
