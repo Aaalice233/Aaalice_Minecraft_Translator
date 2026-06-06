@@ -23,7 +23,7 @@
 }
 
 /* ── Theme: Ocean Blue ── */
-.theme-ocean {
+[data-theme="ocean"] {
   --accent: #1a73e8;
   --accent-hover: #1557b0;
   --accent-bg: #e2edfc;
@@ -31,7 +31,7 @@
 }
 
 /* ── Theme: Aurora Purple ── */
-.theme-aurora {
+[data-theme="aurora"] {
   --accent: #7c3aed;
   --accent-hover: #6d28d9;
   --accent-bg: #ede9fe;
@@ -39,12 +39,18 @@
 }
 
 /* ── Theme: Amber Gold ── */
-.theme-gold {
+[data-theme="gold"] {
   --accent: #b8860b;
   --accent-hover: #9e7409;
   --accent-bg: #fef3c7;
   --accent-text: #92400e;
 }
+
+/* ── Font presets ── */
+[data-font="yahei"] { --ui-font: "Microsoft YaHei UI", "Microsoft YaHei", sans-serif; }
+[data-font="noto"] { --ui-font: "Noto Sans SC", "Source Han Sans SC", sans-serif; }
+[data-font="simsun"] { --ui-font: "SimSun", "Noto Serif SC", serif; }
+[data-font="system"] { --ui-font: system-ui, sans-serif; }
 
 * {
   box-sizing: border-box;

@@ -96,7 +96,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
       }
       setMessage(t(language, "settings.modelsFetched", { url: result.sourceUrl, count: result.models.length }));
     } catch (fetchError) {
-      setError(fetchError instanceof Error ? fetchError.message : String(fetchError));
+      setError(toErrorMessage(fetchError));
     } finally {
       setIsFetchingModels(false);
     }
@@ -161,7 +161,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                       onSettingsChange(updatedSettings);
                       setMessage(t(newLanguage, "settings.saved"));
                     } catch (err) {
-                      setError(err instanceof Error ? err.message : String(err));
+                      setError(toErrorMessage(err));
                     }
                   }}
                 >
@@ -196,7 +196,11 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 {t(language, "settings.uiTheme")}
                 <select
                   value={draft.uiTheme}
-                  onChange={(event) => setDraft((prev) => ({ ...prev, uiTheme: event.target.value }))}
+                  onChange={(event) => {
+                    const newTheme = event.target.value;
+                    setDraft((prev) => ({ ...prev, uiTheme: newTheme }));
+                    document.documentElement.dataset.theme = newTheme;
+                  }}
                 >
                   {(["default", "ocean", "aurora", "gold"] as const).map((key) => (
                     <option key={key} value={key}>{t(language, `settings.uiThemeOption.${key}` as TranslationKey)}</option>
@@ -207,7 +211,11 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 {t(language, "settings.uiFont")}
                 <select
                   value={draft.uiFont}
-                  onChange={(event) => setDraft((prev) => ({ ...prev, uiFont: event.target.value }))}
+                  onChange={(event) => {
+                    const newFont = event.target.value;
+                    setDraft((prev) => ({ ...prev, uiFont: newFont }));
+                    document.documentElement.dataset.font = newFont;
+                  }}
                 >
                   {(["system", "yahei", "noto", "simsun"] as const).map((key) => (
                     <option key={key} value={key}>{t(language, `settings.uiFontOption.${key}` as TranslationKey)}</option>
@@ -445,16 +453,13 @@ function LanguageField({
 
 function normalizeTranslationLanguage(value: string, allowAuto: boolean): string | null {
   const normalized = value.trim().toLowerCase();
-  if (allowAuto && normalized === "auto") {
-    return normalized;
-  }
-  if (!allowAuto && normalized === "auto") {
-    return null;
-  }
-  if (/^[a-z]{2,3}_[a-z0-9]{2,8}$/.test(normalized)) {
-    return normalized;
-  }
+  if (normalized === "auto") return allowAuto ? normalized : null;
+  if (/^[a-z]{2,3}_[a-z0-9]{2,8}$/.test(normalized)) return normalized;
   return null;
+}
+
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 const PROVIDER_PRESETS: Record<string, { baseUrl: string; model: string }> = {

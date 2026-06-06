@@ -39,24 +39,29 @@ type PageKey =
   | "settings"
   | "logs";
 
+interface NavItem {
+  key: PageKey;
+  labelKey: TranslationKey;
+  icon: LucideIcon;
+  disabled?: boolean;
+}
+
 const DEFAULT_SIDEBAR_WIDTH = 232;
 const COLLAPSED_SIDEBAR_WIDTH = 54;
 const MIN_SIDEBAR_WIDTH = 180;
 const MAX_SIDEBAR_WIDTH = 400;
 
-const DISABLED_NAV: ReadonlySet<PageKey> = new Set(["ftb", "hardcoded"] as const);
-
-const navItems = [
+const navItems: NavItem[] = [
   { key: "dashboard", labelKey: "nav.dashboard", icon: ScanLine },
   { key: "jobs", labelKey: "nav.jobs", icon: FileText },
   { key: "validate", labelKey: "nav.validate", icon: PackageCheck },
   { key: "packages", labelKey: "nav.packages", icon: Boxes },
-  { key: "ftb", labelKey: "nav.ftb", icon: ListChecks },
-  { key: "hardcoded", labelKey: "nav.hardcoded", icon: HardHat },
+  { key: "ftb", labelKey: "nav.ftb", icon: ListChecks, disabled: true },
+  { key: "hardcoded", labelKey: "nav.hardcoded", icon: HardHat, disabled: true },
   { key: "dictionary", labelKey: "nav.dictionary", icon: BookOpen },
   { key: "settings", labelKey: "nav.settings", icon: SettingsIcon },
   { key: "logs", labelKey: "nav.logs", icon: Home },
-] as const satisfies ReadonlyArray<{ key: PageKey; labelKey: TranslationKey; icon: LucideIcon }>;
+];
 
 export function App() {
   return (
@@ -184,22 +189,21 @@ function AppShell() {
     [activePage, language, scanSummary, settings, mountedPages, dbBusy, jobsBusy, jobsCompleted, packsBusy],
   );
 
-  // Font family mapping for each preset
-  const fontMap: Record<string, string> = {
-    system: "system-ui, sans-serif",
-    yahei: '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
-    noto: '"Noto Sans SC", "Source Han Sans SC", sans-serif',
-    simsun: '"SimSun", "Noto Serif SC", serif',
-  };
-
-  const uiFont = settings?.uiFont ? fontMap[settings.uiFont] || fontMap.system : fontMap.system;
-  const themeClass = settings?.uiTheme && settings.uiTheme !== "default" ? " theme-" + settings.uiTheme : "";
+  // 同步已保存的主题和字体到 data-* 属性（预览由 SettingsPage 即时设置）
+  useEffect(() => {
+    if (settings?.uiTheme) {
+      document.documentElement.dataset.theme = settings.uiTheme;
+    }
+    if (settings?.uiFont) {
+      document.documentElement.dataset.font = settings.uiFont;
+    }
+  }, [settings?.uiTheme, settings?.uiFont]);
 
   // 加载完成前显示 loading
   const isLoading = !settings;
 
   return (
-    <div className={"app-shell" + themeClass} lang={localeByAppLanguage[language]} style={{ '--sidebar-width': sidebarWidth + 'px', '--ui-font': uiFont } as React.CSSProperties}>
+    <div className="app-shell" lang={localeByAppLanguage[language]} style={{ '--sidebar-width': sidebarWidth + 'px' } as React.CSSProperties}>
       <aside className={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
         {!sidebarCollapsed && <div className="sidebar-resize-handle" onMouseDown={handleResizeStart} />}
         <nav className="nav-list">
@@ -214,7 +218,7 @@ function AppShell() {
             if (isActive) className += " active";
             if (isBusy) className += " busy";
             if (isCompleted) className += " completed";
-            if (DISABLED_NAV.has(item.key)) className += " disabled";
+            if (item.disabled) className += " disabled";
 
             let tooltip: string;
             if (isBusy) {
@@ -240,7 +244,7 @@ function AppShell() {
               <button
                 className={className}
                 key={item.key}
-                disabled={DISABLED_NAV.has(item.key)}
+                disabled={item.disabled}
                 onClick={() => setActivePage(item.key)}
                 type="button"
                 data-tooltip={sidebarCollapsed ? t(language, item.labelKey) : tooltip}
