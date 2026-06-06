@@ -696,9 +696,19 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                     <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
                     <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
                     <td>
-                      <span className={`badge badge-${getEntryStatus(entry)}`}>
-                        {statusLabel(getEntryStatus(entry), language)}
-                      </span>
+                      {(() => {
+                        const st = getEntryStatus(entry);
+                        const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
+                        const errorMsg = ep?.errorMessage;
+                        return (
+                          <span
+                            className={`badge badge-${st}`}
+                            data-tooltip={st === "failed" && errorMsg ? errorMsg : undefined}
+                          >
+                            {statusLabel(st, language)}
+                          </span>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))}

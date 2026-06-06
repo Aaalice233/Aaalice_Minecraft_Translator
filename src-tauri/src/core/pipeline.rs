@@ -226,6 +226,7 @@ pub fn run_pipeline(
                 source_text: entry.text.clone(),
                 target_text: Some(target_text.clone()),
                 status: EntryStatus::Completed,
+                error_message: None,
             });
         } else if shield::is_placeholder_only(&entry.text) {
             batch_results.push(jobs::TranslationResult {
@@ -249,6 +250,7 @@ pub fn run_pipeline(
                 source_text: entry.text.clone(),
                 target_text: Some(entry.text.clone()),
                 status: EntryStatus::Skip,
+                error_message: None,
             });
         } else {
             let source_hash = dictionary::hash_text(&entry.text);
@@ -283,6 +285,7 @@ pub fn run_pipeline(
                             source_text: entry.text.clone(),
                             target_text: Some(de.target_text.clone()),
                             status: EntryStatus::DictionaryHit,
+                            error_message: None,
                         });
                     } else {
                         llm_only_entries.push((entry, file_name));
@@ -323,6 +326,7 @@ pub fn run_pipeline(
             source_text: entry.text.clone(),
             target_text: None,
             status: EntryStatus::Pending,
+            error_message: None,
         });
     }
 
@@ -445,6 +449,7 @@ pub fn run_pipeline(
                         source_text: te.text.clone(),
                         target_text: None,
                         status: EntryStatus::Translating,
+                        error_message: None,
                     });
                 }
             }
@@ -460,13 +465,18 @@ pub fn run_pipeline(
 
                         let on_complete = |results: &[TranslateResult]| {
                             for r in results {
-                                let status = if r.success { EntryStatus::Completed } else { EntryStatus::Failed };
+                                let (status, error_message) = if r.success {
+                                    (EntryStatus::Completed, None)
+                                } else {
+                                    (EntryStatus::Failed, r.error.clone())
+                                };
                                 let _ = entry_progress_tx.send(EntryProgress {
                                     key: r.key.clone(),
                                     mod_name: mod_name_ref.to_string(),
                                     source_text: r.original_text.clone(),
                                     target_text: Some(r.translated_text.clone()),
                                     status,
+                                    error_message,
                                 });
                             }
                         };

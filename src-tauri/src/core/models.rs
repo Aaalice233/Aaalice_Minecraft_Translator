@@ -348,6 +348,8 @@ pub struct EntryProgress {
     pub source_text: String,
     pub target_text: Option<String>,
     pub status: EntryStatus,
+    #[serde(default)]
+    pub error_message: Option<String>,
 }
 
 /// A single issue found during translation validation.

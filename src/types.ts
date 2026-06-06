@@ -174,6 +174,7 @@ export interface EntryProgress {
   sourceText: string;
   targetText: string | null;
   status: "pending" | "dictionaryHit" | "skip" | "translating" | "completed" | "failed";
+  errorMessage?: string;
 }
 
 /** 侧边栏导航项的三态：空闲 / 运行中 / 已完成 */
