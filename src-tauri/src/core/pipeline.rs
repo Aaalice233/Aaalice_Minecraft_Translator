@@ -95,27 +95,12 @@ pub fn extract_pending_entries<'a>(
     pending
 }
 
-/// 按 mod_id 分组，每组内按 batch_size 切割（设置值是最大值）
-fn group_batches<'a>(
+/// 按原始顺序分批（允许单次请求混用多个模组的条目）
+fn chunk_entries<'a>(
     entries: &[(&'a LanguageEntry, &'a str)],
     batch_size: usize,
 ) -> Vec<Vec<(&'a LanguageEntry, &'a str)>> {
-    let mut by_mod: HashMap<&str, Vec<(&LanguageEntry, &str)>> = HashMap::new();
-    for item in entries {
-        by_mod.entry(item.0.mod_id.as_str()).or_default().push(*item);
-    }
-
-    let mut mod_ids: Vec<&str> = by_mod.keys().copied().collect();
-    mod_ids.sort();
-
-    let mut batches = Vec::new();
-    for mod_id in &mod_ids {
-        let group = by_mod.get(mod_id).unwrap();
-        for chunk in group.chunks(batch_size.max(1)) {
-            batches.push(chunk.to_vec());
-        }
-    }
-    batches
+    entries.chunks(batch_size.max(1)).map(|c| c.to_vec()).collect()
 }
 
 // ── Main pipeline ─────────────────────────────────────────────
@@ -405,9 +390,8 @@ pub fn run_pipeline(
         let llm_cfg = config.llm.as_ref().ok_or_else(|| "LLM 未配置，但有待翻译条目需要 LLM 翻译".to_string())?;
         let effective_batch_size = llm_cfg.batch_size.max(1);
 
-        // 智能分批：按 mod_id 分组
-        let smart_batches = group_batches(&llm_only_entries, effective_batch_size);
-        let total_llm_batches = smart_batches.len();
+        let batches = chunk_entries(&llm_only_entries, effective_batch_size);
+        let total_llm_batches = batches.len();
         let initial_concurrency = llm_cfg.concurrency.min(total_llm_batches).max(1);
 
         let client = LlmClient {
@@ -466,10 +450,9 @@ pub fn run_pipeline(
             // Build wave: each batch is a Vec<TranslationEntry>
             // Shield protection: key -> (original_text, ShieldResult) for restore/validate
             let mut batch_shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
-            let wave_batches: Vec<(usize, String, Vec<TranslationEntry>)> = (batch_index..batch_index + wave_count)
+            let wave_batches: Vec<(usize, Vec<TranslationEntry>)> = (batch_index..batch_index + wave_count)
                 .map(|bi| {
-                    let batch = &smart_batches[bi];
-                    let mod_name = batch.first().map(|(_, f)| f.to_string()).unwrap_or_default();
+                    let batch = &batches[bi];
 
                     // Collect CFPA references for this batch
                     let mut batch_refs = Vec::new();
@@ -496,12 +479,12 @@ pub fn run_pipeline(
                             references: batch_refs.clone(),
                         }
                     }).collect();
-                    (bi, mod_name, entries)
+                    (bi, entries)
                 })
                 .collect();
 
             // Emit Translating status for all entries in this wave (using original, unprotected text)
-            for (_, _, batch_entries) in &wave_batches {
+            for (_, batch_entries) in &wave_batches {
                 for te in batch_entries {
                     let fname = key_to_meta.get(te.key.as_str()).map(|&(_, f)| f).unwrap_or("");
                     let original_text = batch_shield_map.get(te.key.as_str())
@@ -521,11 +504,9 @@ pub fn run_pipeline(
             // Dispatch wave concurrently. Each batch fires on_batch_complete itself
             // and immediately emits PipelineProgress so the UI updates per-batch, not per-wave.
             let wave_results: Vec<(Vec<jobs::TranslationResult>, TokenUsage, bool)> = std::thread::scope(|s| {
-                wave_batches.iter().map(|(_bi, mod_name, batch_entries)| {
+                wave_batches.iter().map(|(_bi, batch_entries)| {
                     s.spawn(|| {
                         let entry_progress_tx = &entry_progress_tx;
-                        let mod_name = mod_name.clone();
-                        let mod_name_ref: &str = &mod_name;
 
                         let on_complete = |results: &[TranslateResult]| {
                             for r in results {
@@ -535,7 +516,7 @@ pub fn run_pipeline(
                                 } else if valid {
                                     restored_target
                                 } else {
-                                    restored_target.clone() // still show restored text even if validation failed
+                                    restored_target.clone()
                                 };
                                 let status = if r.success && valid { EntryStatus::Completed }
                                     else if !r.success { EntryStatus::Failed }
@@ -543,9 +524,12 @@ pub fn run_pipeline(
                                 let error_message = if !r.success { r.error.clone() }
                                     else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
                                     else { None };
+                                let entry_mod_name = key_to_meta.get(r.key.as_str())
+                                    .map(|&(_, fname)| fname)
+                                    .unwrap_or("");
                                 let _ = entry_progress_tx.send(EntryProgress {
                                     key: r.key.clone(),
-                                    mod_name: mod_name_ref.to_string(),
+                                    mod_name: entry_mod_name.to_string(),
                                     source_text: restored_source,
                                     target_text: Some(target_text),
                                     status,

@@ -24,6 +24,24 @@ function sourceTypeLabel(sourceType: string, lang: AppLanguage): string {
   return label || sourceType;
 }
 
+function stageLabel(progress: TranslateProgress | null, lang: AppLanguage): string {
+  if (!progress) return t(lang, "jobs.translating");
+  switch (progress.phase) {
+    case "scanning":
+      return `正在扫描: ${progress.modName || ""}`;
+    case "extracting":
+      return "正在提取待翻译条目...";
+    case "dictionary":
+      return "正在词典匹配...";
+    case "translating": {
+      const sub = progress.subStep ? ` (${progress.subStep})` : "";
+      return `正在翻译${sub}`;
+    }
+    default:
+      return t(lang, `jobs.stage.${progress.phase}` as any) || progress.phase;
+  }
+}
+
 interface EntryStatusCounts {
   pending: number;
   dictionaryHit: number;
@@ -42,7 +60,12 @@ const STATUS_META: Array<{ key: keyof EntryStatusCounts; color: string }> = [
   { key: "failed", color: "#ef4444" },
 ];
 
-const MAX_LOG = 10000;
+const KNOWN_SOURCE_TYPES = ["llm", "dictionary", "existing", "skipped", "failed"] as const;
+const KNOWN_STATUSES = ["pending", "dictionaryHit", "skip", "translating", "completed", "failed"] as const;
+
+function entryProgKey(modName: string, key: string): string {
+  return modName + "::" + key;
+}
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -89,12 +112,13 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const { state, dispatch } = useAppState();
 
   const [translateProgress, setTranslateProgress] = useState<TranslateProgress | null>(null);
-  // Restore persistent state from AppContext
   const [status, setStatus] = useState<TranslationStatus>(() => state.translationStatus as TranslationStatus || "idle");
   const isRunning = status === "running";
   const [translationResult, setTranslationResult] = useState<number | null>(state.translationResult);
   const [translationError, setTranslationError] = useState<string>(state.translationError);
-  const [logEntries, setLogEntries] = useState<TranslateLogEntry[]>([]);
+  // Append-only log buffer: ref avoids O(n) spread-on-update, version counter triggers re-render.
+  const logRef = useRef<TranslateLogEntry[]>([]);
+  const [logVersion, setLogVersion] = useState(0);
   const [entryProgressMap, setEntryProgressMap] = useState<Map<string, EntryProgress>>(new Map());
   const [filterTerm, setFilterTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
@@ -106,7 +130,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
 
   /** Derive entry status from progress map or fall back based on sourceType. */
   function getEntryStatus(entry: TranslateLogEntry): string {
-    const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
+    const ep = entryProgressMap.get(entryProgKey(entry.modName, entry.key));
     if (ep) return ep.status;
     switch (entry.sourceType) {
       case "llm":
@@ -121,12 +145,11 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     }
   }
 
-  const knownSourceTypes = ["llm", "dictionary", "existing", "skipped", "failed"] as const;
-  const knownStatuses = ["pending", "dictionaryHit", "skip", "translating", "completed", "failed"] as const;
+  const knownSourceTypes = KNOWN_SOURCE_TYPES;
+  const knownStatuses = KNOWN_STATUSES;
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
 
-  // Sync translation state to AppContext for cross-page persistence (M7)
   useEffect(() => {
     dispatch({
       type: "SET_TRANSLATION_STATUS",
@@ -134,7 +157,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     });
   }, [status, translationResult, translationError, dispatch]);
 
-  // On mount, try to restore from backend if AppContext has no active state
   useEffect(() => {
     if (status !== "idle") return; // Already restored from AppContext
     if (!("__TAURI_INTERNALS__" in window)) return;
@@ -157,31 +179,27 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync translation busy state to parent (sidebar)
   useEffect(() => {
     onBusyChange?.(isRunning);
   }, [isRunning, onBusyChange]);
 
-  // Browser preview mock data
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) {
-      setLogEntries([
+      logRef.current = [
         { key: "item.example.name", sourceText: "Example Item", targetText: "示例物品", modName: "example-mod-1.21.1.jar", sourceType: "llm" },
         { key: "item.example.desc", sourceText: "A useful example item", targetText: "一个有用的示例物品", modName: "example-mod-1.21.1.jar", sourceType: "llm" },
         { key: "block.example.ore", sourceText: "Example Ore", targetText: "示例矿石", modName: "example-mod-1.21.1.jar", sourceType: "dictionary" },
-      ]);
+      ];
+      setLogVersion(1);
     }
   }, []);
 
-  // Tauri event listeners for translation progress updates
   useTauriEvent<TranslateProgress>("translate-progress", setTranslateProgress);
 
   useTauriEvent<TranslateLogEntry[]>("translate-log-entries", (entries) => {
     if (cancelledRef.current) return;
-    setLogEntries((prev) => {
-      const next = [...prev, ...entries];
-      return next.length > MAX_LOG ? next.slice(-MAX_LOG) : next;
-    });
+    logRef.current.push(...entries);
+    setLogVersion((v) => v + 1);
   });
 
   useTauriEvent<EntryProgress[]>("translate-entry-progresses", (entries) => {
@@ -195,7 +213,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     });
   });
 
-  // Auto-scroll log panel only when page is visible and user is near the bottom
   useEffect(() => {
     if (!isActive) return;
     const container = logContainerRef.current;
@@ -206,7 +223,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
         container.scrollTop = container.scrollHeight;
       }
     }
-  }, [logEntries, isActive]);
+  }, [logVersion, isActive]);
 
   async function handleStart() {
     if (!scanSummary) return;
@@ -219,7 +236,8 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     setTranslateProgress(null);
     setTranslationResult(null);
     setTranslationError("");
-    setLogEntries([]);
+    logRef.current = [];
+    setLogVersion(0);
     setEntryProgressMap(new Map());
 
     try {
@@ -234,20 +252,19 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
 
       // Look up jobId and store in AppContext for cross-page access
       if ("__TAURI_INTERNALS__" in window) {
-        loadLatestTranslationJob()
-          .then((job) => {
+        await Promise.all([
+          loadLatestTranslationJob().then((job) => {
             if (job) dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
-          })
-          .catch((err) => console.warn("获取翻译任务 ID 失败:", err));
-
-        // Re-scan to refresh pending counts after translation
-        try {
-          const { scanInstance } = await import("../api/tauri");
-          const newSummary = await scanInstance(instPath, srcLang, tgtLang);
-          onScanSummaryChange(newSummary);
-        } catch (scanErr) {
-          setTranslationError("翻译后自动重新扫描失败: " + toErrorMessage(scanErr));
-        }
+          }).catch((err) => console.warn("获取翻译任务 ID 失败:", err)),
+          (async () => {
+            try {
+              const { scanInstance } = await import("../api/tauri");
+              onScanSummaryChange(await scanInstance(instPath, srcLang, tgtLang));
+            } catch (scanErr) {
+              setTranslationError("翻译后自动重新扫描失败: " + toErrorMessage(scanErr));
+            }
+          })(),
+        ]);
       }
     } catch (err) {
       setTranslationError(toErrorMessage(err));
@@ -288,7 +305,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
       : 0;
 
   const filteredEntries = useMemo(() => {
-    let result = logEntries;
+    let result = logRef.current;
 
     // Apply global fuzzy search (modName + key)
     if (filterTerm) {
@@ -357,14 +374,17 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     }
 
     return result;
-  }, [logEntries, filterTerm, filters, sortConfig, entryProgressMap]);
+  }, [logVersion, filterTerm, filters, sortConfig, entryProgressMap]);
 
   const entryProgressRef = useRef(entryProgressMap);
   entryProgressRef.current = entryProgressMap;
 
+  const getEntryFromRef = (modName: string, key: string) =>
+    entryProgressRef.current.get(entryProgKey(modName, key));
+
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
-      const ep = entryProgressRef.current.get(entry.modName + "::" + entry.key);
+      const ep = getEntryFromRef(entry.modName, entry.key);
       const tgt = entry.targetText || ep?.targetText || "";
       await navigator.clipboard.writeText(
         `${csvQuote(entry.key)},${csvQuote(entry.sourceText)},${csvQuote(tgt)},${csvQuote(entry.modName)}`,
@@ -399,7 +419,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     });
   }
 
-  // Click outside to close filter popover
   useEffect(() => {
     if (!openFilter) return;
     const handler = (e: MouseEvent) => {
@@ -495,21 +514,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
         <div className="scan-progress">
           <div className="scan-progress-header">
             <strong className="scan-progress-mod" style={{ maxWidth: 300, flex: 1, margin: 0 }}>
-              {(() => {
-                if (!translateProgress) return t(language, "jobs.translating");
-                switch (translateProgress.phase) {
-                  case "scanning":
-                    return `正在扫描: ${translateProgress.modName || ""}`;
-                  case "extracting":
-                    return "正在提取待翻译条目...";
-                  case "dictionary":
-                    return "正在词典匹配...";
-                  case "translating":
-                    return `正在翻译${translateProgress.subStep ? " (" + translateProgress.subStep + ")" : ""}`;
-                  default:
-                    return t(language, `jobs.stage.${translateProgress.phase}` as any) || translateProgress.phase;
-                }
-              })()}
+              {stageLabel(translateProgress, language)}
             </strong>
             {translateProgress?.phase !== "translating" && (
               <>
@@ -733,30 +738,26 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                 </tr>
               </thead>
               <tbody>
-                {filteredEntries.map((entry, idx) => (
-                  <tr key={`${entry.key}-${idx}`} className="copy-log-row" onClick={() => copyEntry(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
-                    <td>{entry.key}</td>
-                    <td title={entry.sourceText}>{entry.sourceText}</td>
-                    <td title={entry.targetText || entryProgressMap.get(entry.modName + "::" + entry.key)?.targetText || ''}>{entry.targetText || entryProgressMap.get(entry.modName + "::" + entry.key)?.targetText || ''}</td>
-                    <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
-                    <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
-                    <td>
-                      {(() => {
-                        const st = getEntryStatus(entry);
-                        const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
-                        const errorMsg = ep?.errorMessage;
-                        return (
-                          <span
-                            className={`badge badge-${st}`}
-                            data-tooltip={st === "failed" && errorMsg ? errorMsg : undefined}
-                          >
-                            {statusLabel(st, language)}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                  </tr>
-                ))}
+                {filteredEntries.map((entry, idx) => {
+                  const tgtText = entry.targetText || getEntryFromRef(entry.modName, entry.key)?.targetText || '';
+                  const st = getEntryStatus(entry);
+                  const ep = getEntryFromRef(entry.modName, entry.key);
+                  const errorMsg = ep?.errorMessage;
+                  return (
+                    <tr key={`${entry.key}-${idx}`} className="copy-log-row" onClick={() => copyEntry(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
+                      <td>{entry.key}</td>
+                      <td title={entry.sourceText}>{entry.sourceText}</td>
+                      <td title={tgtText}>{tgtText}</td>
+                      <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
+                      <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
+                      <td>
+                        <span className={`badge badge-${st}`} data-tooltip={st === "failed" && errorMsg ? errorMsg : undefined}>
+                          {statusLabel(st, language)}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}

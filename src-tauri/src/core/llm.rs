@@ -245,6 +245,25 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
         }
     }
 
+    // Collect distinct mod_ids for context
+    let mut mod_ids: Vec<&str> = entries.iter()
+        .map(|e| e.mod_id.as_str())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    mod_ids.sort();
+    let mod_context = if mod_ids.len() > 1 {
+        format!(
+            "本次请求中的条目来自以下 {} 个模组：{}\n请根据每个模组的语境选择合适的译法。\n\n",
+            mod_ids.len(),
+            mod_ids.join(", "),
+        )
+    } else if mod_ids.len() == 1 {
+        format!("模组：{}\n\n", mod_ids[0])
+    } else {
+        String::new()
+    };
+
     let entries_json = serde_json::to_string_pretty(
         &entries.iter().map(|e| serde_json::json!({
             "key": e.key,
@@ -256,7 +275,7 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
     let mut prompt = format!(
         r#"请将以下 Minecraft 模组文本从 {source_label} ({source_lang}) 翻译为 {target_label} ({target_lang})。
 
-规则：
+{mod_context}规则：
 1. 保留所有格式代码（%s、%d、%1$s、%2$d、§a、§l 等）
 2. 保留所有占位符（{{player}}、{{0}}、<> 等）
 3. 保持 JSON 结构不变
@@ -268,6 +287,7 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
         target_label = lang_label(target_lang),
         source_lang = source_lang,
         target_lang = target_lang,
+        mod_context = mod_context,
         entries_json = entries_json,
     );
 
