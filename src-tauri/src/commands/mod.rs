@@ -4,6 +4,7 @@
 
 pub mod dictionary;
 pub mod game;
+pub mod logs;
 pub mod jobs;
 pub mod llm;
 pub mod pack;
@@ -14,6 +15,7 @@ pub mod validate;
 
 pub use dictionary::*;
 pub use game::*;
+pub use logs::*;
 pub use jobs::*;
 pub use llm::*;
 pub use pack::*;

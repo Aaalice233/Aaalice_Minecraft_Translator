@@ -100,7 +100,6 @@ export type TranslationKey =
   | "jobs.stage.matching"
   | "jobs.stage.translating"
   | "jobs.stage.packaging"
-  | "jobs.progressHint"
   | "jobs.completed.message"
   | "jobs.canceled"
   | "jobs.canceledStatus"
@@ -162,8 +161,19 @@ export type TranslationKey =
   | "settings.tab.reuse"
   | "settings.tab.logs"
   | "settings.tab.advanced"
+  | "settings.tab.appearance"
   | "settings.apiKey"
   | "settings.appLanguage"
+  | "settings.uiFont"
+  | "settings.uiFontOption.system"
+  | "settings.uiFontOption.yahei"
+  | "settings.uiFontOption.noto"
+  | "settings.uiFontOption.simsun"
+  | "settings.uiTheme"
+  | "settings.uiThemeOption.default"
+  | "settings.uiThemeOption.ocean"
+  | "settings.uiThemeOption.aurora"
+  | "settings.uiThemeOption.gold"
   | "settings.sourceLanguage"
   | "settings.targetLanguage"
   | "settings.sourceHint"
@@ -396,7 +406,6 @@ const zhCn: TranslationMap = {
   "jobs.stage.matching": "匹配词典",
   "jobs.stage.translating": "翻译中",
   "jobs.stage.packaging": "打包中",
-  "jobs.progressHint": "请等待当前批处理完成",
   "jobs.completed.message": "翻译完成：共处理 {count} 条条目",
   "jobs.canceled": "翻译已取消",
   "jobs.canceledStatus": "已取消",
@@ -458,8 +467,19 @@ const zhCn: TranslationMap = {
   "settings.tab.reuse": "资源复用",
   "settings.tab.logs": "日志设置",
   "settings.tab.advanced": "高级设置",
+  "settings.tab.appearance": "界面",
   "settings.apiKey": "API 密钥",
   "settings.appLanguage": "应用语言",
+  "settings.uiFont": "界面字体",
+  "settings.uiFontOption.system": "系统默认",
+  "settings.uiFontOption.yahei": "微软雅黑",
+  "settings.uiFontOption.noto": "思源黑体",
+  "settings.uiFontOption.simsun": "宋体",
+  "settings.uiTheme": "主题",
+  "settings.uiThemeOption.default": "经典",
+  "settings.uiThemeOption.ocean": "海洋蓝",
+  "settings.uiThemeOption.aurora": "极光紫",
+  "settings.uiThemeOption.gold": "琥珀金",
   "settings.sourceLanguage": "来源语言",
   "settings.targetLanguage": "目标语言",
   "settings.sourceHint": "来源语言可填 auto，程序会优先使用 en_us。",
@@ -622,8 +642,19 @@ const enUs: TranslationMap = {
   "settings.tab.reuse": "Reuse",
   "settings.tab.logs": "Logs",
   "settings.tab.advanced": "Advanced",
+  "settings.tab.appearance": "Appearance",
   "settings.apiKey": "API Key",
   "settings.appLanguage": "App language",
+  "settings.uiFont": "UI Font",
+  "settings.uiFontOption.system": "System Default",
+  "settings.uiFontOption.yahei": "Microsoft YaHei",
+  "settings.uiFontOption.noto": "Noto Sans SC",
+  "settings.uiFontOption.simsun": "SimSun",
+  "settings.uiTheme": "Theme",
+  "settings.uiThemeOption.default": "Classic",
+  "settings.uiThemeOption.ocean": "Ocean Blue",
+  "settings.uiThemeOption.aurora": "Aurora Purple",
+  "settings.uiThemeOption.gold": "Amber Gold",
   "settings.sourceLanguage": "Source language",
   "settings.targetLanguage": "Target language",
   "settings.sourceHint": "Source can be auto; the scanner prefers en_us.",
@@ -807,8 +838,19 @@ const jaJp: TranslationMap = {
   "settings.tab.reuse": "再利用",
   "settings.tab.logs": "ログ設定",
   "settings.tab.advanced": "詳細設定",
+  "settings.tab.appearance": "外観",
   "settings.apiKey": "API キー",
   "settings.appLanguage": "アプリ言語",
+  "settings.uiFont": "UIフォント",
+  "settings.uiFontOption.system": "システムデフォルト",
+  "settings.uiFontOption.yahei": "Microsoft YaHei",
+  "settings.uiFontOption.noto": "Noto Sans SC",
+  "settings.uiFontOption.simsun": "SimSun",
+  "settings.uiTheme": "テーマ",
+  "settings.uiThemeOption.default": "クラシック",
+  "settings.uiThemeOption.ocean": "オーシャンブルー",
+  "settings.uiThemeOption.aurora": "オーロラパープル",
+  "settings.uiThemeOption.gold": "アンバーゴールド",
   "settings.sourceLanguage": "元言語",
   "settings.targetLanguage": "対象言語",
   "settings.sourceHint": "元言語には auto を指定できます。スキャンは en_us を優先します。",
@@ -955,8 +997,19 @@ const koKr: TranslationMap = {
   "settings.tab.reuse": "재사용",
   "settings.tab.logs": "로그 설정",
   "settings.tab.advanced": "고급 설정",
+  "settings.tab.appearance": "외관",
   "settings.apiKey": "API 키",
   "settings.appLanguage": "앱 언어",
+  "settings.uiFont": "UI 글꼴",
+  "settings.uiFontOption.system": "시스템 기본",
+  "settings.uiFontOption.yahei": "Microsoft YaHei",
+  "settings.uiFontOption.noto": "Noto Sans SC",
+  "settings.uiFontOption.simsun": "SimSun",
+  "settings.uiTheme": "테마",
+  "settings.uiThemeOption.default": "클래식",
+  "settings.uiThemeOption.ocean": "오션 블루",
+  "settings.uiThemeOption.aurora": "오로라 퍼플",
+  "settings.uiThemeOption.gold": "앰버 골드",
   "settings.sourceLanguage": "원본 언어",
   "settings.targetLanguage": "대상 언어",
   "settings.sourceHint": "원본 언어는 auto를 사용할 수 있으며 스캐너는 en_us를 우선합니다.",
@@ -1141,7 +1194,6 @@ const ruRu: TranslationMap = {
   "jobs.stage.matching": "Сопоставление словаря",
   "jobs.stage.translating": "Перевод",
   "jobs.stage.packaging": "Упаковка",
-  "jobs.progressHint": "Обработано: {current} / {total}",
   "jobs.completed.message": "Перевод завершен: {count} записей",
   "jobs.canceled": "Перевод отменен",
   "jobs.canceledStatus": "Отменено",
@@ -1189,8 +1241,19 @@ const ruRu: TranslationMap = {
   "settings.tab.reuse": "Повторное использование",
   "settings.tab.logs": "Логи",
   "settings.tab.advanced": "Расширенные",
+  "settings.tab.appearance": "Внешний вид",
   "settings.apiKey": "API ключ",
   "settings.appLanguage": "Язык приложения",
+  "settings.uiFont": "Шрифт интерфейса",
+  "settings.uiFontOption.system": "Системный",
+  "settings.uiFontOption.yahei": "Microsoft YaHei",
+  "settings.uiFontOption.noto": "Noto Sans SC",
+  "settings.uiFontOption.simsun": "SimSun",
+  "settings.uiTheme": "Тема",
+  "settings.uiThemeOption.default": "Классика",
+  "settings.uiThemeOption.ocean": "Океанский синий",
+  "settings.uiThemeOption.aurora": "Пурпурный",
+  "settings.uiThemeOption.gold": "Золотистый",
   "settings.sourceLanguage": "Исходный язык",
   "settings.targetLanguage": "Целевой язык",
   "settings.sourceHint": "Исходный язык может быть auto; сканер предпочитает en_us.",

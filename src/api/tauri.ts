@@ -1,4 +1,4 @@
-import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, PackEntry, PackResult, ScanSummary, Settings, TranslateProgress, TranslationJobState, ValidationReport } from "../types";
+import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, PackEntry, PackResult, ReadLogsResult, ScanSummary, Settings, TranslateProgress, TranslationJobState, ValidationReport } from "../types";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
 
@@ -34,6 +34,8 @@ const defaultSettings: Settings = {
     "VMTranslationPack-Converted-1.21.1.zip",
   ],
   systemPrompt: "",
+  uiFont: "system",
+  uiTheme: "default",
 };
 
 function isTauriRuntime(): boolean {
@@ -252,4 +254,11 @@ export async function generatePackFromJob(
   return tauriInvoke<PackResult>("generate_pack_from_job", {
     jobId, targetLanguage, dryRun,
   });
+}
+
+export async function readLogs(): Promise<ReadLogsResult> {
+  if (!isTauriRuntime()) {
+    return { entries: [], fileSize: 0 };
+  }
+  return tauriInvoke<ReadLogsResult>("read_logs");
 }

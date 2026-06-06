@@ -28,6 +28,8 @@ export interface Settings {
   enableTokenStats: boolean;
   resourcePackNames: string[];
   systemPrompt: string;
+  uiFont: string;
+  uiTheme: string;
 }
 
 export type AppLanguage = "zh_cn" | "en_us" | "ja_jp" | "ko_kr" | "ru_ru";
@@ -185,6 +187,20 @@ export interface TokenUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+}
+
+// ── Log types ───────────────────────────────────────────
+
+export interface LogEntry {
+  lineNumber: number;
+  timestamp: string;
+  level: string;
+  message: string;
+}
+
+export interface ReadLogsResult {
+  entries: LogEntry[];
+  fileSize: number;
 }
 
 // ── P5: Translation job state types (new pipeline) ────────────────

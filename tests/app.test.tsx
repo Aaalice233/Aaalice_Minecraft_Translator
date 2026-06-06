@@ -39,6 +39,8 @@ const settings: Settings = {
     "VMTranslationPack-Converted-1.21.1.zip",
   ],
   systemPrompt: "",
+  uiFont: "system",
+  uiTheme: "default",
 };
 
 afterEach(() => {

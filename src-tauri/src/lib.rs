@@ -16,6 +16,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(commands::LogOffset(std::sync::Mutex::new(0)))
         .setup(|_app| {
             let root = core::paths::runtime_root()?;
             core::logging::init_main_log(&root)?;
@@ -31,6 +32,7 @@ pub fn run() {
             commands::pick_instance_folder,
             commands::open_path,
             commands::fetch_llm_models,
+            commands::read_logs,
             // P2: Dictionary
             commands::search_dictionary,
             commands::update_dictionary_entry,

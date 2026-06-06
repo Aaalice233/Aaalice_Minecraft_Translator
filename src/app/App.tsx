@@ -184,11 +184,22 @@ function AppShell() {
     [activePage, language, scanSummary, settings, mountedPages, dbBusy, jobsBusy, jobsCompleted, packsBusy],
   );
 
+  // Font family mapping for each preset
+  const fontMap: Record<string, string> = {
+    system: "system-ui, sans-serif",
+    yahei: '"Microsoft YaHei UI", "Microsoft YaHei", sans-serif',
+    noto: '"Noto Sans SC", "Source Han Sans SC", sans-serif',
+    simsun: '"SimSun", "Noto Serif SC", serif',
+  };
+
+  const uiFont = settings?.uiFont ? fontMap[settings.uiFont] || fontMap.system : fontMap.system;
+  const themeClass = settings?.uiTheme && settings.uiTheme !== "default" ? " theme-" + settings.uiTheme : "";
+
   // 加载完成前显示 loading
   const isLoading = !settings;
 
   return (
-    <div className="app-shell" lang={localeByAppLanguage[language]} style={{ '--sidebar-width': sidebarWidth + 'px' } as React.CSSProperties}>
+    <div className={"app-shell" + themeClass} lang={localeByAppLanguage[language]} style={{ '--sidebar-width': sidebarWidth + 'px', '--ui-font': uiFont } as React.CSSProperties}>
       <aside className={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
         {!sidebarCollapsed && <div className="sidebar-resize-handle" onMouseDown={handleResizeStart} />}
         <nav className="nav-list">

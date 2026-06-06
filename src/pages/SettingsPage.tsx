@@ -1,6 +1,11 @@
 import {
+  Bot,
   Boxes,
+  Check,
+  ChevronDown,
+  Cloud,
   Cpu,
+  Palette,
   Database,
   FileText,
   Languages,
@@ -9,7 +14,7 @@ import {
   Server,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchLlmModels, saveSettings } from "../api/tauri";
 import {
   appLanguages,
@@ -25,10 +30,11 @@ interface Props {
   onSettingsChange: (settings: Settings) => void;
 }
 
-type SettingsTab = "language" | "api" | "performance" | "reuse" | "logs" | "advanced";
+type SettingsTab = "language" | "appearance" | "api" | "performance" | "reuse" | "logs" | "advanced";
 
 const tabs = [
   { key: "language", labelKey: "settings.tab.language", icon: Languages },
+  { key: "appearance", labelKey: "settings.tab.appearance", icon: Palette },
   { key: "api", labelKey: "settings.tab.api", icon: Server },
   { key: "performance", labelKey: "settings.tab.performance", icon: Cpu },
   { key: "reuse", labelKey: "settings.tab.reuse", icon: Boxes },
@@ -181,6 +187,33 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 onChange={(value) => setDraft({ ...draft, targetLanguage: value })}
                 excludeAuto
               />
+            </div>
+          )}
+
+          {activeTab === "appearance" && (
+            <div className="settings-form">
+              <label className="field">
+                {t(language, "settings.uiTheme")}
+                <select
+                  value={draft.uiTheme}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, uiTheme: event.target.value }))}
+                >
+                  {(["default", "ocean", "aurora", "gold"] as const).map((key) => (
+                    <option key={key} value={key}>{t(language, `settings.uiThemeOption.${key}` as TranslationKey)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                {t(language, "settings.uiFont")}
+                <select
+                  value={draft.uiFont}
+                  onChange={(event) => setDraft((prev) => ({ ...prev, uiFont: event.target.value }))}
+                >
+                  {(["system", "yahei", "noto", "simsun"] as const).map((key) => (
+                    <option key={key} value={key}>{t(language, `settings.uiFontOption.${key}` as TranslationKey)}</option>
+                  ))}
+                </select>
+              </label>
             </div>
           )}
 
@@ -445,33 +478,76 @@ interface ApiSettingsTabProps {
   setShowCustomModel: React.Dispatch<React.SetStateAction<boolean>>;
 }
 
+const PROVIDER_ICONS: Record<string, React.ReactNode> = {
+  deepseek: <Bot size={16} />,
+  openai: <Cloud size={16} />,
+};
+
 function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, handleFetchModels, showCustomModel, setShowCustomModel }: ApiSettingsTabProps) {
+  const [providerOpen, setProviderOpen] = useState(false);
+  const providerRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close provider dropdown
+  useEffect(() => {
+    if (!providerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (providerRef.current && !providerRef.current.contains(e.target as Node)) {
+        setProviderOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [providerOpen]);
+
+  const selectProvider = useCallback((provider: string) => {
+    const preset = PROVIDER_PRESETS[provider];
+    if (preset) {
+      setDraft((prev) => ({
+        ...prev,
+        provider,
+        baseUrl: preset.baseUrl,
+        model: prev.provider !== provider ? preset.model : prev.model,
+      }));
+    } else {
+      setDraft((prev) => ({ ...prev, provider }));
+    }
+    setProviderOpen(false);
+  }, [setDraft]);
+
   return (
     <div className="settings-form two-column">
       {/* Provider selector — full width */}
       <label className="field" style={{ gridColumn: "1 / -1" }}>
         <span>{t(language, "settings.provider")}</span>
-        <select
-          value={draft.provider}
-          onChange={(event) => {
-            const provider = event.target.value;
-            const preset = PROVIDER_PRESETS[provider];
-            if (preset) {
-              setDraft((prev) => ({
-                ...prev,
-                provider,
-                baseUrl: preset.baseUrl,
-                model: prev.provider !== provider ? preset.model : prev.model,
-              }));
-            } else {
-              setDraft((prev) => ({ ...prev, provider }));
-            }
-          }}
-        >
-          {PROVIDER_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+        <div className="provider-select-wrap" ref={providerRef}>
+          <button
+            className="provider-select-btn"
+            type="button"
+            onClick={() => setProviderOpen((p) => !p)}
+          >
+            <span className="provider-select-label">
+              {PROVIDER_ICONS[draft.provider]}
+              {PROVIDER_OPTIONS.find((o) => o.value === draft.provider)?.label}
+            </span>
+            <ChevronDown size={14} className={`provider-chevron ${providerOpen ? "open" : ""}`} />
+          </button>
+          {providerOpen && (
+            <div className="provider-dropdown">
+              {PROVIDER_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  className={`provider-option${draft.provider === opt.value ? " selected" : ""}`}
+                  type="button"
+                  onClick={() => selectProvider(opt.value)}
+                >
+                  {PROVIDER_ICONS[opt.value]}
+                  <span>{opt.label}</span>
+                  {draft.provider === opt.value && <Check size={14} className="provider-check" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </label>
 
       <Field

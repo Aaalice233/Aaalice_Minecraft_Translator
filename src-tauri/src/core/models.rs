@@ -32,6 +32,14 @@ fn default_resource_pack_names() -> Vec<String> {
     ]
 }
 
+fn default_ui_font() -> String {
+    "system".to_string()
+}
+
+fn default_ui_theme() -> String {
+    "default".to_string()
+}
+
 fn default_provider() -> String {
     "deepseek".to_string()
 }
@@ -70,6 +78,10 @@ pub struct Settings {
     #[serde(default = "default_resource_pack_names")]
     pub resource_pack_names: Vec<String>,
     pub system_prompt: String,
+    #[serde(default = "default_ui_font")]
+    pub ui_font: String,
+    #[serde(default = "default_ui_theme")]
+    pub ui_theme: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -144,6 +156,8 @@ impl Default for Settings {
                 "VMTranslationPack-Converted-1.21.1.zip".to_string(),
             ],
             system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
+            ui_font: "system".to_string(),
+            ui_theme: "default".to_string(),
         }
     }
 }

@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle, FileText, Filter, Play, Square, Trash2, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle, FileText, Filter, Play, Square, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelTranslation, startTranslation } from "../api/tauri";
 import { t } from "../i18n/translations";
@@ -317,19 +317,19 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     return result;
   }, [logEntries, filterTerm, filters, sortConfig, entryProgressMap]);
 
+  const entryProgressRef = useRef(entryProgressMap);
+  entryProgressRef.current = entryProgressMap;
+
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
+      const ep = entryProgressRef.current.get(entry.modName + "::" + entry.key);
+      const tgt = entry.targetText || ep?.targetText || "";
       await navigator.clipboard.writeText(
-        `${csvQuote(entry.key)},${csvQuote(entry.sourceText)},${csvQuote(entry.targetText)},${csvQuote(entry.modName)}`,
+        `${csvQuote(entry.key)},${csvQuote(entry.sourceText)},${csvQuote(tgt)},${csvQuote(entry.modName)}`,
       );
     } catch {
       // clipboard not available
     }
-  }, []);
-
-  const clearLog = useCallback(() => {
-    setLogEntries([]);
-    setFilterTerm("");
   }, []);
 
   function handleSort(column: string) {
@@ -565,11 +565,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
               {t(language, "jobs.canceledStatus")}
             </small>
           )}
-          {isRunning && (
-            <small className="scan-progress-status">
-              {t(language, "jobs.progressHint")}
-            </small>
-          )}
         </div>
       )}
 
@@ -588,10 +583,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
             value={filterTerm}
             onChange={(e) => setFilterTerm(e.target.value)}
           />
-          <button className="ghost-button danger" onClick={clearLog} type="button" style={{ height: 30 }} data-tooltip={t(language, "tooltip.clearLog")}>
-            <Trash2 size={14} />
-            {t(language, "jobs.logPanel.clear")}
-          </button>
         </div>
         <div className="log-panel-body" ref={logContainerRef}>
           {filteredEntries.length === 0 || !isActive ? (
@@ -704,7 +695,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                   <tr key={`${entry.key}-${idx}`} className="copy-log-row" onClick={() => copyEntry(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
                     <td>{entry.key}</td>
                     <td title={entry.sourceText}>{entry.sourceText}</td>
-                    <td title={entry.targetText}>{entry.targetText}</td>
+                    <td title={entry.targetText || entryProgressMap.get(entry.modName + "::" + entry.key)?.targetText || ''}>{entry.targetText || entryProgressMap.get(entry.modName + "::" + entry.key)?.targetText || ''}</td>
                     <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
                     <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
                     <td>

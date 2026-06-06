@@ -321,7 +321,7 @@ pub fn run_pipeline(
 
     let dict_count = processed - llm_only_entries.len();
 
-    // 发射待翻译条目的初始状态
+    // 发射待翻译条目的初始状态（同时写入日志表，让用户看到全部条目）
     for (entry, file_name) in &llm_only_entries {
         let _ = entry_progress_tx.send(EntryProgress {
             key: entry.key.clone(),
@@ -330,6 +330,13 @@ pub fn run_pipeline(
             target_text: None,
             status: EntryStatus::Pending,
             error_message: None,
+        });
+        let _ = log_tx.send(TranslateLogEntry {
+            key: entry.key.clone(),
+            source_text: entry.text.clone(),
+            target_text: String::new(),
+            mod_name: file_name.to_string(),
+            source_type: "llm".into(),
         });
     }
 
@@ -538,13 +545,6 @@ pub fn run_pipeline(
                         wave_llm_count += 1;
                     }
                     set_mod_meta(&mut entry);
-                    let _ = log_tx.send(TranslateLogEntry {
-                        key: entry.key.clone(),
-                        source_text: entry.source_text.clone(),
-                        target_text: entry.target_text.clone(),
-                        mod_name: entry.mod_name.clone(),
-                        source_type: entry.source_type.clone(),
-                    });
                     batch_results.push(entry);
                 }
                 llm_count += wave_llm_count;
