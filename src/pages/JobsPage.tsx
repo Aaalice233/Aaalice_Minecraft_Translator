@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle, FileText, Play, Square, Trash2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle, FileText, Filter, Play, Square, Trash2, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelTranslation, startTranslation } from "../api/tauri";
 import { t } from "../i18n/translations";
@@ -95,6 +95,10 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const [logEntries, setLogEntries] = useState<TranslateLogEntry[]>([]);
   const [entryProgressMap, setEntryProgressMap] = useState<Map<string, EntryProgress>>(new Map());
   const [filterTerm, setFilterTerm] = useState("");
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
 
@@ -112,6 +116,26 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  /** Derive entry status from progress map or fall back based on sourceType. */
+  function getEntryStatus(entry: TranslateLogEntry): string {
+    const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
+    if (ep) return ep.status;
+    switch (entry.sourceType) {
+      case "llm":
+      case "existing":
+        return "completed";
+      case "skipped":
+        return "skip";
+      case "dictionary":
+        return "dictionaryHit";
+      default:
+        return entry.sourceType;
+    }
+  }
+
+  const knownSourceTypes = ["llm", "dictionary", "existing", "skipped", "failed"] as const;
+  const knownStatuses = ["pending", "dictionaryHit", "skip", "translating", "completed", "failed"] as const;
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
 
@@ -238,17 +262,77 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
       ? Math.round((translateProgress.current / translateProgress.total) * 100)
       : 0;
 
-  const filteredEntries = useMemo(
-    () =>
-      filterTerm
-        ? logEntries.filter(
-            (e) =>
-              e.modName.toLowerCase().includes(filterTerm.toLowerCase()) ||
-              e.key.toLowerCase().includes(filterTerm.toLowerCase()),
-          )
-        : logEntries,
-    [logEntries, filterTerm],
-  );
+  const filteredEntries = useMemo(() => {
+    let result = logEntries;
+
+    // Apply global fuzzy search (modName + key)
+    if (filterTerm) {
+      const term = filterTerm.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.modName.toLowerCase().includes(term) ||
+          e.key.toLowerCase().includes(term),
+      );
+    }
+
+    // Apply per-column filters
+    const activeKeys = Object.keys(filters);
+    if (activeKeys.length > 0) {
+      result = result.filter((entry) =>
+        activeKeys.every((col) => {
+          const value = filters[col];
+          if (!value) return true;
+          switch (col) {
+            case "key":
+              return entry.key.toLowerCase().includes(value.toLowerCase());
+            case "sourceText":
+              return entry.sourceText.toLowerCase().includes(value.toLowerCase());
+            case "targetText":
+              return entry.targetText.toLowerCase().includes(value.toLowerCase());
+            case "modName":
+              return entry.modName.toLowerCase().includes(value.toLowerCase());
+            case "sourceType":
+              return entry.sourceType === value;
+            case "status":
+              return getEntryStatus(entry) === value;
+            default:
+              return true;
+          }
+        }),
+      );
+    }
+
+    // Apply sorting
+    if (sortConfig) {
+      result = [...result].sort((a, b) => {
+        const dir = sortConfig.direction === "asc" ? 1 : -1;
+        let cmp = 0;
+        switch (sortConfig.key) {
+          case "key":
+            cmp = a.key.localeCompare(b.key);
+            break;
+          case "sourceText":
+            cmp = a.sourceText.localeCompare(b.sourceText);
+            break;
+          case "targetText":
+            cmp = a.targetText.localeCompare(b.targetText);
+            break;
+          case "modName":
+            cmp = a.modName.localeCompare(b.modName);
+            break;
+          case "sourceType":
+            cmp = a.sourceType.localeCompare(b.sourceType);
+            break;
+          case "status":
+            cmp = getEntryStatus(a).localeCompare(getEntryStatus(b));
+            break;
+        }
+        return cmp * dir;
+      });
+    }
+
+    return result;
+  }, [logEntries, filterTerm, filters, sortConfig, entryProgressMap]);
 
   // Only render as many rows as fit in the visible area (+ buffer)
   const displayEntries = visibleRows > 0 && filteredEntries.length > visibleRows
@@ -269,6 +353,43 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     setLogEntries([]);
     setFilterTerm("");
   }, []);
+
+  function handleSort(column: string) {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== column) return { key: column, direction: "asc" };
+      if (prev.direction === "asc") return { key: column, direction: "desc" };
+      return null;
+    });
+    setOpenFilter(null);
+  }
+
+  function toggleFilter(column: string) {
+    setOpenFilter((prev) => (prev === column ? null : column));
+  }
+
+  function handleFilterChange(column: string, value: string | null) {
+    setFilters((prev) => {
+      const next = { ...prev };
+      if (value === null || value === "") {
+        delete next[column];
+      } else {
+        next[column] = value;
+      }
+      return next;
+    });
+  }
+
+  // Click outside to close filter popover
+  useEffect(() => {
+    if (!openFilter) return;
+    const handler = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setOpenFilter(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [openFilter]);
 
   return (
     <section className="page page-jobs">
@@ -485,12 +606,103 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
             <table>
               <thead>
                 <tr>
-                  <th>{t(language, "jobs.logPanel.colKey")}</th>
-                  <th>{t(language, "jobs.logPanel.colSource")}</th>
-                  <th>{t(language, "jobs.logPanel.colTarget")}</th>
-                  <th>{t(language, "jobs.logPanel.colMod")}</th>
-                  <th>{t(language, "jobs.logPanel.colType")}</th>
-                  <th>{t(language, "jobs.logPanel.colStatus")}</th>
+                  {([
+                    { key: "key", label: t(language, "jobs.logPanel.colKey") },
+                    { key: "sourceText", label: t(language, "jobs.logPanel.colSource") },
+                    { key: "targetText", label: t(language, "jobs.logPanel.colTarget") },
+                    { key: "modName", label: t(language, "jobs.logPanel.colMod") },
+                    { key: "sourceType", label: t(language, "jobs.logPanel.colType") },
+                    { key: "status", label: t(language, "jobs.logPanel.colStatus") },
+                  ] as const).map((col) => {
+                    const isActiveSort = sortConfig?.key === col.key;
+                    const isDefaultSort = !sortConfig && col.key === "key";
+                    const hasActiveFilter = col.key in filters;
+                    return (
+                      <th
+                        key={col.key}
+                        className={[
+                          "sortable",
+                          isActiveSort ? (sortConfig.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
+                          isDefaultSort ? "sorted-default" : "",
+                        ].filter(Boolean).join(" ")}
+                        onClick={() => handleSort(col.key)}
+                      >
+                        <span className="th-filter-wrap">
+                          {col.label}
+                          {(isActiveSort || isDefaultSort) && (
+                            <span className="sort-indicator">
+                              {isActiveSort ? (sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
+                            </span>
+                          )}
+                          <button
+                            className={[
+                              "th-filter-btn",
+                              hasActiveFilter ? "has-filter" : "",
+                              openFilter === col.key ? "active" : "",
+                            ].filter(Boolean).join(" ")}
+                            onClick={(e) => { e.stopPropagation(); toggleFilter(col.key); }}
+                            type="button"
+                            aria-label={`Filter ${col.label}`}
+                            data-tooltip={t(language, "tooltip.filter")}
+                          >
+                            <Filter size={13} />
+                          </button>
+                          {openFilter === col.key && (
+                            <div
+                              className="filter-popover"
+                              ref={filterRef}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="filter-popover-header">
+                                <span>{col.label}</span>
+                                <button
+                                  className="filter-popover-clear"
+                                  onClick={() => { handleFilterChange(col.key, null); }}
+                                  type="button"
+                                  data-tooltip={t(language, "tooltip.clearFilter")}
+                                >
+                                  <X size={13} />
+                                </button>
+                              </div>
+                              {(col.key === "key" || col.key === "sourceText" || col.key === "targetText" || col.key === "modName") && (
+                                <input
+                                  type="text"
+                                  value={filters[col.key] || ""}
+                                  onChange={(e) => handleFilterChange(col.key, e.target.value)}
+                                  placeholder={t(language, "dashboard.filterSearch")}
+                                  autoFocus
+                                />
+                              )}
+                              {col.key === "sourceType" && (
+                                <select
+                                  value={filters.sourceType || ""}
+                                  onChange={(e) => handleFilterChange("sourceType", e.target.value || null)}
+                                  autoFocus
+                                >
+                                  <option value="">全部</option>
+                                  {knownSourceTypes.map((st) => (
+                                    <option key={st} value={st}>{sourceTypeLabel(st, language)}</option>
+                                  ))}
+                                </select>
+                              )}
+                              {col.key === "status" && (
+                                <select
+                                  value={filters.status || ""}
+                                  onChange={(e) => handleFilterChange("status", e.target.value || null)}
+                                  autoFocus
+                                >
+                                  <option value="">全部</option>
+                                  {knownStatuses.map((st) => (
+                                    <option key={st} value={st}>{statusLabel(st, language)}</option>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          )}
+                        </span>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -502,26 +714,9 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                     <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
                     <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
                     <td>
-                      {(() => {
-                        const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
-                        let fallbackStatus: string;
-                        switch (entry.sourceType) {
-                          case "llm":
-                          case "existing":
-                            fallbackStatus = "completed";
-                            break;
-                          case "skipped":
-                            fallbackStatus = "skip";
-                            break;
-                          case "dictionary":
-                            fallbackStatus = "dictionaryHit";
-                            break;
-                          default:
-                            fallbackStatus = entry.sourceType;
-                        }
-                        const status = ep ? ep.status : fallbackStatus;
-                        return <span className={`badge badge-${status}`}>{statusLabel(status, language)}</span>;
-                      })()}
+                      <span className={`badge badge-${getEntryStatus(entry)}`}>
+                        {statusLabel(getEntryStatus(entry), language)}
+                      </span>
                     </td>
                   </tr>
                 ))}
