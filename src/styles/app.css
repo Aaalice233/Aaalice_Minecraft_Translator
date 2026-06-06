@@ -911,6 +911,7 @@ th.sorted-default .sort-indicator {
 }
 
 .resource-section {
+  flex-shrink: 0;
   margin-bottom: 16px;
   border: 1px solid #ede8dc;
   border-radius: 6px;
