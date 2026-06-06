@@ -1205,6 +1205,7 @@ th.sorted-default .sort-indicator {
   font-size: 12px;
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 .log-panel-body th {
@@ -1221,12 +1222,24 @@ th.sorted-default .sort-indicator {
 
 .log-panel-body td {
   padding: 6px 10px;
-  max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   border-bottom: 1px solid #f5f3ee;
 }
+
+.log-panel-body th:nth-child(1),
+.log-panel-body td:nth-child(1) { width: 16%; }
+.log-panel-body th:nth-child(2),
+.log-panel-body td:nth-child(2) { width: 25%; }
+.log-panel-body th:nth-child(3),
+.log-panel-body td:nth-child(3) { width: 25%; }
+.log-panel-body th:nth-child(4),
+.log-panel-body td:nth-child(4) { width: 18%; }
+.log-panel-body th:nth-child(5),
+.log-panel-body td:nth-child(5) { width: 8%; }
+.log-panel-body th:nth-child(6),
+.log-panel-body td:nth-child(6) { width: 8%; }
 
 .log-panel-body .copy-log-row {
   cursor: pointer;
