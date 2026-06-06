@@ -2,7 +2,7 @@ import { AlertTriangle, Filter, FolderOpen, Loader2, RefreshCcw, ScanLine, Squar
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
-import type { AppLanguage, ModScanResult, ScanProgressEvent, ScanSummary, Settings } from "../types";
+import type { AppLanguage, ModScanResult, ScanProgressEvent, ScanSummary, ScanWarning, Settings } from "../types";
 import type { TranslationKey } from "../i18n/translations";
 import { useAppState } from "../app/AppContext";
 
@@ -15,6 +15,37 @@ interface Props {
   onBusyChange?: (busy: boolean) => void;
   /** Notify sidebar that scanning completed (or was reset). */
   onCompleteChange?: (completed: boolean) => void;
+}
+
+/** Collapsible warnings panel — collapsed by default, expands on click. */
+function CollapsibleWarnings({ warnings, language }: { warnings: ScanWarning[]; language: AppLanguage }) {
+  const [expanded, setExpanded] = useState(false);
+  const maxVisible = expanded ? warnings.length : 0;
+
+  return (
+    <div className="warnings-collapsible">
+      <button
+        className="warnings-toggle"
+        onClick={() => setExpanded(!expanded)}
+        type="button"
+        aria-expanded={expanded}
+      >
+        <AlertTriangle size={15} />
+        <span>{t(language, "dashboard.warningsCount", { count: warnings.length })}</span>
+        <span className={`warnings-arrow ${expanded ? "expanded" : ""}`}>▶</span>
+      </button>
+      {expanded && (
+        <div className="warnings-body">
+          {warnings.map((w) => (
+            <div className="alert warning compact" key={`${w.code}-${w.path}`}>
+              <span>{w.message}</span>
+              {w.path && <code>{w.path}</code>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function DashboardPage({
@@ -409,18 +440,8 @@ export function DashboardPage({
         </div>
       )}
 
-      {scanSummary?.warnings.slice(0, 6).map((warning) => (
-        <div className="alert warning" key={`${warning.code}-${warning.path}`}>
-          <AlertTriangle size={17} />
-          <span>{warning.message}</span>
-          <code>{warning.path}</code>
-        </div>
-      ))}
-      {scanSummary && scanSummary.warnings.length > 6 && (
-        <div className="alert warning">
-          <AlertTriangle size={17} />
-          {t(language, "dashboard.moreWarnings", { count: scanSummary.warnings.length - 6 })}
-        </div>
+      {scanSummary && scanSummary.warnings.length > 0 && (
+        <CollapsibleWarnings warnings={scanSummary.warnings} language={language} />
       )}
 
       <div className="stats-grid">

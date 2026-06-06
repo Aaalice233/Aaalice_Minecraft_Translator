@@ -183,6 +183,24 @@ pub fn run_pipeline(
     let mut batch_results: Vec<jobs::TranslationResult> = Vec::new();
     let mut llm_only_entries: Vec<(&LanguageEntry, &str)> = Vec::new();
 
+    // Batch events during dictionary phase to avoid flooding the UI
+    const DICT_PHASE_BATCH: usize = 128;
+    let mut entry_progress_buf: Vec<EntryProgress> = Vec::with_capacity(DICT_PHASE_BATCH);
+    let mut log_buf: Vec<TranslateLogEntry> = Vec::with_capacity(DICT_PHASE_BATCH);
+
+    let flush_dict_batch = |ep_buf: &mut Vec<EntryProgress>, l_buf: &mut Vec<TranslateLogEntry>| {
+        if !ep_buf.is_empty() {
+            for ep in ep_buf.drain(..) {
+                let _ = entry_progress_tx.send(ep);
+            }
+        }
+        if !l_buf.is_empty() {
+            for entry in l_buf.drain(..) {
+                let _ = log_tx.send(entry);
+            }
+        }
+    };
+
     for (entry, file_name, existing_target) in &pending {
         if processed % 64 == 0 && is_translation_cancelled(job_id) {
             break;
@@ -198,14 +216,14 @@ pub fn run_pipeline(
                 mod_name: file_name.to_string(),
                 source_type: "existing".into(),
             });
-            let _ = log_tx.send(TranslateLogEntry {
+            log_buf.push(TranslateLogEntry {
                 key: entry.key.clone(),
                 source_text: entry.text.clone(),
                 target_text: target_text.clone(),
                 mod_name: entry.mod_id.clone(),
                 source_type: "existing".into(),
             });
-            let _ = entry_progress_tx.send(EntryProgress {
+            entry_progress_buf.push(EntryProgress {
                 key: entry.key.clone(),
                 mod_name: file_name.to_string(),
                 source_text: entry.text.clone(),
@@ -221,14 +239,14 @@ pub fn run_pipeline(
                 mod_name: file_name.to_string(),
                 source_type: "skipped".into(),
             });
-            let _ = log_tx.send(TranslateLogEntry {
+            log_buf.push(TranslateLogEntry {
                 key: entry.key.clone(),
                 source_text: entry.text.clone(),
                 target_text: entry.text.clone(),
                 mod_name: entry.mod_id.clone(),
                 source_type: "skipped".into(),
             });
-            let _ = entry_progress_tx.send(EntryProgress {
+            entry_progress_buf.push(EntryProgress {
                 key: entry.key.clone(),
                 mod_name: file_name.to_string(),
                 source_text: entry.text.clone(),
@@ -255,14 +273,14 @@ pub fn run_pipeline(
                             mod_name: file_name.to_string(),
                             source_type: "dictionary".into(),
                         });
-                        let _ = log_tx.send(TranslateLogEntry {
+                        log_buf.push(TranslateLogEntry {
                             key: entry.key.clone(),
                             source_text: entry.text.clone(),
                             target_text: de.target_text.clone(),
                             mod_name: entry.mod_id.clone(),
                             source_type: "dictionary".into(),
                         });
-                        let _ = entry_progress_tx.send(EntryProgress {
+                        entry_progress_buf.push(EntryProgress {
                             key: entry.key.clone(),
                             mod_name: file_name.to_string(),
                             source_text: entry.text.clone(),
@@ -279,6 +297,12 @@ pub fn run_pipeline(
             }
         }
         processed += 1;
+
+        // Flush batched events periodically
+        if entry_progress_buf.len() >= DICT_PHASE_BATCH {
+            flush_dict_batch(&mut entry_progress_buf, &mut log_buf);
+        }
+
         if processed % 64 == 0 {
             let _ = progress_tx.send(PipelineProgress {
                 current: processed, total,
@@ -288,6 +312,9 @@ pub fn run_pipeline(
             });
         }
     }
+
+    // Flush remaining batched events
+    flush_dict_batch(&mut entry_progress_buf, &mut log_buf);
 
     let dict_count = processed - llm_only_entries.len();
 

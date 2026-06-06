@@ -430,6 +430,54 @@ select {
   color: #166b48;
 }
 
+/* ── Collapsible warnings panel ───────────────────────── */
+.warnings-collapsible {
+  margin-bottom: 10px;
+}
+
+.warnings-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #e9c89c;
+  border-radius: 6px;
+  background: #fff7ea;
+  color: #8a4f18;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.warnings-toggle:hover {
+  background: #ffefd6;
+}
+
+.warnings-arrow {
+  margin-left: auto;
+  font-size: 10px;
+  transition: transform 0.2s;
+}
+
+.warnings-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+.warnings-body {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.alert.warning.compact {
+  min-height: auto;
+  margin-bottom: 0;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));

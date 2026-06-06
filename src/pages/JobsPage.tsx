@@ -18,6 +18,12 @@ function statusLabel(status: string, lang: AppLanguage): string {
   return label || status;
 }
 
+function sourceTypeLabel(sourceType: string, lang: AppLanguage): string {
+  const key = `jobs.sourceType.${sourceType}` as any;
+  const label = t(lang, key);
+  return label || sourceType;
+}
+
 interface EntryStatusCounts {
   pending: number;
   dictionaryHit: number;
@@ -511,7 +517,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                     <td title={entry.sourceText}>{entry.sourceText}</td>
                     <td title={entry.targetText}>{entry.targetText}</td>
                     <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
-                    <td><span className="badge">{entry.sourceType}</span></td>
+                    <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
                     <td>
                       {(() => {
                         const ep = entryProgressMap.get(entry.modName + "::" + entry.key);

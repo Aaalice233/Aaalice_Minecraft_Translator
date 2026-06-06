@@ -25,7 +25,7 @@ export type TranslationKey =
   | "dashboard.pickInstance"
   | "dashboard.pickInstanceError"
   | "dashboard.rescan"
-  | "dashboard.moreWarnings"
+  | "dashboard.warningsCount"
   | "dashboard.stats.mods"
   | "dashboard.stats.modsHint"
   | "dashboard.stats.pendingEntries"
@@ -122,6 +122,11 @@ export type TranslationKey =
   | "jobs.entryStatus.translating"
   | "jobs.entryStatus.completed"
   | "jobs.entryStatus.failed"
+  | "jobs.sourceType.existing"
+  | "jobs.sourceType.dictionary"
+  | "jobs.sourceType.llm"
+  | "jobs.sourceType.skipped"
+  | "jobs.sourceType.failed"
   | "packages.title"
   | "packages.subtitle"
   | "packages.dryRun"
@@ -303,7 +308,7 @@ const zhCn: TranslationMap = {
   "dashboard.pickInstance": "选择实例",
   "dashboard.pickInstanceError": "选择实例失败：",
   "dashboard.rescan": "重新扫描",
-  "dashboard.moreWarnings": "还有 {count} 条扫描提示，完整内容已写入任务日志。",
+  "dashboard.warningsCount": "{count} 条扫描提示",
   "dashboard.stats.mods": "已扫描模组",
   "dashboard.stats.modsHint": "mods/*.jar",
   "dashboard.stats.pendingEntries": "待翻译条目",
@@ -408,6 +413,11 @@ const zhCn: TranslationMap = {
   "jobs.entryStatus.translating": "翻译中",
   "jobs.entryStatus.completed": "已完成",
   "jobs.entryStatus.failed": "失败",
+  "jobs.sourceType.existing": "已有翻译",
+  "jobs.sourceType.dictionary": "词典匹配",
+  "jobs.sourceType.llm": "LLM 翻译",
+  "jobs.sourceType.skipped": "已跳过",
+  "jobs.sourceType.failed": "翻译失败",
   "packages.title": "资源包打包",
   "packages.subtitle": "生成翻译资源包并部署到实例",
   "packages.dryRun": "预览",
@@ -548,7 +558,7 @@ const enUs: TranslationMap = {
   "dashboard.pickInstance": "Choose instance",
   "dashboard.pickInstanceError": "Failed to pick instance: ",
   "dashboard.rescan": "Rescan",
-  "dashboard.moreWarnings": "{count} more scan warnings were written to the job log.",
+  "dashboard.warningsCount": "{count} scan warnings",
   "dashboard.stats.mods": "Scanned mods",
   "dashboard.stats.pendingEntries": "Pending entries",
   "dashboard.stats.resourcePackCovered": "Resource-pack covered",
@@ -677,6 +687,11 @@ const enUs: TranslationMap = {
   "jobs.entryStatus.translating": "Translating",
   "jobs.entryStatus.completed": "Completed",
   "jobs.entryStatus.failed": "Failed",
+  "jobs.sourceType.existing": "Existing",
+  "jobs.sourceType.dictionary": "Dictionary",
+  "jobs.sourceType.llm": "LLM",
+  "jobs.sourceType.skipped": "Skipped",
+  "jobs.sourceType.failed": "Failed",
   "placeholder.disabled": "Disabled",
   "placeholder.subtitle": "Phase 1 keeps this entry visible; the workflow will be connected later.",
   "placeholder.empty": "This module does not run automatic processing in the current phase.",
@@ -729,7 +744,7 @@ const jaJp: TranslationMap = {
   "dashboard.pickInstance": "選択",
   "dashboard.pickInstanceError": "インスタンス選択に失敗しました：",
   "dashboard.rescan": "再スキャン",
-  "dashboard.moreWarnings": "ほかに {count} 件のスキャン警告があります。詳細はジョブログに記録されました。",
+  "dashboard.warningsCount": "{count} 件のスキャン警告",
   "dashboard.stats.mods": "スキャン済み Mod",
   "dashboard.stats.modsHint": "mods/*.jar",
   "dashboard.stats.pendingEntries": "未翻訳項目",
@@ -872,7 +887,7 @@ const koKr: TranslationMap = {
   "dashboard.pickInstance": "인스턴스 선택",
   "dashboard.pickInstanceError": "인스턴스 선택 실패: ",
   "dashboard.rescan": "다시 스캔",
-  "dashboard.moreWarnings": "스캔 경고가 {count}개 더 있으며 전체 내용은 작업 로그에 기록되었습니다.",
+  "dashboard.warningsCount": "스캔 경고 {count}개",
   "dashboard.stats.mods": "스캔한 모드",
   "dashboard.stats.modsHint": "mods/*.jar",
   "dashboard.stats.pendingEntries": "번역 대기 항목",
@@ -1019,7 +1034,7 @@ const ruRu: TranslationMap = {
   "dashboard.pickInstance": "Выбрать экземпляр",
   "dashboard.pickInstanceError": "Не удалось выбрать экземпляр: ",
   "dashboard.rescan": "Пересканировать",
-  "dashboard.moreWarnings": "Еще {count} предупреждений сканирования в журнале задачи.",
+  "dashboard.warningsCount": "{count} предупреждений сканирования",
   "dashboard.stats.mods": "Просканировано модов",
   "dashboard.stats.modsHint": "mods/*.jar",
   "dashboard.stats.pendingEntries": "Ожидающих перевода",
