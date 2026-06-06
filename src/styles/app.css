@@ -991,7 +991,6 @@ th.sorted-default .sort-indicator {
 .pack-remove-btn {
   flex-shrink: 0;
   min-width: 80px;
-  height: 36px;
 }
 
 .settings-shell {

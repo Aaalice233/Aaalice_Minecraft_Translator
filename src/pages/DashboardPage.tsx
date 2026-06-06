@@ -435,11 +435,10 @@ export function DashboardPage({
           {scanProgress.stageStatus === "completed" && (
             <small className="scan-progress-status">✔ {stageLabel(scanProgress.phase)}</small>
           )}
-          {scanProgress.subStep && (
-            <small className="scan-progress-mod">{scanProgress.subStep}</small>
-          )}
-          {!scanProgress.subStep && scanProgress.modName && (
-            <small className="scan-progress-mod">{scanProgress.modName}</small>
+          {(scanProgress.subStep || scanProgress.modName) && (
+            <small className="scan-progress-mod">
+              {scanProgress.subStep || scanProgress.modName}
+            </small>
           )}
         </div>
       )}
