@@ -42,8 +42,41 @@ const STATUS_META: Array<{ key: keyof EntryStatusCounts; color: string }> = [
   { key: "failed", color: "#ef4444" },
 ];
 
+const MAX_LOG = 10000;
+const DISPLAY_MAX = 2000;
+
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/** Tauri event listener hook that auto-manages lifecycle and cleanup. */
+function useTauriEvent<T>(
+  event: string,
+  handler: (payload: T) => void,
+) {
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+    import("@tauri-apps/api/event").then(({ listen }) => {
+      if (cancelled) return;
+      listen(event, (e) => handlerRef.current(e.payload as T)).then((u) => {
+        unlisten = u;
+        if (cancelled) u();
+      });
+    }).catch((err) => {
+      console.error(`${event} listener failed:`, err);
+    });
+    return () => { cancelled = true; unlisten?.(); };
+  }, [event]);
+}
+
 interface Props {
   language: AppLanguage;
+  isActive?: boolean;
   scanSummary: ScanSummary | null;
   onScanSummaryChange: (summary: ScanSummary) => void;
   settings: { instancePath: string; sourceLanguage: string; targetLanguage: string };
@@ -53,10 +86,10 @@ interface Props {
 
 type TranslationStatus = "idle" | "running" | "completed" | "canceled" | "failed";
 
-export function JobsPage({ language, scanSummary, onScanSummaryChange, settings, onBusyChange, onCompleteChange }: Props) {
+export function JobsPage({ language, isActive = true, scanSummary, onScanSummaryChange, settings, onBusyChange, onCompleteChange }: Props) {
   const [translateProgress, setTranslateProgress] = useState<TranslateProgress | null>(null);
-  const [isRunning, setIsRunning] = useState(false);
   const [status, setStatus] = useState<TranslationStatus>("idle");
+  const isRunning = status === "running";
   const [translationResult, setTranslationResult] = useState<number | null>(null);
   const [translationError, setTranslationError] = useState<string>("");
   const [logEntries, setLogEntries] = useState<TranslateLogEntry[]>([]);
@@ -72,97 +105,40 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     onBusyChange?.(isRunning);
   }, [isRunning, onBusyChange]);
 
-  // Register translate-progress listener
+  // Browser preview mock data
   useEffect(() => {
-    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-      return;
-    }
-    let unlistenFn: (() => void) | null = null;
-    let cancelled = false;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      if (cancelled) return;
-      listen("translate-progress", (event) => {
-        setTranslateProgress(event.payload as TranslateProgress);
-      }).then((unlisten) => {
-        unlistenFn = unlisten;
-        if (cancelled) unlisten();
-      });
-    }).catch((err) => {
-      console.error("translate-progress listener registration failed:", err);
-    });
-    return () => {
-      cancelled = true;
-      unlistenFn?.();
-    };
-  }, []);
-
-  // Register translate-log-entry listener
-  useEffect(() => {
-    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-      // Browser preview: populate mock data
+    if (!("__TAURI_INTERNALS__" in window)) {
       setLogEntries([
         { key: "item.example.name", sourceText: "Example Item", targetText: "示例物品", modName: "example-mod-1.21.1.jar", sourceType: "llm" },
         { key: "item.example.desc", sourceText: "A useful example item", targetText: "一个有用的示例物品", modName: "example-mod-1.21.1.jar", sourceType: "llm" },
         { key: "block.example.ore", sourceText: "Example Ore", targetText: "示例矿石", modName: "example-mod-1.21.1.jar", sourceType: "dictionary" },
       ]);
-      return;
     }
-    let unlistenFn: (() => void) | null = null;
-    let cancelled = false;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      if (cancelled) return;
-      listen("translate-log-entry", (event) => {
-        const entry = event.payload as TranslateLogEntry;
-        setLogEntries((prev) => {
-          const next = [...prev, entry];
-          const MAX_LOG = 10000;
-          return next.length > MAX_LOG ? next.slice(-MAX_LOG) : next;
-        });
-      }).then((unlisten) => {
-        unlistenFn = unlisten;
-        if (cancelled) unlisten();
-      });
-    }).catch((err) => {
-      console.error("translate-log-entry listener registration failed:", err);
-    });
-    return () => {
-      cancelled = true;
-      unlistenFn?.();
-    };
   }, []);
 
-  // Register translate-entry-progress listener
-  useEffect(() => {
-    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) {
-      return;
-    }
-    let unlistenFn: (() => void) | null = null;
-    let cancelled = false;
-    import("@tauri-apps/api/event").then(({ listen }) => {
-      if (cancelled) return;
-      listen("translate-entry-progress", (event) => {
-        const entry = event.payload as EntryProgress;
-        setEntryProgressMap((prev) => {
-          const next = new Map(prev);
-          // 使用 modName::key 作为复合键，防止不同模组同名 key 互相覆盖
-          next.set(entry.modName + "::" + entry.key, entry);
-          return next;
-        });
-      }).then((unlisten) => {
-        unlistenFn = unlisten;
-        if (cancelled) unlisten();
-      });
-    }).catch((err) => {
-      console.error("translate-entry-progress listener registration failed:", err);
-    });
-    return () => {
-      cancelled = true;
-      unlistenFn?.();
-    };
-  }, []);
+  // Tauri event listeners for translation progress updates
+  useTauriEvent<TranslateProgress>("translate-progress", setTranslateProgress);
 
-  // Auto-scroll log panel only when user is near the bottom
+  useTauriEvent<TranslateLogEntry[]>("translate-log-entries", (entries) => {
+    setLogEntries((prev) => {
+      const next = [...prev, ...entries];
+      return next.length > MAX_LOG ? next.slice(-MAX_LOG) : next;
+    });
+  });
+
+  useTauriEvent<EntryProgress[]>("translate-entry-progresses", (entries) => {
+    setEntryProgressMap((prev) => {
+      const next = new Map(prev);
+      for (const entry of entries) {
+        next.set(`${entry.modName}::${entry.key}`, entry);
+      }
+      return next;
+    });
+  });
+
+  // Auto-scroll log panel only when page is visible and user is near the bottom
   useEffect(() => {
+    if (!isActive) return;
     const container = logContainerRef.current;
     if (container) {
       const { scrollTop, scrollHeight, clientHeight } = container;
@@ -171,11 +147,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
         container.scrollTop = container.scrollHeight;
       }
     }
-  }, [logEntries]);
-
-  function toErrorMessage(err: unknown): string {
-    return err instanceof Error ? err.message : String(err);
-  }
+  }, [logEntries, isActive]);
 
   async function handleStart() {
     if (!scanSummary) return;
@@ -184,7 +156,6 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     const srcLang = settings.sourceLanguage || scanSummary.sourceLanguage;
     const tgtLang = settings.targetLanguage || scanSummary.targetLanguage;
 
-    setIsRunning(true);
     setStatus("running");
     setTranslateProgress(null);
     setTranslationResult(null);
@@ -195,7 +166,6 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     try {
       const result = await startTranslation(
         instPath, srcLang, tgtLang,
-        scanSummary.actualPendingEntries,
         scanSummary.jobId,
       );
       if (cancelledRef.current) return;
@@ -216,8 +186,6 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     } catch (err) {
       setTranslationError(toErrorMessage(err));
       setStatus("failed");
-    } finally {
-      setIsRunning(false);
     }
   }
 
@@ -227,7 +195,6 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
       await cancelTranslation();
       setStatus("canceled");
       setTranslationResult(null);
-      setIsRunning(false);
     } catch (err) {
       console.warn("取消翻译失败：", err);
     }
@@ -266,6 +233,10 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     [logEntries, filterTerm],
   );
 
+  const displayEntries = filteredEntries.length > DISPLAY_MAX
+    ? filteredEntries.slice(-DISPLAY_MAX)
+    : filteredEntries;
+
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
       await navigator.clipboard.writeText(
@@ -280,12 +251,6 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     setLogEntries([]);
     setFilterTerm("");
   }, []);
-
-  const stageLabel = (phase: string) => {
-    const key = `jobs.stage.${phase}` as const;
-    const translated = t(language, key as any);
-    return translated || phase;
-  };
 
   return (
     <section className="page">
@@ -383,7 +348,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                   case "translating":
                     return `正在翻译${translateProgress.subStep ? " (" + translateProgress.subStep + ")" : ""}`;
                   default:
-                    return stageLabel(translateProgress.phase);
+                    return t(language, `jobs.stage.${translateProgress.phase}` as any) || translateProgress.phase;
                 }
               })()}
             </strong>
@@ -467,7 +432,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
               {t(language, "jobs.canceledStatus")}
             </small>
           )}
-          {isRunning && status !== "completed" && status !== "canceled" && (
+          {isRunning && (
             <small className="scan-progress-status">
               {t(language, "jobs.progressHint")}
             </small>
@@ -496,7 +461,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
           </button>
         </div>
         <div className="log-panel-body" ref={logContainerRef}>
-          {filteredEntries.length === 0 ? (
+          {filteredEntries.length === 0 || !isActive ? (
             <div className="log-panel-empty">{t(language, "jobs.logPanel.noEntries")}</div>
           ) : (
             <table>
@@ -511,7 +476,7 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                 </tr>
               </thead>
               <tbody>
-                {filteredEntries.map((entry, idx) => (
+                {displayEntries.map((entry, idx) => (
                   <tr key={`${entry.key}-${idx}`} className="copy-log-row" onClick={() => copyEntry(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
                     <td>{entry.key}</td>
                     <td title={entry.sourceText}>{entry.sourceText}</td>
@@ -521,19 +486,21 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                     <td>
                       {(() => {
                         const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
-                        const fallbackStatus = (() => {
-                          switch (entry.sourceType) {
-                            case "llm":
-                            case "existing":
-                              return "completed";
-                            case "skipped":
-                              return "skip";
-                            case "dictionary":
-                              return "dictionaryHit";
-                            default:
-                              return entry.sourceType;
-                          }
-                        })();
+                        let fallbackStatus: string;
+                        switch (entry.sourceType) {
+                          case "llm":
+                          case "existing":
+                            fallbackStatus = "completed";
+                            break;
+                          case "skipped":
+                            fallbackStatus = "skip";
+                            break;
+                          case "dictionary":
+                            fallbackStatus = "dictionaryHit";
+                            break;
+                          default:
+                            fallbackStatus = entry.sourceType;
+                        }
                         const status = ep ? ep.status : fallbackStatus;
                         return <span className={`badge badge-${status}`}>{statusLabel(status, language)}</span>;
                       })()}

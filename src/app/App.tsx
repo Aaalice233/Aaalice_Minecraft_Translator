@@ -108,7 +108,6 @@ function AppShell() {
 
   // Stable per-page callbacks — created once, never cause extra re-renders
   const dbBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: b ? "busy" : "idle" } }), [dispatch]);
-  const dbCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: c ? "completed" : "idle" } }), [dispatch]);
   const jobsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: b ? "busy" : "idle" } }), [dispatch]);
   const jobsCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: c ? "completed" : "idle" } }), [dispatch]);
   const packsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "packages", status: b ? "busy" : "idle" } }), [dispatch]);
@@ -120,7 +119,7 @@ function AppShell() {
       const isActive = activePage === page;
 
       if (page === "dashboard") {
-        return <DashboardPage settings={settings!} onSettingsChange={(s) => dispatch({ type: "SET_SETTINGS", payload: s })} scanSummary={scanSummary} onScanSummaryChange={(s) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s })} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
+        return <DashboardPage settings={settings!} onSettingsChange={(s) => dispatch({ type: "SET_SETTINGS", payload: s })} scanSummary={scanSummary} onScanSummaryChange={(s) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s })} language={language} onBusyChange={dbBusy} />;
       }
       if (page === "settings") {
         return <SettingsPage settings={settings!} onSettingsChange={(s) => dispatch({ type: "SET_SETTINGS", payload: s })} />;
@@ -132,7 +131,7 @@ function AppShell() {
         return <DictionaryPage language={language} />;
       }
       if (page === "jobs") {
-        return <JobsPage language={language} scanSummary={scanSummary} onScanSummaryChange={(s) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s })} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
+        return <JobsPage isActive={isActive} language={language} scanSummary={scanSummary} onScanSummaryChange={(s) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s })} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
       }
       if (page === "validate") {
         return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
@@ -142,7 +141,7 @@ function AppShell() {
       }
       return <PlaceholderPage pageKey={page} language={language} />;
     },
-    [activePage, language, scanSummary, settings, mountedPages, dbBusy, dbCompleted, jobsBusy, packsBusy],
+    [activePage, language, scanSummary, settings, mountedPages, dbBusy, jobsBusy, jobsCompleted, packsBusy],
   );
 
   // 加载完成前显示 loading
@@ -157,16 +156,44 @@ function AppShell() {
             const navStatus = navStates[item.key] ?? "idle";
             const isBusy = navStatus === "busy";
             const isCompleted = navStatus === "completed";
+            const isActive = item.key === activePage;
+
+            let className = "nav-item";
+            if (isActive) className += " active";
+            if (isBusy) className += " busy";
+            if (isCompleted) className += " completed";
+            if (DISABLED_NAV.has(item.key)) className += " disabled";
+
+            let tooltip: string;
+            if (isBusy) {
+              tooltip = t(language, "tooltip.busy", { page: t(language, item.labelKey) });
+            } else if (isCompleted) {
+              tooltip = t(language, "tooltip.completed", { page: t(language, item.labelKey) });
+            } else if (isActive) {
+              tooltip = t(language, "tooltip.currentPage");
+            } else {
+              tooltip = t(language, "tooltip.nav", { page: t(language, item.labelKey) });
+            }
+
+            let navIcon;
+            if (isBusy) {
+              navIcon = <Loader2 size={18} className="spin nav-icon-busy" />;
+            } else if (isCompleted) {
+              navIcon = <CheckCircle size={18} className="nav-icon-completed" />;
+            } else {
+              navIcon = <Icon size={18} />;
+            }
+
             return (
               <button
-                className={`nav-item${item.key === activePage ? " active" : ""}${isBusy ? " busy" : ""}${isCompleted ? " completed" : ""}${DISABLED_NAV.has(item.key) ? " disabled" : ""}`}
+                className={className}
                 key={item.key}
                 disabled={DISABLED_NAV.has(item.key)}
                 onClick={() => setActivePage(item.key)}
                 type="button"
-                data-tooltip={isBusy ? t(language, "tooltip.busy", { page: t(language, item.labelKey) }) : isCompleted ? t(language, "tooltip.completed", { page: t(language, item.labelKey) }) : item.key === activePage ? t(language, "tooltip.currentPage") : t(language, "tooltip.nav", { page: t(language, item.labelKey) })}
+                data-tooltip={tooltip}
               >
-                {isBusy ? <Loader2 size={18} className="spin nav-icon-busy" /> : isCompleted ? <CheckCircle size={18} className="nav-icon-completed" /> : <Icon size={18} />}
+                {navIcon}
                 <span>{t(language, item.labelKey)}</span>
                 {isBusy && <span className="nav-busy-dot" />}
                 {isCompleted && <span className="nav-completed-mark" />}

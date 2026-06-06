@@ -155,9 +155,9 @@ pub fn scan_instance(
             })
             .count()
     };
-    // All source entries enter the pipeline queue; existing translations
-    // (from mod-internal target lang or resource packs) are extracted inline.
-    let actual_pending_entries = total_source_entries;
+    // Pending entries excluding those with existing target-language translations
+    // (existing translations are extracted inline during pipeline Phase 2).
+    let actual_pending_entries = total_pending_entries;
 
     let mut warnings = validation.warnings.clone();
     warnings.extend(mods.iter().flat_map(|m| m.warnings.clone()));

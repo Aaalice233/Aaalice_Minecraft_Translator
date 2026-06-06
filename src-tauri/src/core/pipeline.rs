@@ -184,7 +184,7 @@ pub fn run_pipeline(
     let mut llm_only_entries: Vec<(&LanguageEntry, &str)> = Vec::new();
 
     // Batch events during dictionary phase to avoid flooding the UI
-    const DICT_PHASE_BATCH: usize = 128;
+    const DICT_PHASE_BATCH: usize = 512;
     let mut entry_progress_buf: Vec<EntryProgress> = Vec::with_capacity(DICT_PHASE_BATCH);
     let mut log_buf: Vec<TranslateLogEntry> = Vec::with_capacity(DICT_PHASE_BATCH);
 

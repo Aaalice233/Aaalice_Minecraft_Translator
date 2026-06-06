@@ -13,14 +13,11 @@ interface Props {
   onScanSummaryChange?: (summary: ScanSummary) => void;
   language: AppLanguage;
   onBusyChange?: (busy: boolean) => void;
-  /** Notify sidebar that scanning completed (or was reset). */
-  onCompleteChange?: (completed: boolean) => void;
 }
 
 /** Collapsible warnings panel — collapsed by default, expands on click. */
 function CollapsibleWarnings({ warnings, language }: { warnings: ScanWarning[]; language: AppLanguage }) {
   const [expanded, setExpanded] = useState(false);
-  const maxVisible = expanded ? warnings.length : 0;
 
   return (
     <div className="warnings-collapsible">
@@ -70,7 +67,7 @@ export function DashboardPage({
     dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: isScanning ? "busy" : "idle" } });
   }, [isScanning, dispatch]);
 
-  // Notify sidebar nav when scan completes (has valid result, not cancelled, not currently scanning)
+  // Notify sidebar nav when scan completes
   const prevIsScanning = useRef(isScanning);
   useEffect(() => {
     if (prevIsScanning.current && !isScanning && scanSummary && !scanSummary.cancelled && !error) {

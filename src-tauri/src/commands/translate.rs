@@ -1,5 +1,7 @@
 use std::sync::mpsc;
+use std::time::Duration;
 
+use serde::Serialize;
 use tauri::Emitter;
 
 use crate::core::{
@@ -8,8 +10,54 @@ use crate::core::{
     paths, pipeline, settings,
 };
 
-fn to_message(err: impl std::fmt::Display) -> String {
-    err.to_string()
+fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
+    rx: mpsc::Receiver<T>,
+    app: tauri::AppHandle,
+    job_id: String,
+    event_name: &'static str,
+) {
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        let mut batch: Vec<T> = Vec::with_capacity(512);
+        loop {
+            match rx.recv_timeout(Duration::from_millis(200)) {
+                Ok(item) => {
+                    if pipeline::is_translation_cancelled(&job_id) {
+                        if !batch.is_empty() {
+                            let _ = app.emit(event_name, &batch);
+                        }
+                        break;
+                    }
+                    batch.push(item);
+                    if batch.len() >= 512 {
+                        if let Err(err) = app.emit(event_name, &batch) {
+                            eprintln!("{event_name} emit error: {err}");
+                        }
+                        batch.clear();
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if pipeline::is_translation_cancelled(&job_id) {
+                        if !batch.is_empty() {
+                            let _ = app.emit(event_name, &batch);
+                        }
+                        break;
+                    }
+                    if !batch.is_empty() {
+                        if let Err(err) = app.emit(event_name, &batch) {
+                            eprintln!("{event_name} emit error: {err}");
+                        }
+                        batch.clear();
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    if !batch.is_empty() {
+                        let _ = app.emit(event_name, &batch);
+                    }
+                    break;
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -18,17 +66,15 @@ pub async fn start_translation(
     path: String,
     source_language: String,
     target_language: String,
-    total_entries: Option<usize>,
     scan_job_id: Option<String>,
 ) -> Result<usize, String> {
-    let root = paths::runtime_root().map_err(to_message)?;
+    let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let job_id = logging::new_job_id("translate");
 
-    // Register task (clear cancel flag first, then store job ID)
     pipeline::register_translation_task(&job_id);
 
     logging::append_main(&root, format!("翻译任务创建成功，任务 ID: {job_id}"))
-        .map_err(to_message)?;
+        .map_err(|e| e.to_string())?;
 
     // Channels: progress events + log entries + entry-level progress
     let (progress_tx, progress_rx) = mpsc::channel::<PipelineProgress>();
@@ -39,10 +85,8 @@ pub async fn start_translation(
     let log_tx_work = log_tx.clone();
     let entry_progress_tx_work = entry_progress_tx.clone();
     let job_id_progress = job_id.clone();
-    let job_id_log = job_id.clone();
-    let job_id_entry = job_id.clone();
 
-    // Reader: progress events → Tauri events (checks cancel to stop early)
+    // Progress reader (low frequency, not batched)
     let app_emit = app.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(progress) = progress_rx.recv() {
@@ -55,31 +99,9 @@ pub async fn start_translation(
         }
     });
 
-    // Reader: log entries → Tauri events (checks cancel to stop early)
-    let app_emit_log = app.clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || {
-        while let Ok(entry) = log_rx.recv() {
-            if pipeline::is_translation_cancelled(&job_id_log) {
-                break;
-            }
-            if let Err(err) = app_emit_log.emit("translate-log-entry", &entry) {
-                eprintln!("translate-log-entry emit error: {err}");
-            }
-        }
-    });
-
-    // Reader: entry-level progress → Tauri events
-    let app_emit_entry = app.clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || {
-        while let Ok(progress) = entry_progress_rx.recv() {
-            if pipeline::is_translation_cancelled(&job_id_entry) {
-                break;
-            }
-            if let Err(err) = app_emit_entry.emit("translate-entry-progress", &progress) {
-                eprintln!("translate-entry-progress emit error: {err}");
-            }
-        }
-    });
+    // Batched readers for high-frequency events
+    spawn_batched_reader(log_rx, app.clone(), job_id.clone(), "translate-log-entries");
+    spawn_batched_reader(entry_progress_rx, app.clone(), job_id.clone(), "translate-entry-progresses");
 
     // Read settings for pack names and LLM config
     let s = settings::load_settings(&root).ok();
@@ -125,13 +147,13 @@ pub async fn start_translation(
     .await
     .map_err(|e| e.to_string())??;
 
-    // Close channels → reader threads exit
     drop(progress_tx);
     drop(log_tx);
+    drop(entry_progress_tx);
 
     logging::append_main(
         &root,
-        format!("翻译任务完成: {}/{} 条目", result.completed, total_entries.unwrap_or(0)),
+        format!("翻译任务完成: {} 条目", result.completed),
     )
     .ok();
 
@@ -142,7 +164,7 @@ pub async fn start_translation(
 pub fn cancel_translation() -> Result<(), String> {
     pipeline::cancel_current_translation();
     let _ = logging::append_main(
-        &paths::runtime_root().map_err(to_message)?,
+        &paths::runtime_root().map_err(|e| e.to_string())?,
         "翻译任务被用户取消",
     );
     Ok(())

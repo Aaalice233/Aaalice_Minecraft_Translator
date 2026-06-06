@@ -144,9 +144,6 @@ select {
 
 /* ── Nav completed state (task done) ──────────── */
 .nav-item.completed {
-  background: #e2f1e8;
-  color: #0f6a43;
-  font-weight: 600;
   position: relative;
 }
 .nav-item.completed .nav-icon-completed {
@@ -197,10 +194,15 @@ select {
 }
 
 .page-layer.active {
-  display: block;
+  display: flex;
+  flex-direction: column;
 }
 
 .page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   padding: 22px 28px 28px;
 }
 
@@ -979,6 +981,10 @@ th.sorted-default .sort-indicator {
   border: 1px solid #ded8cc;
   border-radius: 6px;
   background: #fff;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .log-panel-header {
@@ -1011,8 +1017,29 @@ th.sorted-default .sort-indicator {
 }
 
 .log-panel-body {
-  max-height: 520px;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #c5bfb0 #f5f3ee;
+}
+
+.log-panel-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.log-panel-body::-webkit-scrollbar-track {
+  background: #f5f3ee;
+}
+
+.log-panel-body::-webkit-scrollbar-thumb {
+  background: #c5bfb0;
+  border-radius: 3px;
+}
+
+.log-panel-body::-webkit-scrollbar-thumb:hover {
+  background: #b0a99c;
 }
 
 .log-panel-body table {
@@ -1045,6 +1072,12 @@ th.sorted-default .sort-indicator {
 .log-panel-body .copy-log-row {
   cursor: pointer;
   transition: background 0.1s;
+}
+
+/* Virtual scrolling: browser skips rendering off-screen rows */
+.log-panel-body tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 30px;
 }
 
 .log-panel-body .copy-log-row:hover {

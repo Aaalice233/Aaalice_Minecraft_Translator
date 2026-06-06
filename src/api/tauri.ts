@@ -171,7 +171,6 @@ export async function startTranslation(
   path: string,
   sourceLanguage: string,
   targetLanguage: string,
-  totalEntries?: number,
   scanJobId?: string,
 ): Promise<number> {
   if (!isTauriRuntime()) {
@@ -181,7 +180,6 @@ export async function startTranslation(
     path,
     sourceLanguage,
     targetLanguage,
-    totalEntries,
     scanJobId: scanJobId ?? null,
   });
 }

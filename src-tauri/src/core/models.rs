@@ -211,7 +211,7 @@ pub struct ScanSummary {
     pub total_pending_entries: usize,
     /// How many pending entries match existing resource-pack translations.
     pub resource_pack_covered_entries: usize,
-    /// Total source entries entering the translation queue (includes existing translations).
+    /// Entries needing actual translation (excludes existing target-language entries).
     pub actual_pending_entries: usize,
     pub warnings: Vec<ScanWarning>,
     #[serde(default)]
