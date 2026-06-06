@@ -119,8 +119,10 @@ pub fn scan_instance(
     let total_source_entries = mods.iter().map(|m| m.source_entries).sum();
     let total_target_entries = mods.iter().map(|m| m.target_entries).sum();
     // Count pending entries using key-by-key comparison (consistent with extract_pending_entries)
+    // Mods with built-in target language files are excluded — they don't need translation.
     let total_pending_entries: usize = mods
         .iter()
+        .filter(|m| !m.has_target_language)
         .map(|m| {
             let target_keys: HashSet<&str> = m.entries
                 .iter()
@@ -144,6 +146,7 @@ pub fn scan_instance(
     let resource_pack_covered_entries: usize = {
         let rp_keys = &resource_pack_keys;
         mods.iter()
+            .filter(|m| !m.has_target_language)
             .flat_map(|m| {
                 let src_lang = m.resolved_source_language.as_str();
                 m.entries.iter().filter(move |e| {

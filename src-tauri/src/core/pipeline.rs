@@ -59,6 +59,11 @@ pub fn extract_pending_entries<'a>(
 
     let mut pending = Vec::new();
     for mod_result in &summary.mods {
+        // Skip mods that already have built-in target language files —
+        // they don't need dictionary matching or LLM translation.
+        if mod_result.has_target_language {
+            continue;
+        }
         let source = &mod_result.resolved_source_language;
         let target = &mod_result.target_language;
         // Map: key → existing target text (mod-internal)
@@ -728,7 +733,7 @@ mod tests {
                 target_language: "zh_cn".into(),
                 source_entries: 2,
                 target_entries: 1,
-                has_target_language: true,
+                has_target_language: false,
                 formats: vec!["json".into()],
                 entries: vec![
                     crate::core::models::LanguageEntry {

@@ -407,7 +407,7 @@ mod tests {
                 target_language: "zh_cn".into(),
                 source_entries: 3,
                 target_entries: 1,
-                has_target_language: true,
+                has_target_language: false,
                 formats: vec!["json".into()],
                 entries: vec![
                     LanguageEntry {
