@@ -143,7 +143,11 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
       .then((job) => {
         if (cancelled || !job) return;
         dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
-        if (job.status === "completed") {
+        // Only restore completed status if the job matches the current scan,
+        // otherwise stale translate_*.json from a different session would
+        // incorrectly show "completed" with zero progress.
+        const scanMatches = scanSummary && job.scanJobId === scanSummary.jobId;
+        if (job.status === "completed" && scanMatches) {
           setStatus("completed");
           setTranslationResult(job.completedEntries);
           onCompleteChange?.(true);
