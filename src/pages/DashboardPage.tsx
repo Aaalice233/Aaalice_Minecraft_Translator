@@ -127,25 +127,18 @@ export function DashboardPage({
           if (value == null) return true;
           switch (col) {
             case "fileName":
-              return typeof value === "string" && mod.fileName.toLowerCase().includes(value.toLowerCase());
+              return typeof value === "string" && (
+                mod.fileName.toLowerCase().includes(value.toLowerCase()) ||
+                mod.modId.toLowerCase().includes(value.toLowerCase())
+              );
             case "modId":
               return typeof value === "string" && mod.modId.toLowerCase().includes(value.toLowerCase());
             case "formats":
               return typeof value === "string" && (value === "" || mod.formats.some((f) => f === value));
             case "languageFileCount":
-              if (typeof value === "object" && "min" in value) {
-                return (!value.min || mod.languageFileCount >= Number(value.min)) &&
-                       (!value.max || mod.languageFileCount <= Number(value.max));
-              }
-              return true;
-            case "pending": {
-              const pending = getPending(mod);
-              if (typeof value === "object" && "min" in value) {
-                return (!value.min || pending >= Number(value.min)) &&
-                       (!value.max || pending <= Number(value.max));
-              }
-              return true;
-            }
+              return inRange(mod.languageFileCount, value);
+            case "pending":
+              return inRange(getPending(mod), value);
             case "hasTargetLanguage":
               if (value === "") return true;
               return mod.hasTargetLanguage === (value === "true");
@@ -328,6 +321,44 @@ export function DashboardPage({
     return pendingCache.get(mod.jarPath) ?? 0;
   }
 
+  /** Check if a numeric value falls within a min/max filter range. */
+  function inRange(actual: number, filter: unknown): boolean {
+    if (typeof filter !== "object" || filter === null) return true;
+    const range = filter as { min?: number; max?: number };
+    return (!range.min || actual >= Number(range.min)) &&
+           (!range.max || actual <= Number(range.max));
+  }
+
+  function getScanButtonState() {
+    if (isCancelling) {
+      return {
+        className: "primary-button cancelling",
+        disabled: true,
+        icon: <Loader2 size={18} className="spin" />,
+        text: t(language, "dashboard.cancelling"),
+        tooltipKey: "tooltip.cancelScan" as const,
+      };
+    }
+    if (isScanning) {
+      return {
+        className: "primary-button danger",
+        disabled: false,
+        icon: <Square size={18} />,
+        text: t(language, "dashboard.cancel"),
+        tooltipKey: "tooltip.cancelScan" as const,
+      };
+    }
+    return {
+      className: "primary-button",
+      disabled: false,
+      icon: <ScanLine size={18} />,
+      text: t(language, "dashboard.scan"),
+      tooltipKey: "tooltip.scan" as const,
+    };
+  }
+
+  const scanBtn = getScanButtonState();
+
   return (
     <section className="page dashboard-page">
       <div className="page-header">
@@ -337,28 +368,14 @@ export function DashboardPage({
         </div>
         <div className="page-header-button">
           <button
-            className={[
-              "primary-button",
-              isScanning && !isCancelling && "danger",
-              isCancelling && "cancelling",
-            ].filter(Boolean).join(" ")}
-            disabled={isCancelling}
+            className={scanBtn.className}
+            disabled={scanBtn.disabled}
             onClick={isScanning ? handleCancel : handleScan}
             type="button"
-            data-tooltip={t(language, isScanning ? "tooltip.cancelScan" : "tooltip.scan")}
+            data-tooltip={t(language, scanBtn.tooltipKey)}
           >
-            {isCancelling ? (
-              <Loader2 size={18} className="spin" />
-            ) : isScanning ? (
-              <Square size={18} />
-            ) : (
-              <ScanLine size={18} />
-            )}
-            {isCancelling
-              ? t(language, "dashboard.cancelling")
-              : isScanning
-                ? t(language, "dashboard.cancel")
-                : t(language, "dashboard.scan")}
+            {scanBtn.icon}
+            {scanBtn.text}
           </button>
         </div>
       </div>
@@ -467,7 +484,27 @@ export function DashboardPage({
         <section className="panel">
           <div className="panel-title">
             <h2>{t(language, "dashboard.modsTitle")}</h2>
-            <span>{scanSummary ? `${processedMods.length} / ${scanSummary.mods.length}` : t(language, "dashboard.waiting")}</span>
+            <div className="panel-title-right">
+              <div className="mod-search-wrap">
+                <input
+                  type="text"
+                  className="mod-search-input"
+                  placeholder={t(language, "dashboard.filterSearch")}
+                  value={(filters.fileName as string) || ""}
+                  onChange={(e) => handleFilterChange("fileName", e.target.value || null)}
+                />
+                {(filters.fileName as string) && (
+                  <button
+                    className="mod-search-clear"
+                    onClick={() => handleFilterChange("fileName", null)}
+                    type="button"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+              <span>{scanSummary ? `${processedMods.length} / ${scanSummary.mods.length}` : t(language, "dashboard.waiting")}</span>
+            </div>
           </div>
           <div className="table-wrap">
             <table>

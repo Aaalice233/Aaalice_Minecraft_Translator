@@ -78,10 +78,6 @@ select {
   justify-content: center;
 }
 
-.sidebar .nav-list {
-  margin-top: 0;
-}
-
 .nav-list {
   display: flex;
   flex-direction: column;
@@ -120,7 +116,8 @@ select {
 }
 
 /* ── Nav busy state (running task indicator) ──── */
-.nav-item.busy {
+.nav-item.busy,
+.nav-item.completed {
   position: relative;
 }
 .nav-item.busy .nav-icon-busy {
@@ -145,9 +142,6 @@ select {
 }
 
 /* ── Nav completed state (task done) ──────────── */
-.nav-item.completed {
-  position: relative;
-}
 .nav-item.completed .nav-icon-completed {
   display: inline-flex;
   color: #1f8a5b;
@@ -198,7 +192,6 @@ select {
 .sidebar-toggle .toggle-label {
   white-space: nowrap;
   overflow: hidden;
-  transition: opacity 0.15s;
 }
 
 .sidebar.collapsed .sidebar-toggle {
@@ -243,6 +236,8 @@ select {
 /* ── Page Stack (keep-alive) ──────────────────── */
 .page-stack {
   position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 1;
   min-height: 0;
 }
@@ -256,6 +251,7 @@ select {
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .page {
@@ -459,8 +455,6 @@ select {
   font-weight: 500;
 }
 
-/* ── Danger button (cancel scan during scanning) ──────────── */
-
 .alert {
   display: flex;
   align-items: center;
@@ -603,6 +597,60 @@ select {
   color: #6b665d;
 }
 
+.panel-title-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mod-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mod-search-input {
+  height: 30px;
+  width: 200px;
+  border: 1px solid #ded8cc;
+  border-radius: 5px;
+  background: #fff;
+  color: #1e1d1a;
+  padding: 0 28px 0 10px;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.12s;
+}
+
+.mod-search-input:focus {
+  border-color: #1f8a5b;
+}
+
+.mod-search-input::placeholder {
+  color: #b0a99c;
+}
+
+.mod-search-clear {
+  position: absolute;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #b0a99c;
+  cursor: pointer;
+  transition: color 0.12s, background 0.12s;
+}
+
+.mod-search-clear:hover {
+  color: #b8423a;
+  background: #fff0ef;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -688,7 +736,6 @@ th.sorted-default .sort-indicator {
   color: #1f8a5b;
 }
 
-/* Active filter dot indicator */
 .th-filter-btn.has-filter::after {
   content: "";
   position: absolute;
@@ -1090,7 +1137,6 @@ th.sorted-default .sort-indicator {
 .log-panel-body {
   flex: 1;
   min-height: 0;
-  max-height: none;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #c5bfb0 #f5f3ee;
