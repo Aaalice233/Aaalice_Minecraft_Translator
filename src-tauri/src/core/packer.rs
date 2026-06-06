@@ -1,8 +1,22 @@
 use std::collections::HashMap;
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+
+/// Sanitize a filename component to prevent path traversal attacks.
+/// Replaces path separators and common dangerous characters with underscores.
+fn sanitize_name(name: &str) -> String {
+    name.chars()
+        .map(|ch| match ch {
+            '/' | '\\' | ':' | '>' | '<' | '"' | '|' | '?' | '*' => '_',
+            c if c.is_ascii_control() => '_',
+            _ => ch,
+        })
+        .collect::<String>()
+        .trim_matches('.')
+        .to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,7 +35,16 @@ pub struct PackOptions {
     pub build_name: String,
     pub dry_run: bool,
     pub output_dir: String,
+    /// Minecraft resource pack format version.
+    /// 15  = 1.20.5–1.21.0
+    /// 34  = 1.21.1–1.21.4
+    /// 42+ = 1.21.5+
+    /// Default 15 for backward compatibility.
+    #[serde(default = "default_pack_format")]
+    pub pack_format: u32,
 }
+
+fn default_pack_format() -> u32 { 15 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,29 +77,34 @@ pub struct CopyResult {
 /// Generate the resource pack directory structure and optionally the zip.
 pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
     let output_dir = PathBuf::from(&options.output_dir);
-    let pack_dir = output_dir.join(format!("{}-{}", options.build_name, options.target_language));
+    // Sanitize build_name before using it in file paths to prevent traversal
+    let safe_build_name = sanitize_name(&options.build_name);
+    let pack_dir = output_dir.join(format!("{}-{}", safe_build_name, options.target_language));
 
     if options.dry_run {
         // Dry run: just compute stats without writing
         let mut conflicts = Vec::new();
-        if let Ok(pack_dir_path) = std::fs::read_dir(&pack_dir) {
-            for entry in pack_dir_path.flatten() {
-                if entry.path().is_dir() {
-                    let _mod_id = entry.file_name().to_string_lossy().to_string();
-                    let lang_path = entry.path().join("lang").join(format!("{}.json", options.target_language));
-                    if lang_path.exists() {
-                        if let Ok(content) = std::fs::read_to_string(&lang_path) {
-                            if let Ok(existing) = serde_json::from_str::<HashMap<String, String>>(&content) {
-                                for e in &options.entries {
-                                    if let Some(existing_text) = existing.get(&e.key) {
-                                        if existing_text != &e.text {
-                                            conflicts.push(ConflictInfo {
-                                                mod_id: e.mod_id.clone(),
-                                                key: e.key.clone(),
-                                                source_text: e.source_text.clone(),
-                                                dictionary_text: e.text.clone(),
-                                                existing_text: existing_text.clone(),
-                                            });
+        // Only check conflicts if the pack directory already exists
+        if pack_dir.is_dir() {
+            if let Ok(pack_dir_path) = std::fs::read_dir(&pack_dir) {
+                for entry in pack_dir_path.flatten() {
+                    if entry.path().is_dir() {
+                        let _mod_id = entry.file_name().to_string_lossy().to_string();
+                        let lang_path = entry.path().join("lang").join(format!("{}.json", options.target_language));
+                        if lang_path.exists() {
+                            if let Ok(content) = std::fs::read_to_string(&lang_path) {
+                                if let Ok(existing) = serde_json::from_str::<HashMap<String, String>>(&content) {
+                                    for e in &options.entries {
+                                        if let Some(existing_text) = existing.get(&e.key) {
+                                            if existing_text != &e.text {
+                                                conflicts.push(ConflictInfo {
+                                                    mod_id: e.mod_id.clone(),
+                                                    key: e.key.clone(),
+                                                    source_text: e.source_text.clone(),
+                                                    dictionary_text: e.text.clone(),
+                                                    existing_text: existing_text.clone(),
+                                                });
+                                            }
                                         }
                                     }
                                 }
@@ -110,7 +138,7 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
     std::fs::create_dir_all(&pack_dir)?;
     let mcmeta = serde_json::json!({
         "pack": {
-            "pack_format": 15,
+            "pack_format": options.pack_format,
             "description": format!("{} - {}", options.build_name, options.target_language)
         }
     });
@@ -165,8 +193,8 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
         )?;
     }
 
-    // Generate zip
-    let zip_path = output_dir.join(format!("{}-{}.zip", options.build_name, options.target_language));
+    // Generate zip (using safe_build_name to prevent path traversal)
+    let zip_path = output_dir.join(format!("{}-{}.zip", safe_build_name, options.target_language));
     create_zip(&pack_dir, &zip_path)?;
 
     Ok(PackResult {
@@ -209,13 +237,24 @@ fn add_dir_to_zip(
             add_dir_to_zip(zip, base, &path, options)?;
         } else {
             zip.start_file(&name, *options)?;
-            let mut content = Vec::new();
             let mut file = std::fs::File::open(&path)?;
-            std::io::Read::read_to_end(&mut file, &mut content)?;
-            zip.write_all(&content)?;
+            // Use streaming copy (8 KB chunks) instead of reading the entire
+            // file into memory to reduce peak memory usage on large files.
+            std::io::copy(&mut file, &mut *zip)?;
         }
     }
     Ok(())
+}
+
+/// Resolve a user-provided instance path to canonical form, preventing path traversal.
+fn sanitize_instance_path(input: &str) -> io::Result<String> {
+    let path = Path::new(input);
+    // Use canonicalize to resolve symlinks and `..` components.
+    // The instance path must exist, so canonicalize will succeed.
+    let canonical = path
+        .canonicalize()
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "实例路径无效或不存在"))?;
+    Ok(canonical.to_string_lossy().to_string())
 }
 
 /// Copy the generated pack zip to the instance's resourcepacks directory.
@@ -224,15 +263,21 @@ pub fn copy_to_resourcepacks(
     instance_path: &str,
     overwrite: bool,
 ) -> io::Result<CopyResult> {
+    // Validate source path (generated by the app, but defense-in-depth)
     let source = PathBuf::from(pack_zip_path);
-    if !source.exists() {
-        return Err(io::Error::new(io::ErrorKind::NotFound, "资源包文件不存在"));
-    }
+    let source_canonical = source
+        .canonicalize()
+        .map_err(|_| io::Error::new(io::ErrorKind::NotFound, "资源包文件不存在"))?;
 
-    let resourcepacks_dir = PathBuf::from(instance_path).join("resourcepacks");
+    // Sanitize instance_path to prevent path traversal
+    let safe_instance_path = sanitize_instance_path(instance_path)?;
+
+    let resourcepacks_dir = PathBuf::from(safe_instance_path).join("resourcepacks");
     std::fs::create_dir_all(&resourcepacks_dir)?;
 
-    let file_name = source.file_name()
+    // Use source_canonical's file_name to prevent any injection via pack_zip_path
+    let file_name = source_canonical
+        .file_name()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "无效的文件名"))?;
     let target = resourcepacks_dir.join(file_name);
     let mut replaced = false;
@@ -247,7 +292,7 @@ pub fn copy_to_resourcepacks(
         replaced = true;
     }
 
-    std::fs::copy(&source, &target)?;
+    std::fs::copy(&source_canonical, &target)?;
 
     Ok(CopyResult {
         success: true,
@@ -271,6 +316,7 @@ mod tests {
             build_name: "Aaalice-MC-Translator".into(),
             dry_run: true,
             output_dir: std::env::temp_dir().to_string_lossy().to_string(),
+            pack_format: 15,
         };
         let result = generate_pack(&options).unwrap();
         assert_eq!(result.mod_count, 1);

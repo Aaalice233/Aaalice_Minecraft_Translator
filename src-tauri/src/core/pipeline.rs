@@ -30,12 +30,16 @@ pub fn cancel_current_translation() {
     TRANSLATE_CANCEL.store(true, Ordering::SeqCst);
 }
 
-/// Register a new translation job. Clears the cancel flag first,
-/// then stores the new job ID. Returns the previous job ID if any.
+/// Register a new translation job. Stores the new job ID first (under the mutex),
+/// then clears the cancel flag. This ordering eliminates the race window where
+/// `is_translation_cancelled` could see `TRANSLATE_CANCEL=false` (just cleared)
+/// but `ACTIVE_TRANSLATE_TASK` still holding the stale ID.
 pub fn register_translation_task(job_id: &str) -> Option<String> {
-    TRANSLATE_CANCEL.store(false, Ordering::SeqCst);
     let mut task = ACTIVE_TRANSLATE_TASK.lock().unwrap_or_else(|e| e.into_inner());
-    task.replace(job_id.to_string())
+    let old = task.replace(job_id.to_string());
+    // Only clear cancel AFTER the new task ID is visible under the mutex.
+    TRANSLATE_CANCEL.store(false, Ordering::SeqCst);
+    old
 }
 
 // ── Pending entry extraction ──────────────────────────────────
@@ -115,6 +119,37 @@ fn group_batches<'a>(
 }
 
 // ── Main pipeline ─────────────────────────────────────────────
+
+/// Persist job progress counters to disk. Called in both completion and cancellation paths.
+fn save_job_progress(root: &std::path::Path, job_id: &str, completed: usize, failed: usize, status: jobs::TranslationStatus) {
+    let manager = jobs::JobManager::new(root.to_path_buf());
+    if let Ok(Some(mut job)) = manager.load(job_id) {
+        job.completed_entries = completed;
+        job.failed_entries = failed;
+        if matches!(status, jobs::TranslationStatus::Completed) {
+            job.completed_at = Some(jobs::now_rfc3339());
+        }
+        job.status = status;
+        if let Err(err) = manager.save(&job) {
+            let _ = logging::append_job(root, job_id, format!("保存 job 状态失败: {err}"));
+        }
+    }
+}
+
+/// Restore shield tokens and validate a translation result.
+/// Returns the restored target text and whether validation passed.
+fn shield_restore_result(
+    result: &TranslateResult,
+    shield_map: &HashMap<String, (String, shield::ShieldResult)>,
+) -> (String, String, bool) {
+    let Some((_, sr)) = shield_map.get(&result.key) else {
+        return (result.original_text.clone(), result.translated_text.clone(), true);
+    };
+    let restored_source = shield::restore(&result.original_text, &sr.tokens);
+    let restored_target = shield::restore(&result.translated_text, &sr.tokens);
+    let valid = shield::validate(&sr.tokens, &restored_target);
+    (restored_source, restored_target, valid)
+}
 
 /// Run the full translation pipeline. Emits progress and log events through channels.
 pub fn run_pipeline(
@@ -349,6 +384,7 @@ pub fn run_pipeline(
 
     if !batch_results.is_empty() {
         let _ = jobs::batch_append_results(&config.root, job_id, &batch_results);
+        batch_results.clear();
     }
 
     if is_translation_cancelled(job_id) {
@@ -363,6 +399,7 @@ pub fn run_pipeline(
     // ── Phase 4: LLM Translation ──────────────────────────────
     let mut accumulated_token_usage = TokenUsage::default();
     let mut llm_count = 0usize;
+    let mut failed_count = 0usize;
 
     if !llm_only_entries.is_empty() {
         let llm_cfg = config.llm.as_ref().ok_or_else(|| "LLM 未配置，但有待翻译条目需要 LLM 翻译".to_string())?;
@@ -396,6 +433,14 @@ pub fn run_pipeline(
             .map(|(entry, file_name)| (entry.key.as_str(), (entry.mod_id.as_str(), *file_name)))
             .collect();
 
+        // Fill mod_id/mod_name metadata on TranslationResult entries (defined once outside the wave loop)
+        let set_mod_meta = |entry: &mut jobs::TranslationResult| {
+            if let Some(&(mid, fname)) = key_to_meta.get(entry.key.as_str()) {
+                if entry.mod_id.is_empty() { entry.mod_id = mid.to_string(); }
+                if entry.mod_name.is_empty() { entry.mod_name = fname.to_string(); }
+            }
+        };
+
         let _ = progress_tx.send(PipelineProgress {
             current: 0, total: total_llm_batches,
             phase: PipelinePhase::Translating,
@@ -419,6 +464,8 @@ pub fn run_pipeline(
             let wave_count = current_conc.min(total_llm_batches - batch_index);
 
             // Build wave: each batch is a Vec<TranslationEntry>
+            // Shield protection: key -> (original_text, ShieldResult) for restore/validate
+            let mut batch_shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
             let wave_batches: Vec<(usize, String, Vec<TranslationEntry>)> = (batch_index..batch_index + wave_count)
                 .map(|bi| {
                     let batch = &smart_batches[bi];
@@ -437,26 +484,33 @@ pub fn run_pipeline(
                         }
                     }
 
-                    let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| TranslationEntry {
-                        key: entry.key.clone(),
-                        text: entry.text.clone(),
-                        mod_id: entry.mod_id.clone(),
-                        source_lang: entry.language.clone(),
-                        target_lang: config.target_language.clone(),
-                        references: batch_refs.clone(),
+                    let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| {
+                        let sr = shield::protect(&entry.text);
+                        batch_shield_map.insert(entry.key.clone(), (entry.text.clone(), sr.clone()));
+                        TranslationEntry {
+                            key: entry.key.clone(),
+                            text: sr.protected,
+                            mod_id: entry.mod_id.clone(),
+                            source_lang: entry.language.clone(),
+                            target_lang: config.target_language.clone(),
+                            references: batch_refs.clone(),
+                        }
                     }).collect();
                     (bi, mod_name, entries)
                 })
                 .collect();
 
-            // Emit Translating status for all entries in this wave
+            // Emit Translating status for all entries in this wave (using original, unprotected text)
             for (_, _, batch_entries) in &wave_batches {
                 for te in batch_entries {
                     let fname = key_to_meta.get(te.key.as_str()).map(|&(_, f)| f).unwrap_or("");
+                    let original_text = batch_shield_map.get(te.key.as_str())
+                        .map(|(orig, _)| orig.clone())
+                        .unwrap_or_else(|| te.text.clone());
                     let _ = entry_progress_tx.send(EntryProgress {
                         key: te.key.clone(),
                         mod_name: fname.to_string(),
-                        source_text: te.text.clone(),
+                        source_text: original_text,
                         target_text: None,
                         status: EntryStatus::Translating,
                         error_message: None,
@@ -475,16 +529,25 @@ pub fn run_pipeline(
 
                         let on_complete = |results: &[TranslateResult]| {
                             for r in results {
-                                let (status, error_message) = if r.success {
-                                    (EntryStatus::Completed, None)
+                                let (restored_source, restored_target, valid) = shield_restore_result(r, &batch_shield_map);
+                                let target_text = if !r.success {
+                                    r.translated_text.clone()
+                                } else if valid {
+                                    restored_target
                                 } else {
-                                    (EntryStatus::Failed, r.error.clone())
+                                    restored_target.clone() // still show restored text even if validation failed
                                 };
+                                let status = if r.success && valid { EntryStatus::Completed }
+                                    else if !r.success { EntryStatus::Failed }
+                                    else { EntryStatus::Failed };
+                                let error_message = if !r.success { r.error.clone() }
+                                    else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
+                                    else { None };
                                 let _ = entry_progress_tx.send(EntryProgress {
                                     key: r.key.clone(),
                                     mod_name: mod_name_ref.to_string(),
-                                    source_text: r.original_text.clone(),
-                                    target_text: Some(r.translated_text.clone()),
+                                    source_text: restored_source,
+                                    target_text: Some(target_text),
                                     status,
                                     error_message,
                                 });
@@ -510,13 +573,21 @@ pub fn run_pipeline(
                         });
 
                         let converted: Vec<jobs::TranslationResult> = results.into_iter()
-                            .map(|r| jobs::TranslationResult {
-                                key: r.key,
-                                source_text: r.original_text,
-                                target_text: r.translated_text,
-                                mod_id: String::new(),
-                                mod_name: String::new(),
-                                source_type: if r.success { "llm".to_string() } else { "failed".to_string() },
+                            .map(|r| {
+                                let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
+                                let (source_text, target_text, source_type) = if r.success {
+                                    (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
+                                } else {
+                                    (restored_source, r.translated_text, "failed".to_string())
+                                };
+                                jobs::TranslationResult {
+                                    key: r.key,
+                                    source_text,
+                                    target_text,
+                                    mod_id: String::new(),
+                                    mod_name: String::new(),
+                                    source_type,
+                                }
                             })
                             .collect();
 
@@ -527,12 +598,6 @@ pub fn run_pipeline(
 
             // Process results and check rate limit
             let mut wave_has_429 = false;
-            let set_mod_meta = |entry: &mut jobs::TranslationResult| {
-                if let Some(&(mid, fname)) = key_to_meta.get(entry.key.as_str()) {
-                    if entry.mod_id.is_empty() { entry.mod_id = mid.to_string(); }
-                    if entry.mod_name.is_empty() { entry.mod_name = fname.to_string(); }
-                }
-            };
 
             for (results, token, rate_limited) in &wave_results {
                 accumulated_token_usage.prompt_tokens += token.prompt_tokens;
@@ -540,14 +605,18 @@ pub fn run_pipeline(
                 accumulated_token_usage.total_tokens += token.total_tokens;
 
                 let mut wave_llm_count = 0usize;
+                let mut wave_failed_count = 0usize;
                 for mut entry in results.iter().cloned() {
                     if entry.source_type == "llm" {
                         wave_llm_count += 1;
+                    } else if entry.source_type == "failed" {
+                        wave_failed_count += 1;
                     }
                     set_mod_meta(&mut entry);
                     batch_results.push(entry);
                 }
                 llm_count += wave_llm_count;
+                failed_count += wave_failed_count;
                 processed += wave_llm_count;
 
                 if *rate_limited {
@@ -596,6 +665,8 @@ pub fn run_pipeline(
             let _ = jobs::batch_append_results(&config.root, job_id, &batch_results);
         }
         let _ = logging::append_job(&config.root, job_id, "翻译任务在完成前被取消");
+
+        save_job_progress(&config.root, job_id, dict_count + llm_count, failed_count, jobs::TranslationStatus::Cancelled);
         return Ok(PipelineResult {
             completed: processed, dict_count, llm_count,
             token_usage: accumulated_token_usage,
@@ -624,6 +695,7 @@ pub fn run_pipeline(
         "翻译完成: {processed}/{total} 条目 (词典: {dict_count}, LLM: {llm_count})"
     ));
 
+    save_job_progress(&config.root, job_id, dict_count + llm_count, failed_count, jobs::TranslationStatus::Completed);
     Ok(PipelineResult {
         completed: processed,
         dict_count,

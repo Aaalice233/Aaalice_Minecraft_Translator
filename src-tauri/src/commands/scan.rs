@@ -1,3 +1,4 @@
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 
@@ -11,9 +12,52 @@ use crate::core::{
 
 static SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
 
+/// Resolve a user-provided path to a canonical form to prevent path traversal.
+/// Uses `canonicalize` if the path exists, otherwise manually resolves
+/// `..` and `.` components.
+fn sanitize_instance_path(input: &str) -> Result<String, String> {
+    let path = Path::new(input);
+
+    // Prefer canonicalize when path exists (resolves symlinks and ..)
+    if let Ok(canonical) = path.canonicalize() {
+        return Ok(canonical.to_string_lossy().to_string());
+    }
+
+    // Fallback: manually resolve components
+    let mut components = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                if components.is_empty() {
+                    return Err("路径越权：试图跳出根目录".to_string());
+                }
+                components.pop();
+            }
+            Component::Normal(c) => {
+                components.push(c.to_string_lossy().to_string());
+            }
+            Component::RootDir => {
+                components.clear();
+            }
+            _ => {}
+        }
+    }
+
+    if components.is_empty() {
+        return Err("无效的实例路径".to_string());
+    }
+
+    let mut result = PathBuf::new();
+    for c in components {
+        result.push(c);
+    }
+    Ok(result.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 pub fn validate_instance(path: String) -> Result<InstanceValidation, String> {
-    scanner::validate_instance(path).map_err(|err| err.to_string())
+    let safe_path = sanitize_instance_path(&path)?;
+    scanner::validate_instance(safe_path).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -23,10 +67,12 @@ pub async fn scan_instance(
     source_language: String,
     target_language: String,
 ) -> Result<ScanSummary, String> {
+    let safe_path = sanitize_instance_path(&path)?;
     SCAN_CANCEL.store(false, Ordering::SeqCst);
 
     let root = paths::runtime_root().map_err(|err| err.to_string())?;
-    let (progress_tx, progress_rx) = mpsc::channel::<ScanProgress>();
+    // Bounded channel prevents unbounded memory growth if receiver is temporarily blocked.
+    let (progress_tx, progress_rx) = mpsc::sync_channel::<ScanProgress>(64);
     let progress_tx_scan = progress_tx.clone();
 
     let app_emit = app.clone();
@@ -48,7 +94,7 @@ pub async fn scan_instance(
     let result = tauri::async_runtime::spawn_blocking(move || {
         scanner::scan_instance(
             &root,
-            path,
+            safe_path,
             source_language,
             target_language,
             resource_pack_names,

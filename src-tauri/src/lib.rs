@@ -50,6 +50,7 @@ pub fn run() {
             commands::clear_jobs_cache,
             commands::get_translation_job,
             commands::load_latest_translation_job,
+            commands::list_translation_jobs,
             commands::validate_translation,
             commands::generate_pack_from_job,
         ])

@@ -1,6 +1,6 @@
 import { Boxes, Copy, FileArchive, Eye, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { copyPackToInstance, generatePackFromJob, generateTranslationPack, loadLatestTranslationJob } from "../api/tauri";
+import { copyPackToInstance, generatePackFromJob, generateTranslationPack, listTranslationJobs } from "../api/tauri";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import type { AppLanguage, CopyResult, PackResult, ScanSummary, TranslationJobState } from "../types";
@@ -29,25 +29,46 @@ export function PackagesPage({ language, scanSummary: _scanSummary, settings: _s
   // Job-based state
   const [translationJob, setTranslationJob] = useState<TranslationJobState | null>(null);
   const [loadingJob, setLoadingJob] = useState(true);
+  const [allTranslationJobs, setAllTranslationJobs] = useState<TranslationJobState[]>([]);
 
-  // On mount, try to find the latest completed translation job
+  // On mount, load all translation jobs (P10 — history selection)
   useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      setLoadingJob(false);
+      return;
+    }
     let cancelled = false;
     setLoadingJob(true);
-    loadLatestTranslationJob()
-      .then((job) => {
-        if (!cancelled && job?.status === "completed") {
-          setTranslationJob(job);
+    listTranslationJobs()
+      .then((jobs) => {
+        if (cancelled) return;
+        setAllTranslationJobs(jobs);
+
+        // Restore saved selection from AppContext, or fall back to first completed job
+        const targetJob = state.packagesJobId
+          ? jobs.find((j) => j.jobId === state.packagesJobId)
+          : undefined;
+        const selected = targetJob ?? jobs.find((j) => j.status === "completed");
+        if (selected) {
+          setTranslationJob(selected);
+          dispatch({ type: "SET_PACKAGES_JOB_ID", payload: selected.jobId });
         }
+        setLoadingJob(false);
       })
       .catch((err) => {
-        console.warn("加载翻译结果失败:", err);
-      })
-      .finally(() => {
+        console.warn("加载翻译任务列表失败:", err);
         if (!cancelled) setLoadingJob(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleJobSelect(jobId: string) {
+    const job = allTranslationJobs.find((j) => j.jobId === jobId);
+    if (job) {
+      setTranslationJob(job);
+      dispatch({ type: "SET_PACKAGES_JOB_ID", payload: jobId });
+    }
+  }
 
   // Sync packaging busy state to sidebar nav
   useEffect(() => {
@@ -70,8 +91,11 @@ export function PackagesPage({ language, scanSummary: _scanSummary, settings: _s
             .filter((e) => e.language === scanSummary.targetLanguage)
             .map((e) => [e.key, e.text]),
         );
+        // Use resolvedSourceLanguage per mod (handles sourceLanguage="auto"),
+        // falling back to scanSummary.sourceLanguage for backward compatibility.
+        const srcLang = mod.resolvedSourceLanguage || scanSummary.sourceLanguage;
         return mod.entries
-          .filter((e) => e.language === scanSummary.sourceLanguage)
+          .filter((e) => e.language === srcLang)
           .map((e) => ({
             modId: e.modId,
             key: e.key,
@@ -193,19 +217,45 @@ export function PackagesPage({ language, scanSummary: _scanSummary, settings: _s
 
       {error && <div className="alert error">{error}</div>}
 
-      {/* Translation job info */}
-      {translationJob && (
+      {/* Translation job info with history selector (P10) */}
+      {allTranslationJobs.length > 0 && (
         <div className="panel" style={{ padding: "12px 18px", marginBottom: 18 }}>
-          <span>
-            ✅ 翻译结果可用: <code>{translationJob.jobId}</code> —
-            {translationJob.completedEntries} 条已翻译 ({translationJob.targetLanguage})
-          </span>
-          {languageMismatch && (
-            <span style={{ display: "block", marginTop: 8, color: "#d4a72c" }}>
-              ⚠️ 当前设置的目标语言 ({scanSummary?.targetLanguage})
-              与翻译结果的语言 ({translationJob.targetLanguage}) 不一致。
-              将使用当前设置的语言打包。
-            </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <label htmlFor="job-selector" style={{ whiteSpace: "nowrap", fontWeight: 500 }}>
+              选择翻译任务:
+            </label>
+            <select
+              id="job-selector"
+              className="job-selector"
+              value={translationJob?.jobId ?? ""}
+              onChange={(e) => handleJobSelect(e.target.value)}
+              style={{ flex: 1, maxWidth: 400 }}
+            >
+              <option value="" disabled>
+                -- 请选择翻译任务 --
+              </option>
+              {allTranslationJobs.map((job) => (
+                <option key={job.jobId} value={job.jobId}>
+                  [{job.status === "completed" ? "完成" : job.status}] {job.jobId.slice(0, 16)}… —
+                  {job.completedEntries} 条 ({job.targetLanguage})
+                  {job.createdAt ? ` - ${new Date(job.createdAt).toLocaleDateString()}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          {translationJob && (
+            <div style={{ marginTop: 8 }}>
+              <span>
+                ✅ 翻译结果可用 — {translationJob.completedEntries} 条已翻译 ({translationJob.targetLanguage})
+              </span>
+              {languageMismatch && (
+                <span style={{ display: "block", marginTop: 4, color: "#d4a72c" }}>
+                  ⚠️ 当前设置的目标语言 ({scanSummary?.targetLanguage})
+                  与翻译结果的语言 ({translationJob.targetLanguage}) 不一致。
+                  将使用当前设置的语言打包。
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}

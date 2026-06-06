@@ -34,3 +34,10 @@ pub fn load_latest_translation_job() -> Result<Option<jobs::TranslationJobState>
     let manager = jobs::JobManager::new(root);
     manager.load_latest()
 }
+
+#[tauri::command]
+pub fn list_translation_jobs() -> Result<Vec<jobs::TranslationJobState>, String> {
+    let root = paths::runtime_root().map_err(to_message)?;
+    let manager = jobs::JobManager::new(root);
+    manager.list_all()
+}

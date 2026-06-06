@@ -1,13 +1,50 @@
-use std::{
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
-    path::Path,
-};
+use std::path::Path;
 
-use rusqlite::{params, Connection, Result as SqlResult};
+use rusqlite::{params, Connection, Result as SqlResult, Row};
 use serde::{Deserialize, Serialize};
 
 use crate::core::models::LanguageEntry;
+
+/// Shared SQL schema: table + indexes used by both `open` and `open_in_memory`.
+const SCHEMA_SQL: &str = "CREATE TABLE IF NOT EXISTS dictionary_entries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_text TEXT NOT NULL,
+    target_text TEXT NOT NULL,
+    source_lang TEXT NOT NULL DEFAULT 'en_us',
+    target_lang TEXT NOT NULL DEFAULT 'zh_cn',
+    source_type TEXT NOT NULL DEFAULT 'manual',
+    mod_id TEXT,
+    translation_key TEXT,
+    context TEXT,
+    source_hash TEXT NOT NULL,
+    target_hash TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_source_hash ON dictionary_entries(source_hash);
+CREATE INDEX IF NOT EXISTS idx_source_lang ON dictionary_entries(source_lang);
+CREATE INDEX IF NOT EXISTS idx_target_lang ON dictionary_entries(target_lang);
+CREATE INDEX IF NOT EXISTS idx_mod_id ON dictionary_entries(mod_id);
+CREATE INDEX IF NOT EXISTS idx_source_type ON dictionary_entries(source_type);";
+
+/// Map a SQLite row to a DictionaryEntry.
+fn map_row(row: &Row) -> SqlResult<DictionaryEntry> {
+    Ok(DictionaryEntry {
+        id: Some(row.get(0)?),
+        source_text: row.get(1)?,
+        target_text: row.get(2)?,
+        source_lang: row.get(3)?,
+        target_lang: row.get(4)?,
+        source_type: row.get(5)?,
+        mod_id: row.get(6)?,
+        translation_key: row.get(7)?,
+        context: row.get(8)?,
+        confidence: row.get(9)?,
+        created_at: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -55,81 +92,34 @@ pub struct DictionaryQuery {
 
 /// Open or create the dictionary database, initializing schema and WAL mode.
 pub fn open(db_path: &Path) -> SqlResult<Connection> {
-    // Ensure parent directory exists
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
-
     let conn = Connection::open(db_path)?;
-
-    // WAL mode for better concurrent read/write performance
-    conn.execute_batch(
-        "PRAGMA journal_mode=WAL;
-         PRAGMA synchronous=NORMAL;
-         PRAGMA busy_timeout=5000;",
-    )?;
-
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS dictionary_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_text TEXT NOT NULL,
-            target_text TEXT NOT NULL,
-            source_lang TEXT NOT NULL DEFAULT 'en_us',
-            target_lang TEXT NOT NULL DEFAULT 'zh_cn',
-            source_type TEXT NOT NULL DEFAULT 'manual',
-            mod_id TEXT,
-            translation_key TEXT,
-            context TEXT,
-            source_hash TEXT NOT NULL,
-            target_hash TEXT NOT NULL,
-            confidence REAL NOT NULL DEFAULT 1.0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        CREATE INDEX IF NOT EXISTS idx_source_hash ON dictionary_entries(source_hash);
-        CREATE INDEX IF NOT EXISTS idx_source_lang ON dictionary_entries(source_lang);
-        CREATE INDEX IF NOT EXISTS idx_target_lang ON dictionary_entries(target_lang);
-        CREATE INDEX IF NOT EXISTS idx_mod_id ON dictionary_entries(mod_id);
-        CREATE INDEX IF NOT EXISTS idx_source_type ON dictionary_entries(source_type);",
-    )?;
-
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;")?;
+    conn.execute_batch(SCHEMA_SQL)?;
     Ok(conn)
 }
 
-/// Open an in-memory SQLite database with the same schema but without WAL mode.
-/// Useful for tests and temporary dictionary operations.
+/// Apply schema to an in-memory connection (for tests and temp operations).
 pub fn open_in_memory(conn: &Connection) -> SqlResult<()> {
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS dictionary_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            source_text TEXT NOT NULL,
-            target_text TEXT NOT NULL,
-            source_lang TEXT NOT NULL DEFAULT 'en_us',
-            target_lang TEXT NOT NULL DEFAULT 'zh_cn',
-            source_type TEXT NOT NULL DEFAULT 'manual',
-            mod_id TEXT,
-            translation_key TEXT,
-            context TEXT,
-            source_hash TEXT NOT NULL,
-            target_hash TEXT NOT NULL,
-            confidence REAL NOT NULL DEFAULT 1.0,
-            created_at TEXT NOT NULL DEFAULT (datetime('now')),
-            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-        );
-        CREATE INDEX IF NOT EXISTS idx_source_hash ON dictionary_entries(source_hash);
-        CREATE INDEX IF NOT EXISTS idx_source_lang ON dictionary_entries(source_lang);
-        CREATE INDEX IF NOT EXISTS idx_target_lang ON dictionary_entries(target_lang);
-        CREATE INDEX IF NOT EXISTS idx_mod_id ON dictionary_entries(mod_id);
-        CREATE INDEX IF NOT EXISTS idx_source_type ON dictionary_entries(source_type);",
-    )?;
-    Ok(())
+    conn.execute_batch(SCHEMA_SQL)
 }
 
-/// Compute a stable hash for a text string (16 hex chars).
+/// Shared column list for SELECT queries returning full DictionaryEntry rows.
+const SELECT_COLS: &str = "SELECT id, source_text, target_text, source_lang, target_lang, source_type, \
+    mod_id, translation_key, context, confidence, created_at, updated_at \
+    FROM dictionary_entries";
+
+/// Compute a stable deterministic hash for a text string (16 hex chars).
+/// Uses FNV-1a algorithm which is deterministic across platforms and processes.
 pub fn hash_text(text: &str) -> String {
-    let mut hasher = DefaultHasher::new();
-    text.hash(&mut hasher);
-    format!("{:016x}", hasher.finish())
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in text.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:016x}", hash)
 }
 
 /// Insert a single dictionary entry. Returns the new row ID.
@@ -232,10 +222,10 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
 /// Search dictionary entries with optional filters.
 pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<DictionaryEntry>> {
     let mut sql = String::from(
-        "SELECT id, source_text, target_text, source_lang, target_lang, source_type,
-                mod_id, translation_key, context, confidence, created_at, updated_at
-         FROM dictionary_entries WHERE 1=1",
+        "SELECT_COLS WHERE 1=1",
     );
+    // Replace the placeholder with the real column list
+    sql = sql.replace("SELECT_COLS", SELECT_COLS);
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
     if let Some(ref search) = query.search {
@@ -274,22 +264,7 @@ pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<Dicti
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map(param_refs.as_slice(), |row| {
-        Ok(DictionaryEntry {
-            id: Some(row.get(0)?),
-            source_text: row.get(1)?,
-            target_text: row.get(2)?,
-            source_lang: row.get(3)?,
-            target_lang: row.get(4)?,
-            source_type: row.get(5)?,
-            mod_id: row.get(6)?,
-            translation_key: row.get(7)?,
-            context: row.get(8)?,
-            confidence: row.get(9)?,
-            created_at: row.get(10)?,
-            updated_at: row.get(11)?,
-        })
-    })?;
+    let rows = stmt.query_map(param_refs.as_slice(), map_row)?;
 
     let mut results = Vec::new();
     for row in rows {
@@ -307,30 +282,13 @@ pub fn search_by_hash(
     target_lang: &str,
 ) -> SqlResult<Vec<DictionaryEntry>> {
     let mut stmt = conn.prepare(
-        "SELECT id, source_text, target_text, source_lang, target_lang, source_type,
-                mod_id, translation_key, context, confidence, created_at, updated_at
-         FROM dictionary_entries
+        &format!("{SELECT_COLS}
          WHERE source_hash = ?1 AND target_lang = ?2
          ORDER BY updated_at DESC
-         LIMIT 5",
+         LIMIT 5"),
     )?;
 
-    let rows = stmt.query_map(params![source_hash, target_lang], |row| {
-        Ok(DictionaryEntry {
-            id: Some(row.get(0)?),
-            source_text: row.get(1)?,
-            target_text: row.get(2)?,
-            source_lang: row.get(3)?,
-            target_lang: row.get(4)?,
-            source_type: row.get(5)?,
-            mod_id: row.get(6)?,
-            translation_key: row.get(7)?,
-            context: row.get(8)?,
-            confidence: row.get(9)?,
-            created_at: row.get(10)?,
-            updated_at: row.get(11)?,
-        })
-    })?;
+    let rows = stmt.query_map(params![source_hash, target_lang], map_row)?;
 
     let mut results = Vec::new();
     for row in rows {
@@ -342,27 +300,10 @@ pub fn search_by_hash(
 /// Get a single entry by ID.
 pub fn get_by_id(conn: &Connection, id: i64) -> SqlResult<Option<DictionaryEntry>> {
     let mut stmt = conn.prepare(
-        "SELECT id, source_text, target_text, source_lang, target_lang, source_type,
-                mod_id, translation_key, context, confidence, created_at, updated_at
-         FROM dictionary_entries WHERE id = ?1",
+        &format!("{SELECT_COLS} WHERE id = ?1"),
     )?;
 
-    let mut rows = stmt.query_map(params![id], |row| {
-        Ok(DictionaryEntry {
-            id: Some(row.get(0)?),
-            source_text: row.get(1)?,
-            target_text: row.get(2)?,
-            source_lang: row.get(3)?,
-            target_lang: row.get(4)?,
-            source_type: row.get(5)?,
-            mod_id: row.get(6)?,
-            translation_key: row.get(7)?,
-            context: row.get(8)?,
-            confidence: row.get(9)?,
-            created_at: row.get(10)?,
-            updated_at: row.get(11)?,
-        })
-    })?;
+    let mut rows = stmt.query_map(params![id], map_row)?;
 
     match rows.next() {
         Some(Ok(entry)) => Ok(Some(entry)),
@@ -399,7 +340,6 @@ pub fn count(conn: &Connection) -> SqlResult<usize> {
 }
 
 /// Import resource pack entries into the dictionary.
-/// Returns the number of new entries imported.
 /// TODO: Integrate into translation pipeline when resource pack reuse is enabled.
 #[allow(dead_code)]
 pub fn import_resource_pack_entries(
@@ -412,26 +352,10 @@ pub fn import_resource_pack_entries(
     let mut conflicts = Vec::new();
 
     for entry in entries {
-        // Only import entries matching the target language
         if entry.language != target_lang {
             skipped += 1;
             continue;
         }
-
-        let dict_entry = DictionaryEntry {
-            id: None,
-            source_text: entry.text.clone(),
-            target_text: entry.text.clone(),
-            source_lang: entry.language.clone(),
-            target_lang: target_lang.to_string(),
-            source_type: "resourcepack".to_string(),
-            mod_id: Some(entry.mod_id.clone()),
-            translation_key: Some(entry.key.clone()),
-            context: None,
-            confidence: 0.8,
-            created_at: None,
-            updated_at: None,
-        };
 
         let source_hash = hash_text(&entry.text);
         let existing: Option<(String, String)> = conn
@@ -445,17 +369,31 @@ pub fn import_resource_pack_entries(
             .ok();
 
         match existing {
-            Some((_existing_type, existing_text)) if existing_text == entry.text => {
+            Some((_, ref existing_text)) if *existing_text == entry.text => {
                 skipped += 1;
             }
-            Some((existing_type, existing_text)) if existing_text != entry.text => {
+            Some((ref existing_type, ref existing_text)) => {
                 conflicts.push(format!(
                     "条目「{}」已有译文「{}」（来源: {}），资源包译文「{}」被跳过",
                     entry.text, existing_text, existing_type, entry.text
                 ));
                 skipped += 1;
             }
-            _ => {
+            None => {
+                let dict_entry = DictionaryEntry {
+                    id: None,
+                    source_text: entry.text.clone(),
+                    target_text: entry.text.clone(),
+                    source_lang: entry.language.clone(),
+                    target_lang: target_lang.to_string(),
+                    source_type: "resourcepack".to_string(),
+                    mod_id: Some(entry.mod_id.clone()),
+                    translation_key: Some(entry.key.clone()),
+                    context: None,
+                    confidence: 0.8,
+                    created_at: None,
+                    updated_at: None,
+                };
                 upsert(conn, &dict_entry)?;
                 imported += 1;
             }
@@ -472,27 +410,10 @@ pub fn import_resource_pack_entries(
 /// Export all entries as JSON lines.
 pub fn export_jsonl(conn: &Connection) -> SqlResult<Vec<String>> {
     let mut stmt = conn.prepare(
-        "SELECT id, source_text, target_text, source_lang, target_lang, source_type,
-                mod_id, translation_key, context, confidence, created_at, updated_at
-         FROM dictionary_entries ORDER BY id",
+        &format!("{SELECT_COLS} ORDER BY id"),
     )?;
 
-    let rows = stmt.query_map([], |row| {
-        Ok(DictionaryEntry {
-            id: Some(row.get(0)?),
-            source_text: row.get(1)?,
-            target_text: row.get(2)?,
-            source_lang: row.get(3)?,
-            target_lang: row.get(4)?,
-            source_type: row.get(5)?,
-            mod_id: row.get(6)?,
-            translation_key: row.get(7)?,
-            context: row.get(8)?,
-            confidence: row.get(9)?,
-            created_at: row.get(10)?,
-            updated_at: row.get(11)?,
-        })
-    })?;
+    let rows = stmt.query_map([], map_row)?;
 
     let mut lines = Vec::new();
     for row in rows {

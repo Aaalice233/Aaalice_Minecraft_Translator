@@ -6,11 +6,16 @@ use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 
+/// Maximum uncompressed size for a single language file inside a jar (50 MB).
+/// Prevents OOM from malformed or oversized language data.
+const MAX_LANG_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
 use rayon::prelude::*;
 
 use zip::ZipArchive;
 
 use crate::core::{
+    dictionary,
     logging,
     models::{
         InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanProgress,
@@ -90,6 +95,7 @@ pub fn scan_instance(
         &instance_path.join("mods"),
         &source_language,
         &target_language,
+        cancel,
         progress,
     )?;
 
@@ -283,6 +289,7 @@ pub fn scan_mods(
     mods_path: &Path,
     source_language: &str,
     target_language: &str,
+    cancel: &AtomicBool,
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<Vec<ModScanResult>> {
     if !mods_path.is_dir() {
@@ -311,6 +318,37 @@ pub fn scan_mods(
                 .file_name()
                 .map(|name| name.to_string_lossy().to_string())
                 .unwrap_or_default();
+
+            // Check cancel before doing heavy IO (zip reading)
+            if cancel.load(Ordering::SeqCst) {
+                let current = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                progress(ScanProgress {
+                    current,
+                    total,
+                    mod_name: file_name.clone(),
+                    phase: "scan".to_string(),
+                    sub_step: None,
+                    stage_status: StageStatus::Running,
+                });
+                return ModScanResult {
+                    mod_id: String::new(),
+                    file_name,
+                    jar_path: String::new(),
+                    language_file_count: 0,
+                    recovered_language_files: 0,
+                    failed_language_files: 0,
+                    source_language: source_language.to_string(),
+                    resolved_source_language: String::new(),
+                    target_language: target_language.to_string(),
+                    source_entries: 0,
+                    target_entries: 0,
+                    has_target_language: false,
+                    formats: Vec::new(),
+                    entries: Vec::new(),
+                    warnings: Vec::new(),
+                };
+            }
+
             let result = scan_mod_jar(&path, source_language, target_language);
             let current = completed.fetch_add(1, Ordering::SeqCst) + 1;
             progress(ScanProgress {
@@ -439,7 +477,19 @@ fn scan_mod_jar(path: &Path, source_language: &str, target_language: &str) -> Mo
                     target_language_file_exists = true;
                 }
 
-                let mut bytes = Vec::new();
+                // Guard against oversized language files (OOM prevention)
+                let uncompressed_size = file.size();
+                if uncompressed_size > MAX_LANG_FILE_SIZE {
+                    warnings.push(warning(
+                        "lang_file_too_large",
+                        &format!("语言文件过大 ({uncompressed_size} bytes > {MAX_LANG_FILE_SIZE} max)，已跳过"),
+                        path,
+                    ));
+                    failed_language_files += 1;
+                    continue;
+                }
+
+                let mut bytes = Vec::with_capacity(uncompressed_size as usize);
                 if let Err(err) = file.read_to_end(&mut bytes) {
                     warnings.push(warning(
                         "lang_read_failed",
@@ -541,6 +591,7 @@ fn scan_resourcepack_dir(path: &Path, target_language: &str) -> io::Result<Resou
         lang_file_count,
         entry_count,
         entries,
+        warnings,
     })
 }
 
@@ -548,10 +599,32 @@ fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScan
     let mut lang_file_count = 0;
     let mut entries = Vec::new();
     let mut has_pack_meta = false;
-    let mut warnings = Vec::new();
+    let mut warnings: Vec<ScanWarning> = Vec::new();
 
-    if let Ok(file) = fs::File::open(path) {
-        if let Ok(mut archive) = ZipArchive::new(file) {
+    let file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(err) => {
+            warnings.push(ScanWarning {
+                code: "resourcepack_open_failed".to_string(),
+                message: format!("无法打开资源包文件: {err}"),
+                path: display_path(path),
+            });
+            return ResourcePackScanResult {
+                name: file_name(path),
+                path: display_path(path),
+                source_type: infer_pack_source_type(path),
+                is_archive: true,
+                has_pack_meta: false,
+                lang_file_count: 0,
+                entry_count: 0,
+                entries: Vec::new(),
+                warnings,
+            };
+        }
+    };
+
+    match ZipArchive::new(file) {
+        Ok(mut archive) => {
             // Check pack.mcmeta from in-memory (zero IO)
             if archive.file_names().any(|n| n == "pack.mcmeta" || n.ends_with("/pack.mcmeta")) {
                 has_pack_meta = true;
@@ -566,14 +639,22 @@ fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScan
             };
             for index in lang_indices {
                 let Ok(mut file) = archive.by_index(index) else { continue; };
-                let mut content = String::new();
-                if file.read_to_string(&mut content).is_ok() {
+                let mut bytes = Vec::new();
+                if file.read_to_end(&mut bytes).is_ok() {
+                    let content = String::from_utf8_lossy(&bytes);
                     lang_file_count += 1;
                     let name = file.name().replace('\\', "/");
                     let file_entries = parse_resourcepack_lang_file(&name, &content, &mut warnings);
                     entries.extend(file_entries);
                 }
             }
+        }
+        Err(err) => {
+            warnings.push(ScanWarning {
+                code: "resourcepack_zip_open_failed".to_string(),
+                message: format!("解析资源包 zip 失败: {err}"),
+                path: display_path(path),
+            });
         }
     }
 
@@ -587,6 +668,7 @@ fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScan
         lang_file_count,
         entry_count,
         entries,
+        warnings,
     }
 }
 
@@ -1023,7 +1105,9 @@ fn infer_pack_source_type(path: &Path) -> String {
     // or "...-i18n-..." / "...-i18nupdates-..."
     if name.contains("i18n") || name.contains("mod-language") {
         "i18n".to_string()
-    } else if name.contains("vm") || name.contains("汉化") {
+    } else if name.contains("vmtranslation") || name.contains("vm翻译") || name.contains("vm_汉化")
+        || name.contains("汉化包") || name == "vm_汉化包"
+    {
         "vm".to_string()
     } else {
         "normal".to_string()
@@ -1032,12 +1116,28 @@ fn infer_pack_source_type(path: &Path) -> String {
 
 fn infer_mod_id_from_file_name(file_name: &str) -> Option<String> {
     let stem = file_name.strip_suffix(".jar").unwrap_or(file_name);
-    let mod_id = stem
-        .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '-')
-        .collect::<String>()
-        .trim_matches('-')
-        .to_ascii_lowercase();
+    // Split by '-' and collect segments until one looks like a version number
+    // (starts with a digit and contains a dot or is entirely numeric).
+    let mut mod_id_parts: Vec<&str> = Vec::new();
+    for segment in stem.split('-') {
+        if segment.is_empty() {
+            continue;
+        }
+        // Check if this segment looks like a version number
+        let first_char = segment.chars().next().unwrap_or(' ');
+        if first_char.is_ascii_digit()
+            && (segment.contains('.') || segment.chars().all(|c| c.is_ascii_digit()))
+        {
+            break; // Version number found — stop here
+        }
+        // Skip known forge/fabric/neoforge loader prefixes
+        let lower = segment.to_ascii_lowercase();
+        if matches!(lower.as_str(), "forge" | "fabric" | "neoforge" | "universal") {
+            continue;
+        }
+        mod_id_parts.push(segment);
+    }
+    let mod_id = mod_id_parts.join("-").trim_matches('-').to_ascii_lowercase();
     (!mod_id.is_empty()).then_some(mod_id)
 }
 
@@ -1055,15 +1155,10 @@ fn warning(code: &str, message: &str, path: &Path) -> ScanWarning {
     }
 }
 
-fn hash_text(text: &str) -> String {
-    // 使用 FNV-1a 算法（与 dictionary.rs 一致），保证跨平台跨进程确定性
-    let mut hash: u64 = 0xcbf29ce484222325;
-    for byte in text.bytes() {
-        hash ^= byte as u64;
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("{:016x}", hash)
-}
+// Re-export the deterministic hash_text from dictionary module.
+// Both scanner and dictionary must use the same stable hash algorithm
+// so that LanguageEntry.text_hash can cross-reference dictionary entries.
+pub use dictionary::hash_text;
 
 #[cfg(test)]
 mod tests {
@@ -1088,7 +1183,8 @@ mod tests {
 
     #[test]
     fn scans_mod_jars_and_detects_existing_zh_cn() {
-        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &|_| {}).unwrap();
+        let cancel = AtomicBool::new(false);
+        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &cancel, &|_| {}).unwrap();
         let example = mods.iter().find(|item| item.mod_id == "examplemod").unwrap();
         let placeholder = mods.iter().find(|item| item.mod_id == "placeholdermod").unwrap();
 
@@ -1176,7 +1272,8 @@ Second line",
     fn progress_callback_is_called_for_each_jar() {
         use std::sync::atomic::{AtomicUsize, Ordering};
         let calls = AtomicUsize::new(0);
-        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &|p: ScanProgress| {
+        let cancel = AtomicBool::new(false);
+        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &cancel, &|p: ScanProgress| {
             calls.fetch_add(1, Ordering::SeqCst);
             assert!(p.current >= 1);
             assert_eq!(p.total, 2);

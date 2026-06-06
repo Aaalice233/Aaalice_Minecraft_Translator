@@ -56,9 +56,13 @@ export function DashboardPage({
   const [instancePath, setInstancePath] = useState(settings.instancePath);
   const [isScanning, setIsScanning] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
+  const isScanningRef = useRef(isScanning);
   const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [error, setError] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Keep ref in sync for timeout closures
+  useEffect(() => { isScanningRef.current = isScanning; }, [isScanning]);
 
   // Sync scanning busy state to sidebar nav
   useEffect(() => {
@@ -220,6 +224,14 @@ export function DashboardPage({
     setIsCancelling(true);
     try {
       await cancelScan();
+      // Let handleScan's finally block reset UI.
+      // Add a timeout safety net in case something goes wrong.
+      setTimeout(() => {
+        if (isScanningRef.current) {
+          setIsScanning(false);
+          setIsCancelling(false);
+        }
+      }, 3000);
     } catch (err) {
       console.error("取消扫描失败:", err);
       setError("取消扫描失败: " + (err instanceof Error ? err.message : String(err)));

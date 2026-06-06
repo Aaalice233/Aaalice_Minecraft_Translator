@@ -95,13 +95,16 @@ export interface ResourcePackScanResult {
   langFileCount: number;
   entryCount: number;
   entries: LanguageEntry[];
+  warnings: ScanWarning[];
 }
+
+export type ScanPhase = "scan" | "resourcepacks" | "aggregate" | "log";
 
 export interface ScanProgressEvent {
   current: number;
   total: number;
   modName: string;
-  phase: string;
+  phase: ScanPhase;
   subStep?: string;
   stageStatus: "running" | "completed" | "failed";
 }
@@ -154,10 +157,12 @@ export interface ImportResult {
 
 // ── P3: Translation types ─────────────────────────────────────────
 
+export type PipelinePhase = "scanning" | "extracting" | "dictionary" | "translating" | "completed";
+
 export interface TranslateProgress {
   current: number;
   total: number;
-  phase: string;
+  phase: PipelinePhase;
   modName: string;
   subStep?: string;
   stageStatus: "running" | "completed" | "failed";

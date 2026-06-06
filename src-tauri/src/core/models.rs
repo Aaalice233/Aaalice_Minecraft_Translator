@@ -223,6 +223,7 @@ pub struct ResourcePackScanResult {
     pub lang_file_count: usize,
     pub entry_count: usize,
     pub entries: Vec<LanguageEntry>,
+    pub warnings: Vec<ScanWarning>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

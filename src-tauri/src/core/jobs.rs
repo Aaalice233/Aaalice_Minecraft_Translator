@@ -228,6 +228,41 @@ impl JobManager {
         }
     }
 
+    /// List all translation jobs on disk, sorted by mtime descending (newest first).
+    pub fn list_all(&self) -> Result<Vec<TranslationJobState>, String> {
+        let jobs_dir = paths::jobs_dir(&self.root);
+        if !jobs_dir.is_dir() {
+            return Ok(Vec::new());
+        }
+
+        let mut jobs: Vec<(std::time::SystemTime, TranslationJobState)> = Vec::new();
+
+        for entry in std::fs::read_dir(&jobs_dir)
+            .map_err(|e| format!("读取 jobs 目录失败: {e}"))?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let fname = e.file_name();
+                let name = fname.to_string_lossy();
+                name.starts_with("translate_") && name.ends_with(".json")
+                    && !name.ends_with(".tmp")
+            })
+        {
+            let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
+            let content = std::fs::read_to_string(entry.path())
+                .map_err(|e| format!("读取 job 文件失败: {e}"))?;
+            if let Ok(job) = serde_json::from_str::<TranslationJobState>(&content) {
+                if let Some(time) = modified {
+                    jobs.push((time, job));
+                }
+            }
+        }
+
+        // Sort by mtime descending (newest first)
+        jobs.sort_by(|a, b| b.0.cmp(&a.0));
+
+        Ok(jobs.into_iter().map(|(_, job)| job).collect())
+    }
+
     // ── Results (JSONL) ──────────────────────────────────────────────
 
     /// Append one translated result to the job's .jsonl results file.

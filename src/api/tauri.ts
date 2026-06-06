@@ -210,6 +210,13 @@ export async function loadLatestTranslationJob(): Promise<TranslationJobState | 
   return tauriInvoke<TranslationJobState | null>("load_latest_translation_job");
 }
 
+export async function listTranslationJobs(): Promise<TranslationJobState[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return tauriInvoke<TranslationJobState[]>("list_translation_jobs");
+}
+
 export async function validateTranslation(jobId: string): Promise<ValidationReport> {
   if (!isTauriRuntime()) {
     return { totalEntries: 0, passed: 0, failed: 0, missing: 0, placeholderIssues: [], formatIssues: [] };
@@ -221,12 +228,13 @@ export async function generateTranslationPack(
   entries: PackEntry[],
   targetLanguage: string,
   dryRun: boolean,
+  packFormat?: number,
 ): Promise<PackResult> {
   if (!isTauriRuntime()) {
     return { outputDir: "", zipPath: "", modCount: 0, entryCount: 0, conflicts: [] };
   }
   return tauriInvoke<PackResult>("generate_translation_pack", {
-    entries, targetLanguage, dryRun,
+    entries, targetLanguage, dryRun, packFormat: packFormat ?? null,
   });
 }
 

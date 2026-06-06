@@ -9,6 +9,7 @@ pub fn generate_translation_pack(
     entries: Vec<packer::PackEntry>,
     target_language: String,
     dry_run: bool,
+    pack_format: Option<u32>,
 ) -> Result<packer::PackResult, String> {
     let root = paths::runtime_root().map_err(to_message)?;
     let output_dir = paths::build_output_dir(&root);
@@ -20,6 +21,7 @@ pub fn generate_translation_pack(
         build_name: "Aaalice-MC-Translator".to_string(),
         dry_run,
         output_dir: output_dir.to_string_lossy().to_string(),
+        pack_format: pack_format.unwrap_or(15),
     };
 
     packer::generate_pack(&options).map_err(to_message)
@@ -72,6 +74,7 @@ pub fn generate_pack_from_job(
         build_name: format!("Aaalice-MC-Translator-{job_id}"),
         dry_run,
         output_dir: output_dir.to_string_lossy().to_string(),
+        pack_format: 15,
     };
 
     packer::generate_pack(&options).map_err(to_message)

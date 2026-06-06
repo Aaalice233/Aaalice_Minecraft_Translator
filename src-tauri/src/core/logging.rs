@@ -2,8 +2,11 @@ use std::{
     fs::{self, OpenOptions},
     io::{self, Write},
     path::Path,
+    sync::OnceLock,
     time::{SystemTime, UNIX_EPOCH},
 };
+
+use regex::Regex;
 
 pub fn init_main_log(root: &Path) -> io::Result<()> {
     let logs_dir = root.join("logs");
@@ -59,21 +62,57 @@ fn timestamp() -> String {
     secs.to_string()
 }
 
+/// Redact sensitive information (API keys, tokens) from log messages using regex patterns.
+///
+/// The approach avoids raw string regex literals to prevent editor/truncation issues.
+/// Patterns are compiled lazily with OnceLock.
 fn redact_secret(message: &str) -> String {
-    message
-        .split_whitespace()
-        .map(|part| {
-            let lower = part.to_ascii_lowercase();
-            if lower.contains("api_key") || lower.contains("apikey") || lower.contains("authorization") {
-                "[REDACTED]"
-            } else if lower.starts_with("bearer") && part.len() > 10 {
-                "Bearer [REDACTED]"
-            } else if (part.starts_with("sk-") || part.starts_with("sk_")) && part.len() > 10 {
-                "[REDACTED]"
-            } else {
-                part
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+    // Fast path: skip regex overhead if no suspicious patterns are present
+    let lower = message.to_ascii_lowercase();
+    if !lower.contains("api_key")
+        && !lower.contains("apikey")
+        && !lower.contains("authorization")
+        && !lower.contains("bearer")
+        && !lower.contains("sk-")
+        && !lower.contains("sk_")
+    {
+        return message.to_string();
+    }
+
+    static PATTERNS: OnceLock<Vec<(Regex, &str)>> = OnceLock::new();
+    let patterns = PATTERNS.get_or_init(|| {
+        vec![
+            // Pattern 1: "api_key":"sk-xxxx..." or 'api_key':'sk-xxxx...' in JSON
+            (
+                Regex::new("(?i)(api[_-]?key|authorization)\\s*[:=]\\s*[\"']?(sk-[a-zA-Z0-9]{20,})[\"']?").unwrap(),
+                "[REDACTED]",
+            ),
+            // Pattern 2: api_key=sk-xxxx in URL query or headers
+            (
+                Regex::new("(?i)(api[_-]?key|authorization)\\s*[:=]\\s*(sk-[a-zA-Z0-9]{20,})").unwrap(),
+                "${1}=[REDACTED]",
+            ),
+            // Pattern 3: Bearer sk-xxxx or bearer sk-xxxx
+            (
+                Regex::new("(?i)(Bearer\\s+)(sk-[a-zA-Z0-9]{20,})").unwrap(),
+                "${1}[REDACTED]",
+            ),
+            // Pattern 4: Generic long API keys (16+ chars) after known labels
+            (
+                Regex::new("(?i)(api[_-]?key|authorization)\\s*[:=]\\s*[\"']?([a-zA-Z0-9_\\-]{16,})[\"']?").unwrap(),
+                "[REDACTED]",
+            ),
+            // Pattern 5: Standalone sk- keys (word boundary)
+            (
+                Regex::new("(?i)\\b(sk-[a-zA-Z0-9]{20,})\\b").unwrap(),
+                "[REDACTED]",
+            ),
+        ]
+    });
+
+    let mut result = message.to_string();
+    for (re, replacement) in patterns {
+        result = re.replace_all(&result, *replacement).to_string();
+    }
+    result
 }

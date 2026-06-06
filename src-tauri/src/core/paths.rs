@@ -82,7 +82,9 @@ pub fn clear_scan_cache(root: &std::path::Path) -> std::io::Result<()> {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().to_string();
         if name.starts_with("scan_") && name.ends_with(".json") {
-            let _ = std::fs::remove_file(entry.path());
+            if let Err(err) = std::fs::remove_file(entry.path()) {
+                eprintln!("无法删除缓存文件 {}: {err}", entry.path().display());
+            }
         }
     }
     Ok(())

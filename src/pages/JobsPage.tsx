@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle, FileText, Filter, Play, Square, X, XCircle } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cancelTranslation, startTranslation } from "../api/tauri";
+import { cancelTranslation, loadLatestTranslationJob, startTranslation } from "../api/tauri";
+import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
 
@@ -85,11 +86,14 @@ interface Props {
 type TranslationStatus = "idle" | "running" | "completed" | "canceled" | "failed";
 
 export function JobsPage({ language, isActive = true, scanSummary, onScanSummaryChange, settings, onBusyChange, onCompleteChange }: Props) {
+  const { state, dispatch } = useAppState();
+
   const [translateProgress, setTranslateProgress] = useState<TranslateProgress | null>(null);
-  const [status, setStatus] = useState<TranslationStatus>("idle");
+  // Restore persistent state from AppContext
+  const [status, setStatus] = useState<TranslationStatus>(() => state.translationStatus as TranslationStatus || "idle");
   const isRunning = status === "running";
-  const [translationResult, setTranslationResult] = useState<number | null>(null);
-  const [translationError, setTranslationError] = useState<string>("");
+  const [translationResult, setTranslationResult] = useState<number | null>(state.translationResult);
+  const [translationError, setTranslationError] = useState<string>(state.translationError);
   const [logEntries, setLogEntries] = useState<TranslateLogEntry[]>([]);
   const [entryProgressMap, setEntryProgressMap] = useState<Map<string, EntryProgress>>(new Map());
   const [filterTerm, setFilterTerm] = useState("");
@@ -121,6 +125,33 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const knownStatuses = ["pending", "dictionaryHit", "skip", "translating", "completed", "failed"] as const;
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
+
+  // Sync translation state to AppContext for cross-page persistence (M7)
+  useEffect(() => {
+    dispatch({
+      type: "SET_TRANSLATION_STATUS",
+      payload: { status, result: translationResult, error: translationError },
+    });
+  }, [status, translationResult, translationError, dispatch]);
+
+  // On mount, try to restore from backend if AppContext has no active state
+  useEffect(() => {
+    if (status !== "idle") return; // Already restored from AppContext
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    let cancelled = false;
+    loadLatestTranslationJob()
+      .then((job) => {
+        if (cancelled || !job) return;
+        dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
+        if (job.status === "completed") {
+          setStatus("completed");
+          setTranslationResult(job.completedEntries);
+          onCompleteChange?.(true);
+        }
+      })
+      .catch((err) => console.warn("恢复翻译状态失败:", err));
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync translation busy state to parent (sidebar)
   useEffect(() => {
@@ -197,8 +228,15 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
       setStatus("completed");
       onCompleteChange?.(true);
 
-      // Re-scan to refresh pending counts after translation
+      // Look up jobId and store in AppContext for cross-page access
       if ("__TAURI_INTERNALS__" in window) {
+        loadLatestTranslationJob()
+          .then((job) => {
+            if (job) dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
+          })
+          .catch((err) => console.warn("获取翻译任务 ID 失败:", err));
+
+        // Re-scan to refresh pending counts after translation
         try {
           const { scanInstance } = await import("../api/tauri");
           const newSummary = await scanInstance(instPath, srcLang, tgtLang);

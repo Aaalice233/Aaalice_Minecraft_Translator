@@ -5,16 +5,28 @@ type PageKey =
   | "dashboard" | "jobs" | "validate" | "dictionary"
   | "packages" | "ftb" | "hardcoded" | "settings" | "logs";
 
+export type TranslationPageStatus = "idle" | "running" | "completed" | "canceled" | "failed";
+
 interface AppState {
   settings: Settings | null;
   scanSummary: ScanSummary | null;
   navStates: Partial<Record<PageKey, PageNavStatus>>;
+  // Translation state persistence (M7)
+  translationJobId: string | null;
+  translationStatus: TranslationPageStatus;
+  translationResult: number | null;
+  translationError: string;
+  // Packages page selected job (P10)
+  packagesJobId: string | null;
 }
 
 type AppAction =
   | { type: "SET_SETTINGS"; payload: Settings }
   | { type: "SET_SCAN_SUMMARY"; payload: ScanSummary }
-  | { type: "SET_NAV_STATE"; payload: { key: PageKey; status: PageNavStatus } };
+  | { type: "SET_NAV_STATE"; payload: { key: PageKey; status: PageNavStatus } }
+  | { type: "SET_TRANSLATION_STATUS"; payload: { status: TranslationPageStatus; result?: number | null; error?: string } }
+  | { type: "SET_TRANSLATION_JOB_ID"; payload: string | null }
+  | { type: "SET_PACKAGES_JOB_ID"; payload: string | null };
 
 function appReducer(state: AppState, action: AppAction): AppState {
   switch (action.type) {
@@ -28,6 +40,19 @@ function appReducer(state: AppState, action: AppAction): AppState {
       if (status === "idle" && state.navStates[key] === "completed") return state;
       return { ...state, navStates: { ...state.navStates, [key]: status } };
     }
+    case "SET_TRANSLATION_STATUS": {
+      const { status, result, error } = action.payload;
+      return {
+        ...state,
+        translationStatus: status,
+        translationResult: result !== undefined ? result : state.translationResult,
+        translationError: error !== undefined ? error : state.translationError,
+      };
+    }
+    case "SET_TRANSLATION_JOB_ID":
+      return { ...state, translationJobId: action.payload };
+    case "SET_PACKAGES_JOB_ID":
+      return { ...state, packagesJobId: action.payload };
     default:
       return state;
   }
@@ -43,6 +68,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     settings: null,
     scanSummary: null,
     navStates: {},
+    translationJobId: null,
+    translationStatus: "idle",
+    translationResult: null,
+    translationError: "",
+    packagesJobId: null,
   });
   return (
     <AppContext.Provider value={{ state, dispatch }}>
