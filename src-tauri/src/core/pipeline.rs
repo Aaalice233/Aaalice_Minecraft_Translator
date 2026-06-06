@@ -35,9 +35,7 @@ pub fn cancel_current_translation() {
 pub fn register_translation_task(job_id: &str) -> Option<String> {
     TRANSLATE_CANCEL.store(false, Ordering::SeqCst);
     let mut task = ACTIVE_TRANSLATE_TASK.lock().unwrap_or_else(|e| e.into_inner());
-    let prev = task.take();
-    *task = Some(job_id.to_string());
-    prev
+    task.replace(job_id.to_string())
 }
 
 // ── Pending entry extraction ──────────────────────────────────
@@ -399,7 +397,7 @@ pub fn run_pipeline(
             stage_status: StageStatus::Running,
         });
 
-        let _completed_batches = std::sync::atomic::AtomicUsize::new(0);
+        let completed_batches = std::sync::atomic::AtomicUsize::new(0);
         // 自适应并发波浪循环
         let mut batch_index = 0usize;
         loop {
@@ -490,7 +488,7 @@ pub fn run_pipeline(
                         let token = token_usage.unwrap_or_default();
 
                         // Emit per-batch progress immediately as each batch finishes
-                        let current = _completed_batches.fetch_add(1, Ordering::SeqCst) + 1;
+                        let current = completed_batches.fetch_add(1, Ordering::SeqCst) + 1;
                         let _ = progress_tx.send(PipelineProgress {
                             current,
                             total: total_llm_batches,
