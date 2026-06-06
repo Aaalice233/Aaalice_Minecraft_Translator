@@ -11,13 +11,9 @@ use crate::core::{
 
 static SCAN_CANCEL: AtomicBool = AtomicBool::new(false);
 
-fn to_message(err: impl std::fmt::Display) -> String {
-    err.to_string()
-}
-
 #[tauri::command]
 pub fn validate_instance(path: String) -> Result<InstanceValidation, String> {
-    scanner::validate_instance(path).map_err(to_message)
+    scanner::validate_instance(path).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -29,7 +25,7 @@ pub async fn scan_instance(
 ) -> Result<ScanSummary, String> {
     SCAN_CANCEL.store(false, Ordering::SeqCst);
 
-    let root = paths::runtime_root().map_err(to_message)?;
+    let root = paths::runtime_root().map_err(|err| err.to_string())?;
     let (progress_tx, progress_rx) = mpsc::channel::<ScanProgress>();
     let progress_tx_scan = progress_tx.clone();
 
@@ -68,18 +64,23 @@ pub async fn scan_instance(
     .map_err(|e| e.to_string())?;
 
     drop(progress_tx);
-    let summary = result.map_err(to_message)?;
+    let summary = result.map_err(|err| err.to_string())?;
 
+    // Write scan result to disk asynchronously to avoid delaying response
     if !summary.cancelled {
-        if let Ok(json) = serde_json::to_string_pretty(&summary) {
-            let job_path = paths::job_state_path(&root_for_save, &summary.job_id);
-            if let Some(parent) = job_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
+        let root_for_log = root_for_save.clone();
+        let summary_clone = summary.clone();
+        tauri::async_runtime::spawn(async move {
+            if let Ok(json) = serde_json::to_string_pretty(&summary_clone) {
+                let job_path = paths::job_state_path(&root_for_log,  &summary_clone.job_id);
+                if let Some(parent) = job_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if let Err(err) = std::fs::write(&job_path, json) {
+                    let _ = crate::core::logging::append_main(&root_for_log, format!("扫描结果写入失败 ({}): {err}", job_path.display()));
+                }
             }
-            if let Err(err) = std::fs::write(&job_path, json) {
-                let _ = crate::core::logging::append_main(&root_for_save, format!("扫描结果写入失败 ({}): {err}", job_path.display()));
-            }
-        }
+        });
     }
 
     Ok(summary)

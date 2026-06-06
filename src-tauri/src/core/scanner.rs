@@ -259,16 +259,6 @@ pub fn scan_instance(
 
     let cancelled = cancel.load(Ordering::SeqCst);
 
-    // Always emit final "done" event (even if cancelled, to signal scan end)
-    progress(ScanProgress {
-        current: 1,
-        total: 1,
-        mod_name: String::new(),
-        phase: "done".to_string(),
-        sub_step: None,
-        stage_status: StageStatus::Completed,
-    });
-
     Ok(ScanSummary {
         job_id,
         instance_path: display_path(instance_path),

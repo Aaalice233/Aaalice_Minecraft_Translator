@@ -68,13 +68,13 @@ pub async fn start_translation(
     target_language: String,
     scan_job_id: Option<String>,
 ) -> Result<usize, String> {
-    let root = paths::runtime_root().map_err(|e| e.to_string())?;
+    let root = paths::runtime_root().map_err(|err| err.to_string())?;
     let job_id = logging::new_job_id("translate");
 
     pipeline::register_translation_task(&job_id);
 
     logging::append_main(&root, format!("翻译任务创建成功，任务 ID: {job_id}"))
-        .map_err(|e| e.to_string())?;
+        .map_err(|err| err.to_string())?;
 
     // Channels: progress events + log entries + entry-level progress
     let (progress_tx, progress_rx) = mpsc::channel::<PipelineProgress>();
@@ -145,7 +145,7 @@ pub async fn start_translation(
         pipeline::run_pipeline(config, &job_id, progress_tx_work, log_tx_work, entry_progress_tx_work)
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|err| err.to_string())??;
 
     drop(progress_tx);
     drop(log_tx);
@@ -164,7 +164,7 @@ pub async fn start_translation(
 pub fn cancel_translation() -> Result<(), String> {
     pipeline::cancel_current_translation();
     let _ = logging::append_main(
-        &paths::runtime_root().map_err(|e| e.to_string())?,
+        &paths::runtime_root().map_err(|err| err.to_string())?,
         "翻译任务被用户取消",
     );
     Ok(())

@@ -5,9 +5,8 @@ import { t } from "../i18n/translations";
 import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
 
 function csvQuote(val: string): string {
-  const q = String.fromCharCode(34);
-  if (val.indexOf(",") >= 0 || val.indexOf(q) >= 0 || val.indexOf(" ") >= 0) {
-    return q + val.replace(new RegExp(q, "g"), q + q) + q;
+  if (val.indexOf(",") >= 0 || val.indexOf('"') >= 0 || val.indexOf(" ") >= 0) {
+    return '"' + val.replace(/"/g, '""') + '"';
   }
   return val;
 }
@@ -43,7 +42,8 @@ const STATUS_META: Array<{ key: keyof EntryStatusCounts; color: string }> = [
 ];
 
 const MAX_LOG = 10000;
-const DISPLAY_MAX = 2000;
+const ROW_HEIGHT = 30;
+const ROW_BUFFER = 5;
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -97,6 +97,21 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const [filterTerm, setFilterTerm] = useState("");
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
+
+  // Measure log body height to calculate visible row count
+  const [visibleRows, setVisibleRows] = useState(0);
+  useEffect(() => {
+    const el = logContainerRef.current;
+    if (!el) return;
+    const update = () => {
+      const h = el.clientHeight;
+      setVisibleRows(Math.ceil(h / ROW_HEIGHT) + ROW_BUFFER);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
 
@@ -233,8 +248,9 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     [logEntries, filterTerm],
   );
 
-  const displayEntries = filteredEntries.length > DISPLAY_MAX
-    ? filteredEntries.slice(-DISPLAY_MAX)
+  // Only render as many rows as fit in the visible area (+ buffer)
+  const displayEntries = visibleRows > 0 && filteredEntries.length > visibleRows
+    ? filteredEntries.slice(-visibleRows)
     : filteredEntries;
 
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {

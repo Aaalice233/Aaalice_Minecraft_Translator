@@ -116,9 +116,6 @@ select {
 
 /* ── Nav busy state (running task indicator) ──── */
 .nav-item.busy {
-  background: #e2f1e8;
-  color: #0f6a43;
-  font-weight: 600;
   position: relative;
 }
 .nav-item.busy .nav-icon-busy {
@@ -180,13 +177,17 @@ select {
 }
 
 .main {
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   min-width: 0;
 }
 
 /* ── Page Stack (keep-alive) ──────────────────── */
 .page-stack {
   position: relative;
+  flex: 1;
+  min-height: 0;
 }
 
 .page-layer {
@@ -196,6 +197,8 @@ select {
 .page-layer.active {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .page {
