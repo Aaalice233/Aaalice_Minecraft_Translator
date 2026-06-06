@@ -433,81 +433,89 @@ pub fn run_pipeline(
             stage_status: StageStatus::Running,
         });
 
+        // ── 持续并发工作池 ────────────────────────────────────
+        // 每个 worker 拥有独立的 SQLite 连接（rusqlite 是 Send 而非 Sync），
+        // CFPA 查询分散到各 worker 并行执行，避免主线程串行预查询瓶颈。
+        // 结果累积到本地缓冲区，每 RESULTS_FLUSH_INTERVAL 次批量写入减少 I/O。
+        const RESULTS_FLUSH_INTERVAL: usize = 5;
+        let next_batch = std::sync::atomic::AtomicUsize::new(0);
         let completed_batches = std::sync::atomic::AtomicUsize::new(0);
-        // 自适应并发波浪循环
-        let mut batch_index = 0usize;
-        loop {
-            if batch_index >= total_llm_batches {
-                break;
-            }
-            if is_translation_cancelled(job_id) {
-                break;
-            }
+        let global_llm_count = std::sync::atomic::AtomicUsize::new(0);
+        let global_failed_count = std::sync::atomic::AtomicUsize::new(0);
+        let token_usage_mutex = std::sync::Mutex::new(TokenUsage::default());
 
-            let current_conc = client.effective_concurrency.load(Ordering::SeqCst).max(1);
-            let wave_count = current_conc.min(total_llm_batches - batch_index);
+        std::thread::scope(|s| {
+            for _ in 0..initial_concurrency {
+                s.spawn(|| {
+                    // 每个 worker 打开自己的词典连接，WAL 模式允许多读并发
+                    let worker_dict = match dictionary::open(&dict_db_path) {
+                        Ok(conn) => conn,
+                        Err(e) => {
+                            let _ = logging::append_job(&config.root, job_id, format!("worker 打开词典失败: {e}"));
+                            return;
+                        }
+                    };
 
-            // Build wave: each batch is a Vec<TranslationEntry>
-            // Shield protection: key -> (original_text, ShieldResult) for restore/validate
-            let mut batch_shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
-            let wave_batches: Vec<(usize, Vec<TranslationEntry>)> = (batch_index..batch_index + wave_count)
-                .map(|bi| {
-                    let batch = &batches[bi];
+                    let mut worker_429_count = 0usize;
+                    let mut result_buf: Vec<jobs::TranslationResult> = Vec::with_capacity(RESULTS_FLUSH_INTERVAL * 64);
+                    let mut buf_count = 0usize;
 
-                    // Collect CFPA references for this batch
-                    let mut batch_refs = Vec::new();
-                    let mut seen_ref = HashSet::new();
-                    for (entry, _) in batch {
-                        if let Ok(matches) = cfpa::fuzzy_search(&dict_conn, &entry.text, &entry.language, &config.target_language, 5) {
-                            for m in &matches {
-                                if seen_ref.insert(m.source_text.clone()) {
-                                    batch_refs.push((m.source_text.clone(), m.target_text.clone()));
+                    loop {
+                        if is_translation_cancelled(job_id) {
+                            break;
+                        }
+
+                        let bi = next_batch.fetch_add(1, Ordering::SeqCst);
+                        if bi >= total_llm_batches {
+                            break;
+                        }
+
+                        // ── 构建单 batch（含 CFPA 并行查询） ────
+                        let batch = &batches[bi];
+
+                        let mut batch_refs = Vec::new();
+                        let mut seen_ref = HashSet::new();
+                        for (entry, _) in batch {
+                            if let Ok(matches) = cfpa::fuzzy_search(&worker_dict, &entry.text, &entry.language, &config.target_language, 5) {
+                                for m in &matches {
+                                    if seen_ref.insert(m.source_text.clone()) {
+                                        batch_refs.push((m.source_text.clone(), m.target_text.clone()));
+                                    }
                                 }
                             }
                         }
-                    }
 
-                    let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| {
-                        let sr = shield::protect(&entry.text);
-                        batch_shield_map.insert(entry.key.clone(), (entry.text.clone(), sr.clone()));
-                        TranslationEntry {
-                            key: entry.key.clone(),
-                            text: sr.protected,
-                            mod_id: entry.mod_id.clone(),
-                            source_lang: entry.language.clone(),
-                            target_lang: config.target_language.clone(),
-                            references: batch_refs.clone(),
+                        let mut batch_shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
+                        let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| {
+                            let sr = shield::protect(&entry.text);
+                            batch_shield_map.insert(entry.key.clone(), (entry.text.clone(), sr.clone()));
+                            TranslationEntry {
+                                key: entry.key.clone(),
+                                text: sr.protected,
+                                mod_id: entry.mod_id.clone(),
+                                source_lang: entry.language.clone(),
+                                target_lang: config.target_language.clone(),
+                                references: batch_refs.clone(),
+                            }
+                        }).collect();
+
+                        // Emit Translating status
+                        for te in &entries {
+                            let fname = key_to_meta.get(te.key.as_str()).map(|&(_, f)| f).unwrap_or("");
+                            let original_text = batch_shield_map.get(te.key.as_str())
+                                .map(|(orig, _)| orig.clone())
+                                .unwrap_or_else(|| te.text.clone());
+                            let _ = entry_progress_tx.send(EntryProgress {
+                                key: te.key.clone(),
+                                mod_name: fname.to_string(),
+                                source_text: original_text,
+                                target_text: None,
+                                status: EntryStatus::Translating,
+                                error_message: None,
+                            });
                         }
-                    }).collect();
-                    (bi, entries)
-                })
-                .collect();
 
-            // Emit Translating status for all entries in this wave (using original, unprotected text)
-            for (_, batch_entries) in &wave_batches {
-                for te in batch_entries {
-                    let fname = key_to_meta.get(te.key.as_str()).map(|&(_, f)| f).unwrap_or("");
-                    let original_text = batch_shield_map.get(te.key.as_str())
-                        .map(|(orig, _)| orig.clone())
-                        .unwrap_or_else(|| te.text.clone());
-                    let _ = entry_progress_tx.send(EntryProgress {
-                        key: te.key.clone(),
-                        mod_name: fname.to_string(),
-                        source_text: original_text,
-                        target_text: None,
-                        status: EntryStatus::Translating,
-                        error_message: None,
-                    });
-                }
-            }
-
-            // Dispatch wave concurrently. Each batch fires on_batch_complete itself
-            // and immediately emits PipelineProgress so the UI updates per-batch, not per-wave.
-            let wave_results: Vec<(Vec<jobs::TranslationResult>, TokenUsage, bool)> = std::thread::scope(|s| {
-                wave_batches.iter().map(|(_bi, batch_entries)| {
-                    s.spawn(|| {
-                        let entry_progress_tx = &entry_progress_tx;
-
+                        // ── 发送给 LLM ──────────────────────────
                         let on_complete = |results: &[TranslateResult]| {
                             for r in results {
                                 let (restored_source, restored_target, valid) = shield_restore_result(r, &batch_shield_map);
@@ -538,109 +546,102 @@ pub fn run_pipeline(
                             }
                         };
 
-                        let (results, token_usage) = client.translate_batch(batch_entries, Some(&on_complete));
+                        let (results, token_usage) = client.translate_batch(&entries, Some(&on_complete));
                         let token = token_usage.unwrap_or_default();
 
-                        // Emit per-batch progress immediately as each batch finishes
-                        let current = completed_batches.fetch_add(1, Ordering::SeqCst) + 1;
-                        let _ = progress_tx.send(PipelineProgress {
-                            current,
-                            total: total_llm_batches,
-                            phase: PipelinePhase::Translating,
-                            mod_name: String::new(),
-                            sub_step: Some(format!("{current}/{total_llm_batches} 批次")),
-                            stage_status: StageStatus::Running,
-                        });
+                        // ── Token 累积 ──────────────────────────
+                        {
+                            let mut t = token_usage_mutex.lock().unwrap();
+                            t.prompt_tokens += token.prompt_tokens;
+                            t.completion_tokens += token.completion_tokens;
+                            t.total_tokens += token.total_tokens;
+                        }
 
                         let all_rate_limited = results.iter().all(|r| {
                             !r.success && r.error.as_deref().map_or(false, |e| e.starts_with("RATE_LIMITED"))
                         });
 
-                        let converted: Vec<jobs::TranslationResult> = results.into_iter()
-                            .map(|r| {
-                                let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
-                                let (source_text, target_text, source_type) = if r.success {
-                                    (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
-                                } else {
-                                    (restored_source, r.translated_text, "failed".to_string())
-                                };
-                                jobs::TranslationResult {
-                                    key: r.key,
-                                    source_text,
-                                    target_text,
-                                    mod_id: String::new(),
-                                    mod_name: String::new(),
-                                    source_type,
-                                }
-                            })
-                            .collect();
+                        // ── 逐 worker 429 退避 ──────────────────
+                        if all_rate_limited {
+                            worker_429_count += 1;
+                            let wait_secs = match worker_429_count {
+                                1 => 30u64,
+                                2 => 60,
+                                _ => 120,
+                            };
+                            std::thread::sleep(Duration::from_secs(wait_secs));
+                        } else {
+                            worker_429_count = 0;
+                        }
 
-                        (converted, token, all_rate_limited)
-                    })
-                }).collect::<Vec<_>>().into_iter().filter_map(|h| h.join().ok()).collect()
-            });
+                        // ── 处理结果 ────────────────────────────
+                        let mut batch_llm_count = 0usize;
+                        let mut batch_failed_count = 0usize;
+                        for r in results {
+                            let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
+                            let (source_text, target_text, source_type) = if r.success {
+                                (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
+                            } else {
+                                (restored_source, r.translated_text, "failed".to_string())
+                            };
+                            let mut entry = jobs::TranslationResult {
+                                key: r.key,
+                                source_text,
+                                target_text,
+                                mod_id: String::new(),
+                                mod_name: String::new(),
+                                source_type,
+                            };
+                            set_mod_meta(&mut entry);
+                            if entry.source_type == "llm" {
+                                batch_llm_count += 1;
+                            } else if entry.source_type == "failed" {
+                                batch_failed_count += 1;
+                            }
+                            result_buf.push(entry);
+                        }
 
-            // Process results and check rate limit
-            let mut wave_has_429 = false;
+                        global_llm_count.fetch_add(batch_llm_count, Ordering::SeqCst);
+                        global_failed_count.fetch_add(batch_failed_count, Ordering::SeqCst);
 
-            for (results, token, rate_limited) in &wave_results {
-                accumulated_token_usage.prompt_tokens += token.prompt_tokens;
-                accumulated_token_usage.completion_tokens += token.completion_tokens;
-                accumulated_token_usage.total_tokens += token.total_tokens;
+                        // ── 批量写入 + 进度 ─────────────────────
+                        buf_count += 1;
+                        if buf_count % RESULTS_FLUSH_INTERVAL == 0 && !result_buf.is_empty() {
+                            let _ = jobs::batch_append_results(&config.root, job_id, &result_buf);
+                            result_buf.clear();
+                        }
 
-                let mut wave_llm_count = 0usize;
-                let mut wave_failed_count = 0usize;
-                for mut entry in results.iter().cloned() {
-                    if entry.source_type == "llm" {
-                        wave_llm_count += 1;
-                    } else if entry.source_type == "failed" {
-                        wave_failed_count += 1;
+                        let cb = completed_batches.fetch_add(1, Ordering::SeqCst) + 1;
+                        let _ = progress_tx.send(PipelineProgress {
+                            current: cb,
+                            total: total_llm_batches,
+                            phase: PipelinePhase::Translating,
+                            mod_name: String::new(),
+                            sub_step: Some(format!("{cb}/{total_llm_batches} 批次")),
+                            stage_status: StageStatus::Running,
+                        });
+
+                        // ── RPM 限速 ────────────────────────────
+                        if !all_rate_limited && llm_cfg.rate_limit_rpm > 0 {
+                            let per_worker_rpm = (llm_cfg.rate_limit_rpm as f64 / initial_concurrency as f64).max(1.0);
+                            let delay_ms = (60000.0 / per_worker_rpm).max(0.0) as u64;
+                            if delay_ms > 0 {
+                                std::thread::sleep(Duration::from_millis(delay_ms.min(5000)));
+                            }
+                        }
                     }
-                    set_mod_meta(&mut entry);
-                    batch_results.push(entry);
-                }
-                llm_count += wave_llm_count;
-                failed_count += wave_failed_count;
-                processed += wave_llm_count;
 
-                if *rate_limited {
-                    wave_has_429 = true;
-                }
+                    // worker 退出前刷剩余结果
+                    if !result_buf.is_empty() {
+                        let _ = jobs::batch_append_results(&config.root, job_id, &result_buf);
+                    }
+                });
             }
-            // Rate limit adaptation
-            if wave_has_429 {
-                client.consecutive_429s.fetch_add(1, Ordering::SeqCst);
-                let count = client.consecutive_429s.load(Ordering::SeqCst);
-                let current = client.effective_concurrency.load(Ordering::SeqCst);
-                let reduced = (current / 2).max(1);
-                client.effective_concurrency.store(reduced, Ordering::SeqCst);
-                let wait_secs = match count {
-                    1 => 30u64,
-                    2 => 60,
-                    _ => 120,
-                };
-                std::thread::sleep(Duration::from_secs(wait_secs));
-            } else {
-                client.consecutive_429s.store(0, Ordering::SeqCst);
-                // 试探性恢复并发
-                let current = client.effective_concurrency.load(Ordering::SeqCst);
-                if current < initial_concurrency {
-                    client.effective_concurrency.store(current + 1, Ordering::SeqCst);
-                }
-            }
+        });
 
-            batch_index += wave_count;
-
-            let _ = jobs::batch_append_results(&config.root, job_id, &batch_results);
-            batch_results.clear();
-
-            if batch_index < total_llm_batches && llm_cfg.rate_limit_rpm > 0 {
-                let delay_ms = (60000.0 / (llm_cfg.rate_limit_rpm as f64 / current_conc as f64)).max(0.0) as u64;
-                if delay_ms > 0 {
-                    std::thread::sleep(Duration::from_millis(delay_ms.min(5000)));
-                }
-            }
-        }
+        accumulated_token_usage = token_usage_mutex.into_inner().unwrap_or_default();
+        llm_count = global_llm_count.load(Ordering::SeqCst);
+        failed_count = global_failed_count.load(Ordering::SeqCst);
     }
 
     // ── Phase 5: Finalize ──────────────────────────────────────
