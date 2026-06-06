@@ -75,16 +75,27 @@ pub struct CancelToken(Arc<AtomicBool>);
 
 ## 迁移步骤（8 步，增量进行）
 
-| 步骤 | 改动 | 影响范围 |
-|------|------|---------|
-| 1 | 提取 CancelToken，替换全局静态 | pipeline.rs, translate.rs |
-| 2 | 定义 PipelineContext | pipeline.rs |
-| 3 | 提取 dictionary_phase() | pipeline.rs |
-| 4 | 提取 llm_phase() | pipeline.rs |
-| 5 | 定义 Phase trait + PipelineBuilder | pipeline.rs, mod.rs |
-| 6 | 各阶段包装为 Phase impl | pipeline.rs |
-| 7 | 替换 run_pipeline() 调用 | translate.rs |
-| 8 | (可选) 加 channel 实现阶段 3↔4 重叠 | pipeline.rs |
+| 步骤 | 状态 | 改动 |
+|------|------|------|
+| 1 | ✅ | 提取 CancelToken，替换全局静态 |
+| 2 | ✅ | 定义 PipelineContext |
+| 3 | ✅ | 提取 dictionary_phase() |
+| 4 | ✅ | 提取 llm_phase() |
+| 5 | ✅ | 定义 Phase trait + PipelineBuilder |
+| 6 | ✅ | 各阶段包装为 Phase impl (ScanExtractPhase, DictionaryPhase, LlmPhase, FinalizePhase) |
+| 7 | ✅ | 替换 run_pipeline() 为 Pipeline::run() |
+| 8 | 🟡 待定 | 加 channel 实现阶段 3↔4 重叠 |
+
+## 实际架构差异（对比原设计）
+
+- **PipelineContext** 使用生命周期参数 `<'a>` 引用 config/cancel，而不是拥有这些数据。
+- 阶段间数据（pending_entries, llm_only_entries）使用 **owned Vec** 存储在 ctx 中，
+  通过 `std::mem::take` 取出的方式传递，满足 Rust 借用检查。
+- `extract_pending_entries` 改为返回 `(LanguageEntry, String, Option<String>)`（owned），
+  消除引用依赖和生命周期约束。
+- 所有 4 阶段的错误处理和资源清理职责都封装在各自的 Phase impl 中。
+- Pipeline::run() 在每阶段前检查取消信号，无需在各阶段内部重复编写。
+- 取消信号可以通过注入不同的 CancelToken 在测试中隔离。
 
 ## 验收标准
 

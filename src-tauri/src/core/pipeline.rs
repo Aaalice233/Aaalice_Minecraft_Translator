@@ -108,6 +108,14 @@ pub struct PipelineContext<'a> {
     pub scan_summary: Option<ScanSummary>,
     pub dict_conn: Option<rusqlite::Connection>,
     pub dict_db_path: Option<std::path::PathBuf>,
+    // Phase-owned data (no lifetime dependency — cloned at phase boundaries)
+    pub pending_entries: Vec<(LanguageEntry, String, Option<String>)>,
+    pub llm_only_entries: Vec<(LanguageEntry, String)>,
+    pub total: usize,
+    pub non_llm_count: usize,
+    pub llm_count: usize,
+    pub failed_count: usize,
+    pub accumulated_token_usage: TokenUsage,
 }
 
 // ── Pending entry extraction ──────────────────────────────────
@@ -115,9 +123,9 @@ pub struct PipelineContext<'a> {
 /// Extract ALL source entries.  Each entry carries the existing translation text
 /// if available (from mod-internal target lang file, or from resource packs).
 /// Entries without an existing translation go through dictionary → LLM.
-pub fn extract_pending_entries<'a>(
-    summary: &'a ScanSummary,
-) -> Vec<(&'a LanguageEntry, &'a str, Option<String>)> {
+pub fn extract_pending_entries(
+    summary: &ScanSummary,
+) -> Vec<(LanguageEntry, String, Option<String>)> {
     // Build resource-pack lookup: (mod_id, key) → target text
     let rp_lookup: HashMap<(&str, &str), &str> = summary
         .resource_packs
@@ -157,17 +165,17 @@ pub fn extract_pending_entries<'a>(
                         .get(&(entry.mod_id.as_str(), entry.key.as_str()))
                         .map(|s| s.to_string())
                 });
-            pending.push((entry, mod_result.file_name.as_str(), existing));
+            pending.push((entry.clone(), mod_result.file_name.clone(), existing));
         }
     }
     pending
 }
 
 /// 按原始顺序分批（允许单次请求混用多个模组的条目）
-fn chunk_entries<'a>(
-    entries: &[(&'a LanguageEntry, &'a str)],
+fn chunk_entries(
+    entries: &[(LanguageEntry, String)],
     batch_size: usize,
-) -> Vec<Vec<(&'a LanguageEntry, &'a str)>> {
+) -> Vec<Vec<(LanguageEntry, String)>> {
     entries.chunks(batch_size.max(1)).map(|c| c.to_vec()).collect()
 }
 
@@ -175,20 +183,20 @@ fn chunk_entries<'a>(
 
 /// Result of the dictionary-matching phase (Phase 3).  `llm_only_entries`
 /// contains entries that need LLM translation; the rest were handled.
-pub struct DictionaryPhaseResult<'a> {
+pub struct DictionaryPhaseResult {
     pub processed: usize,
     pub non_llm_count: usize,
-    pub llm_only_entries: Vec<(&'a LanguageEntry, &'a str)>,
+    pub llm_only_entries: Vec<(LanguageEntry, String)>,
 }
 
 /// Phase 3: Match every pending entry against the dictionary.
 ///   - Existing / skipped / dictionary-hit → written to job results + emitted as Completed / Skip / DictionaryHit
 ///   - LLM-needed entries → returned in `DictionaryPhaseResult.llm_only_entries`
-fn dictionary_phase<'a>(
+fn dictionary_phase(
     ctx: &mut PipelineContext,
-    pending: &'a [(&'a LanguageEntry, &'a str, Option<String>)],
+    pending: &[(LanguageEntry, String, Option<String>)],
     total: usize,
-) -> Result<DictionaryPhaseResult<'a>, String> {
+) -> Result<DictionaryPhaseResult, String> {
     let config = ctx.config;
     let job_id = ctx.job_id;
     let cancel = ctx.cancel;
@@ -203,7 +211,7 @@ fn dictionary_phase<'a>(
 
     let mut processed = 0usize;
     let mut batch_results: Vec<jobs::TranslationResult> = Vec::new();
-    let mut llm_only_entries: Vec<(&LanguageEntry, &str)> = Vec::new();
+    let mut llm_only_entries: Vec<(LanguageEntry, String)> = Vec::new();
 
     const DICT_PHASE_BATCH: usize = 512;
     let mut entry_progress_buf: Vec<EntryProgress> = Vec::with_capacity(DICT_PHASE_BATCH);
@@ -311,11 +319,11 @@ fn dictionary_phase<'a>(
                             error_message: None,
                         });
                     } else {
-                        llm_only_entries.push((entry, file_name));
+                        llm_only_entries.push((entry.clone(), file_name.clone()));
                     }
                 }
                 Err(_) => {
-                    llm_only_entries.push((entry, file_name));
+                    llm_only_entries.push((entry.clone(), file_name.clone()));
                 }
             }
         }
@@ -442,7 +450,7 @@ pub struct LlmPhaseResult {
 /// Phase 4: Send LLM-needed entries through the concurrent translation worker pool.
 fn llm_phase(
     ctx: &PipelineContext,
-    llm_only_entries: &[(&LanguageEntry, &str)],
+    llm_only_entries: &[(LanguageEntry, String)],
     dict_db_path: &std::path::Path,
 ) -> Result<LlmPhaseResult, String> {
     let config = ctx.config;
@@ -488,7 +496,7 @@ fn llm_phase(
     let mut key_meta: Vec<Vec<(&str, &str, &str)>> = Vec::with_capacity(batches.len());
     for batch in &batches {
         let meta: Vec<(&str, &str, &str)> = batch.iter()
-            .map(|(e, f)| (e.key.as_str(), e.mod_id.as_str(), *f))
+            .map(|(e, f)| (e.key.as_str(), e.mod_id.as_str(), f.as_str()))
             .collect();
         key_meta.push(meta);
     }
@@ -751,6 +759,159 @@ fn llm_phase(
     })
 }
 
+// ── Phase implementations ──────────────────────────────────────
+
+struct ScanExtractPhase;
+
+impl Phase for ScanExtractPhase {
+    fn name(&self) -> &'static str { "scan+extract" }
+    fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
+        let _ = ctx.progress_tx.send(PipelineProgress {
+            current: 0, total: 1, phase: PipelinePhase::Scanning,
+            mod_name: String::new(), sub_step: None,
+            stage_status: StageStatus::Running,
+        });
+
+        let scan_summary = resolve_scan(ctx.config, ctx.job_id, ctx.cancel, ctx.progress_tx)?;
+
+        if scan_summary.cancelled || ctx.cancel.is_cancelled(ctx.job_id) {
+            return Ok(PhaseOutcome::StopAndReturn(PipelineResult {
+                completed: 0, non_llm_count: 0, llm_count: 0,
+                token_usage: TokenUsage::default(),
+                actual_source_language: ctx.config.source_language.clone(),
+                job_id: ctx.job_id.to_string(),
+            }));
+        }
+
+        ctx.scan_summary = Some(scan_summary.clone());
+        ctx.dict_db_path = Some(paths::dictionary_db_path(&ctx.config.root));
+
+        let _ = ctx.progress_tx.send(PipelineProgress {
+            current: 0, total: 1, phase: PipelinePhase::Extracting,
+            mod_name: String::new(), sub_step: None,
+            stage_status: StageStatus::Running,
+        });
+
+        ctx.pending_entries = extract_pending_entries(&scan_summary);
+        ctx.total = ctx.pending_entries.len().max(1);
+
+        let _ = ctx.progress_tx.send(PipelineProgress {
+            current: 1, total: 1, phase: PipelinePhase::Extracting,
+            mod_name: String::new(), sub_step: None,
+            stage_status: StageStatus::Completed,
+        });
+
+        if ctx.cancel.is_cancelled(ctx.job_id) {
+            return Ok(PhaseOutcome::StopAndReturn(PipelineResult {
+                completed: 0, non_llm_count: 0, llm_count: 0,
+                token_usage: TokenUsage::default(),
+                actual_source_language: scan_summary.source_language.clone(),
+                job_id: ctx.job_id.to_string(),
+            }));
+        }
+
+        Ok(PhaseOutcome::Continue)
+    }
+}
+
+struct DictionaryPhase;
+
+impl Phase for DictionaryPhase {
+    fn name(&self) -> &'static str { "dictionary" }
+    fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
+        if ctx.pending_entries.is_empty() {
+            ctx.non_llm_count = 0;
+            return Ok(PhaseOutcome::Continue);
+        }
+        let pending = std::mem::take(&mut ctx.pending_entries);
+        let total = ctx.total;
+        let result = dictionary_phase(ctx, &pending, total)?;
+        ctx.non_llm_count = result.non_llm_count;
+        ctx.llm_only_entries = result.llm_only_entries;
+
+        if ctx.cancel.is_cancelled(ctx.job_id) {
+            return Ok(PhaseOutcome::StopAndReturn(PipelineResult {
+                completed: ctx.non_llm_count,
+                non_llm_count: ctx.non_llm_count,
+                llm_count: 0,
+                token_usage: TokenUsage::default(),
+                actual_source_language: ctx.config.source_language.clone(),
+                job_id: ctx.job_id.to_string(),
+            }));
+        }
+
+        Ok(PhaseOutcome::Continue)
+    }
+}
+
+struct LlmPhase;
+
+impl Phase for LlmPhase {
+    fn name(&self) -> &'static str { "llm" }
+    fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
+        let dict_db_path = ctx.dict_db_path.clone()
+            .unwrap_or_else(|| paths::dictionary_db_path(&ctx.config.root));
+        let llm_entries = std::mem::take(&mut ctx.llm_only_entries);
+        let result = llm_phase(ctx, &llm_entries, &dict_db_path)?;
+        ctx.accumulated_token_usage = result.accumulated_token_usage;
+        ctx.llm_count = result.llm_count;
+        ctx.failed_count = result.failed_count;
+        Ok(PhaseOutcome::Continue)
+    }
+}
+
+struct FinalizePhase;
+
+impl Phase for FinalizePhase {
+    fn name(&self) -> &'static str { "finalize" }
+    fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
+        let total = ctx.total;
+        let non_llm_count = ctx.non_llm_count;
+        let llm_count = ctx.llm_count;
+        let failed_count = ctx.failed_count;
+        let completed = non_llm_count + llm_count;
+
+        if ctx.cancel.is_cancelled(ctx.job_id) {
+            let _ = logging::append_job(&ctx.config.root, ctx.job_id, "翻译任务在完成前被取消");
+            save_job_progress(&ctx.config.root, ctx.job_id, completed, failed_count, jobs::TranslationStatus::Cancelled);
+            return Ok(PhaseOutcome::StopAndReturn(PipelineResult {
+                completed, non_llm_count, llm_count,
+                token_usage: ctx.accumulated_token_usage.clone(),
+                actual_source_language: ctx.config.source_language.clone(),
+                job_id: ctx.job_id.to_string(),
+            }));
+        }
+
+        if ctx.accumulated_token_usage.total_tokens > 0 {
+            let _ = logging::append_job(&ctx.config.root, ctx.job_id, format!(
+                "LLM Token 使用: prompt={}, completion={}, total={}",
+                ctx.accumulated_token_usage.prompt_tokens,
+                ctx.accumulated_token_usage.completion_tokens,
+                ctx.accumulated_token_usage.total_tokens,
+            ));
+        }
+
+        let _ = ctx.progress_tx.send(PipelineProgress {
+            current: total, total,
+            phase: PipelinePhase::Completed,
+            mod_name: String::new(), sub_step: None,
+            stage_status: StageStatus::Completed,
+        });
+
+        let _ = logging::append_job(&ctx.config.root, ctx.job_id, format!(
+            "翻译完成: {total}/{total} 条目 (非 LLM: {non_llm_count}, LLM: {llm_count})"
+        ));
+
+        save_job_progress(&ctx.config.root, ctx.job_id, completed, failed_count, jobs::TranslationStatus::Completed);
+        Ok(PhaseOutcome::StopAndReturn(PipelineResult {
+            completed, non_llm_count, llm_count,
+            token_usage: ctx.accumulated_token_usage.clone(),
+            actual_source_language: ctx.config.source_language.clone(),
+            job_id: ctx.job_id.to_string(),
+        }))
+    }
+}
+
 // ── Main pipeline ─────────────────────────────────────────────
 
 /// Persist job progress counters to disk. Called in both completion and cancellation paths.
@@ -793,52 +954,6 @@ pub fn run_pipeline(
     log_tx: mpsc::Sender<TranslateLogEntry>,
     entry_progress_tx: mpsc::Sender<EntryProgress>,
 ) -> Result<PipelineResult, String> {
-    // ── Phase 1: Acquire scan result ──────────────────────────
-    let _ = progress_tx.send(PipelineProgress {
-        current: 0, total: 1, phase: PipelinePhase::Scanning,
-        mod_name: String::new(), sub_step: None,
-        stage_status: StageStatus::Running,
-    });
-
-    let scan_summary = resolve_scan(&config, job_id, cancel, &progress_tx)?;
-
-    if scan_summary.cancelled || is_translation_cancelled(job_id) {
-        let _ = logging::append_job(&config.root, job_id, "扫描被取消或翻译被取消");
-        return Ok(PipelineResult {
-            completed: 0, non_llm_count: 0, llm_count: 0,
-            token_usage: TokenUsage::default(),
-            actual_source_language: config.source_language.clone(),
-            job_id: job_id.to_string(),
-        });
-    }
-
-    // ── Phase 2: Extract pending entries ──────────────────────
-    let _ = progress_tx.send(PipelineProgress {
-        current: 0, total: 1, phase: PipelinePhase::Extracting,
-        mod_name: String::new(), sub_step: None,
-        stage_status: StageStatus::Running,
-    });
-
-    let pending = extract_pending_entries(&scan_summary);
-    let total = pending.len().max(1);
-    let dict_db_path = paths::dictionary_db_path(&config.root);
-
-    let _ = progress_tx.send(PipelineProgress {
-        current: 1, total: 1, phase: PipelinePhase::Extracting,
-        mod_name: String::new(), sub_step: None,
-        stage_status: StageStatus::Completed,
-    });
-
-    if cancel.is_cancelled(job_id) {
-        return Ok(PipelineResult {
-            completed: 0, non_llm_count: 0, llm_count: 0,
-            token_usage: TokenUsage::default(),
-            actual_source_language: scan_summary.source_language.clone(),
-            job_id: job_id.to_string(),
-        });
-    }
-
-    // ── Phase 3: Dictionary matching ──────────────────────────
     let mut ctx = PipelineContext {
         config: &config,
         job_id,
@@ -846,69 +961,26 @@ pub fn run_pipeline(
         progress_tx: &progress_tx,
         log_tx: &log_tx,
         entry_progress_tx: &entry_progress_tx,
-        scan_summary: Some(scan_summary.clone()),
+        scan_summary: None,
         dict_conn: None,
-        dict_db_path: Some(dict_db_path.clone()),
+        dict_db_path: None,
+        pending_entries: Vec::new(),
+        llm_only_entries: Vec::new(),
+        total: 0,
+        non_llm_count: 0,
+        llm_count: 0,
+        failed_count: 0,
+        accumulated_token_usage: TokenUsage::default(),
     };
-    let dict_result = dictionary_phase(&mut ctx, &pending, total)?;
-    let non_llm_count = dict_result.non_llm_count;
-    let llm_only_entries = dict_result.llm_only_entries;
 
-    if cancel.is_cancelled(job_id) {
-        return Ok(PipelineResult {
-            completed: non_llm_count, non_llm_count, llm_count: 0,
-            token_usage: TokenUsage::default(),
-            actual_source_language: scan_summary.source_language.clone(),
-            job_id: job_id.to_string(),
-        });
-    }
+    let pipeline = PipelineBuilder::new()
+        .phase(ScanExtractPhase)
+        .phase(DictionaryPhase)
+        .phase(LlmPhase)
+        .phase(FinalizePhase)
+        .build();
 
-    // ── Phase 4: LLM Translation ──────────────────────────────
-    let LlmPhaseResult { accumulated_token_usage, llm_count, failed_count } =
-        llm_phase(&ctx, &llm_only_entries, &dict_db_path)?;
-
-    // ── Phase 5: Finalize ──────────────────────────────────────
-    if cancel.is_cancelled(job_id) {
-        let _ = logging::append_job(&config.root, job_id, "翻译任务在完成前被取消");
-
-        save_job_progress(&config.root, job_id, non_llm_count + llm_count, failed_count, jobs::TranslationStatus::Cancelled);
-        return Ok(PipelineResult {
-            completed: non_llm_count + llm_count, non_llm_count, llm_count,
-            token_usage: accumulated_token_usage,
-            actual_source_language: scan_summary.source_language.clone(),
-            job_id: job_id.to_string(),
-        });
-    }
-
-    if accumulated_token_usage.total_tokens > 0 {
-        let _ = logging::append_job(&config.root, job_id, format!(
-            "LLM Token 使用: prompt={}, completion={}, total={}",
-            accumulated_token_usage.prompt_tokens,
-            accumulated_token_usage.completion_tokens,
-            accumulated_token_usage.total_tokens,
-        ));
-    }
-
-    let _ = progress_tx.send(PipelineProgress {
-        current: total, total,
-        phase: PipelinePhase::Completed,
-        mod_name: String::new(), sub_step: None,
-        stage_status: StageStatus::Completed,
-    });
-
-    let _ = logging::append_job(&config.root, job_id, format!(
-        "翻译完成: {total}/{total} 条目 (非 LLM: {non_llm_count}, LLM: {llm_count})"
-    ));
-
-    save_job_progress(&config.root, job_id, non_llm_count + llm_count, failed_count, jobs::TranslationStatus::Completed);
-    Ok(PipelineResult {
-        completed: non_llm_count + llm_count,
-        non_llm_count,
-        llm_count,
-        token_usage: accumulated_token_usage,
-        actual_source_language: scan_summary.source_language.clone(),
-        job_id: job_id.to_string(),
-    })
+    pipeline.run(&mut ctx)
 }
 
 /// Resolve a ScanSummary: try to load from cached file, or run a new scan.
