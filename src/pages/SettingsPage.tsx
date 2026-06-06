@@ -204,14 +204,12 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
               <LanguageField
                 helpText={t(language, "settings.sourceHint")}
                 label={t(language, "settings.sourceLanguage")}
-                listId="source-language-options"
                 value={draft.sourceLanguage}
                 onChange={(value) => setDraft({ ...draft, sourceLanguage: value })}
               />
               <LanguageField
                 helpText={t(language, "settings.targetHint")}
                 label={t(language, "settings.targetLanguage")}
-                listId="target-language-options"
                 value={draft.targetLanguage}
                 onChange={(value) => setDraft({ ...draft, targetLanguage: value })}
                 excludeAuto
@@ -452,7 +450,6 @@ function Toggle({ label, checked, onChange }: ToggleProps) {
 interface LanguageFieldProps {
   label: string;
   value: string;
-  listId: string;
   helpText: string;
   excludeAuto?: boolean;
   onChange: (value: string) => void;
@@ -461,30 +458,25 @@ interface LanguageFieldProps {
 function LanguageField({
   label,
   value,
-  listId,
   helpText,
   excludeAuto = false,
   onChange,
 }: LanguageFieldProps) {
   const options = minecraftLanguageOptions.filter((item) => !excludeAuto || item.code !== "auto");
-  const inputId = `${listId}-input`;
   return (
-    <label className="field" htmlFor={inputId}>
+    <label className="field">
       <span>{label}</span>
-      <input
-        aria-label={label}
-        id={inputId}
-        list={listId}
+      <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-      />
-      <datalist id={listId}>
+        aria-label={label}
+      >
         {options.map((item) => (
           <option key={item.code} value={item.code}>
             {item.label}
           </option>
         ))}
-      </datalist>
+      </select>
       <small>{helpText}</small>
     </label>
   );
