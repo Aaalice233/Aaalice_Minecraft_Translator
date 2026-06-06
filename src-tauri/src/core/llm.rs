@@ -474,7 +474,7 @@ fn parse_translations_from_value(parsed: &Value, entries: &[TranslationEntry]) -
     for item in translations {
         let key = item.get("key").and_then(|k| k.as_str()).unwrap_or_default();
         let text = item.get("text").or(item.get("translation")).and_then(|t| t.as_str()).unwrap_or_default();
-        if !key.is_empty() && !text.is_empty() {
+        if !key.is_empty() {
             pairs.push((key.to_string(), text.to_string()));
         }
     }
@@ -487,12 +487,19 @@ fn map_results(pairs: Vec<(String, String)>, entries: &[TranslationEntry]) -> Ve
     let map: std::collections::HashMap<&str, &str> = pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
     entries.iter().map(|e| {
         match map.get(e.key.as_str()) {
-            Some(text) => TranslateResult {
+            Some(text) if !text.is_empty() => TranslateResult {
                 key: e.key.clone(),
                 original_text: e.text.clone(),
                 translated_text: text.to_string(),
                 success: true,
                 error: None,
+            },
+            Some(_) => TranslateResult {
+                key: e.key.clone(),
+                original_text: e.text.clone(),
+                translated_text: e.text.clone(),
+                success: false,
+                error: Some("翻译结果缺少有效的 text 字段".to_string()),
             },
             None => TranslateResult {
                 key: e.key.clone(),

@@ -330,7 +330,7 @@ pub struct PipelineConfig {
 #[serde(rename_all = "camelCase")]
 pub struct PipelineResult {
     pub completed: usize,
-    pub dict_count: usize,
+    pub non_llm_count: usize,
     pub llm_count: usize,
     pub token_usage: TokenUsage,
     pub actual_source_language: String,

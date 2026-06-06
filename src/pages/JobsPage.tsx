@@ -124,6 +124,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const prevScanJobId = useRef<string | undefined>(undefined);
   const filterRef = useRef<HTMLDivElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
@@ -178,6 +179,26 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
       .catch((err) => console.warn("恢复翻译状态失败:", err));
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 扫描变更时重置翻译状态，防止 SPN 导航后显示上一次的旧结果
+  useEffect(() => {
+    const currentId = scanSummary?.jobId;
+    if (!currentId) return;
+    if (prevScanJobId.current === undefined) {
+      prevScanJobId.current = currentId;
+      return;
+    }
+    if (prevScanJobId.current !== currentId) {
+      prevScanJobId.current = currentId;
+      setStatus("idle");
+      setTranslationResult(null);
+      setTranslationError("");
+      onCompleteChange?.(false);
+      logRef.current = [];
+      setLogVersion(0);
+      setEntryProgressMap(new Map());
+    }
+  }, [scanSummary?.jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     onBusyChange?.(isRunning);

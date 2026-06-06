@@ -156,7 +156,7 @@ pub fn run_pipeline(
     if scan_summary.cancelled || is_translation_cancelled(job_id) {
         let _ = logging::append_job(&config.root, job_id, "扫描被取消或翻译被取消");
         return Ok(PipelineResult {
-            completed: 0, dict_count: 0, llm_count: 0,
+            completed: 0, non_llm_count: 0, llm_count: 0,
             token_usage: TokenUsage::default(),
             actual_source_language: config.source_language.clone(),
             job_id: job_id.to_string(),
@@ -181,7 +181,7 @@ pub fn run_pipeline(
 
     if is_translation_cancelled(job_id) {
         return Ok(PipelineResult {
-            completed: 0, dict_count: 0, llm_count: 0,
+            completed: 0, non_llm_count: 0, llm_count: 0,
             token_usage: TokenUsage::default(),
             actual_source_language: scan_summary.source_language.clone(),
             job_id: job_id.to_string(),
@@ -240,7 +240,7 @@ pub fn run_pipeline(
                 key: entry.key.clone(),
                 source_text: entry.text.clone(),
                 target_text: target_text.clone(),
-                mod_name: entry.mod_id.clone(),
+                mod_name: file_name.to_string(),
                 source_type: "existing".into(),
             });
             entry_progress_buf.push(EntryProgress {
@@ -264,7 +264,7 @@ pub fn run_pipeline(
                 key: entry.key.clone(),
                 source_text: entry.text.clone(),
                 target_text: entry.text.clone(),
-                mod_name: entry.mod_id.clone(),
+                mod_name: file_name.to_string(),
                 source_type: "skipped".into(),
             });
             entry_progress_buf.push(EntryProgress {
@@ -299,7 +299,7 @@ pub fn run_pipeline(
                             key: entry.key.clone(),
                             source_text: entry.text.clone(),
                             target_text: de.target_text.clone(),
-                            mod_name: entry.mod_id.clone(),
+                            mod_name: file_name.to_string(),
                             source_type: "dictionary".into(),
                         });
                         entry_progress_buf.push(EntryProgress {
@@ -339,7 +339,7 @@ pub fn run_pipeline(
     // Flush remaining batched events
     flush_dict_batch(&mut entry_progress_buf, &mut log_buf);
 
-    let dict_count = processed - llm_only_entries.len();
+    let non_llm_count = processed - llm_only_entries.len();
 
     // 发射待翻译条目的初始状态（同时写入日志表，让用户看到全部条目）
     for (entry, file_name) in &llm_only_entries {
@@ -374,7 +374,7 @@ pub fn run_pipeline(
 
     if is_translation_cancelled(job_id) {
         return Ok(PipelineResult {
-            completed: processed, dict_count, llm_count: 0,
+            completed: non_llm_count, non_llm_count, llm_count: 0,
             token_usage: TokenUsage::default(),
             actual_source_language: scan_summary.source_language.clone(),
             job_id: job_id.to_string(),
@@ -411,19 +411,15 @@ pub fn run_pipeline(
 
         client.validate()?;
 
-        // Build key → (mod_id, file_name) mapping
-        let key_to_meta: HashMap<&str, (&str, &str)> = llm_only_entries
-            .iter()
-            .map(|(entry, file_name)| (entry.key.as_str(), (entry.mod_id.as_str(), *file_name)))
-            .collect();
-
-        // Fill mod_id/mod_name metadata on TranslationResult entries (defined once outside the wave loop)
-        let set_mod_meta = |entry: &mut jobs::TranslationResult| {
-            if let Some(&(mid, fname)) = key_to_meta.get(entry.key.as_str()) {
-                if entry.mod_id.is_empty() { entry.mod_id = mid.to_string(); }
-                if entry.mod_name.is_empty() { entry.mod_name = fname.to_string(); }
-            }
-        };
+        // ── 元数据索引（按位置对应，避免 HashMap 键碰撞） ────────
+        // key_meta[i] = (key, mod_id, file_name)  对应 batches[batch_idx][i]
+        let mut key_meta: Vec<Vec<(&str, &str, &str)>> = Vec::with_capacity(batches.len());
+        for batch in &batches {
+            let meta: Vec<(&str, &str, &str)> = batch.iter()
+                .map(|(e, f)| (e.key.as_str(), e.mod_id.as_str(), *f))
+                .collect();
+            key_meta.push(meta);
+        }
 
         let _ = progress_tx.send(PipelineProgress {
             current: 0, total: total_llm_batches,
@@ -434,10 +430,10 @@ pub fn run_pipeline(
         });
 
         // ── 持续并发工作池 ────────────────────────────────────
-        // 每个 worker 拥有独立的 SQLite 连接（rusqlite 是 Send 而非 Sync），
-        // CFPA 查询分散到各 worker 并行执行，避免主线程串行预查询瓶颈。
-        // 结果累积到本地缓冲区，每 RESULTS_FLUSH_INTERVAL 次批量写入减少 I/O。
+        // 写入锁：串行化 batch_append_results 调用，防止多 worker 交错损坏 JSONL
+        let write_lock = std::sync::Mutex::new(());
         const RESULTS_FLUSH_INTERVAL: usize = 5;
+        let active_workers = std::sync::atomic::AtomicUsize::new(0);
         let next_batch = std::sync::atomic::AtomicUsize::new(0);
         let completed_batches = std::sync::atomic::AtomicUsize::new(0);
         let global_llm_count = std::sync::atomic::AtomicUsize::new(0);
@@ -447,199 +443,256 @@ pub fn run_pipeline(
         std::thread::scope(|s| {
             for _ in 0..initial_concurrency {
                 s.spawn(|| {
-                    // 每个 worker 打开自己的词典连接，WAL 模式允许多读并发
-                    let worker_dict = match dictionary::open(&dict_db_path) {
-                        Ok(conn) => conn,
-                        Err(e) => {
-                            let _ = logging::append_job(&config.root, job_id, format!("worker 打开词典失败: {e}"));
-                            return;
-                        }
-                    };
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        // 每个 worker 打开自己的词典连接
+                        let worker_dict = match dictionary::open(&dict_db_path) {
+                            Ok(conn) => conn,
+                            Err(e) => {
+                                let _ = logging::append_job(&config.root, job_id, format!("worker 打开词典失败: {e}"));
+                                return;
+                            }
+                        };
 
-                    let mut worker_429_count = 0usize;
-                    let mut result_buf: Vec<jobs::TranslationResult> = Vec::with_capacity(RESULTS_FLUSH_INTERVAL * 64);
-                    let mut buf_count = 0usize;
+                        active_workers.fetch_add(1, Ordering::Relaxed);
+                        let mut worker_429_count = 0usize;
+                        let batch_capacity = RESULTS_FLUSH_INTERVAL * effective_batch_size;
+                        let mut result_buf: Vec<jobs::TranslationResult> = Vec::with_capacity(batch_capacity);
+                        let mut buf_count = 0usize;
 
-                    loop {
-                        if is_translation_cancelled(job_id) {
-                            break;
-                        }
+                        loop {
+                            // 每次循环开始时检查取消
+                            if is_translation_cancelled(job_id) {
+                                break;
+                            }
 
-                        let bi = next_batch.fetch_add(1, Ordering::SeqCst);
-                        if bi >= total_llm_batches {
-                            break;
-                        }
+                            let bi = next_batch.fetch_add(1, Ordering::Relaxed);
+                            if bi >= total_llm_batches {
+                                break;
+                            }
 
-                        // ── 构建单 batch（含 CFPA 并行查询） ────
-                        let batch = &batches[bi];
+                            // TOCTOU 消减：声明批次后立刻再检查一次取消
+                            if is_translation_cancelled(job_id) {
+                                break;
+                            }
 
-                        let mut batch_refs = Vec::new();
-                        let mut seen_ref = HashSet::new();
-                        for (entry, _) in batch {
-                            if let Ok(matches) = cfpa::fuzzy_search(&worker_dict, &entry.text, &entry.language, &config.target_language, 5) {
-                                for m in &matches {
-                                    if seen_ref.insert(m.source_text.clone()) {
-                                        batch_refs.push((m.source_text.clone(), m.target_text.clone()));
+                            let batch = &batches[bi];
+                            let meta = &key_meta[bi];
+
+                            // CFPA 参考词库
+                            let mut batch_refs = Vec::new();
+                            let mut seen_ref = HashSet::new();
+                            for (entry, _) in batch {
+                                if let Ok(matches) = cfpa::fuzzy_search(&worker_dict, &entry.text, &entry.language, &config.target_language, 5) {
+                                    for m in &matches {
+                                        if seen_ref.insert(m.source_text.clone()) {
+                                            batch_refs.push((m.source_text.clone(), m.target_text.clone()));
+                                        }
                                     }
+                                }
+                            }
+
+                            // Shield + 构建 TranslationEntry
+                            let mut batch_shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
+                            let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| {
+                                let sr = shield::protect(&entry.text);
+                                batch_shield_map.insert(entry.key.clone(), (entry.text.clone(), sr.clone()));
+                                TranslationEntry {
+                                    key: entry.key.clone(),
+                                    text: sr.protected,
+                                    mod_id: entry.mod_id.clone(),
+                                    source_lang: entry.language.clone(),
+                                    target_lang: config.target_language.clone(),
+                                    references: batch_refs.clone(),
+                                }
+                            }).collect();
+
+                            // Emit Translating status（按索引取 file_name）
+                            for (i, te) in entries.iter().enumerate() {
+                                let original_text = batch_shield_map.get(te.key.as_str())
+                                    .map(|(orig, _)| orig.clone())
+                                    .unwrap_or_else(|| te.text.clone());
+                                let _ = entry_progress_tx.send(EntryProgress {
+                                    key: te.key.clone(),
+                                    mod_name: meta[i].2.to_string(),
+                                    source_text: original_text,
+                                    target_text: None,
+                                    status: EntryStatus::Translating,
+                                    error_message: None,
+                                });
+                            }
+
+                            // ── 发送给 LLM ────────────────────────
+                            // on_complete 回调按索引匹配 metadata，避免 HashMap 键碰撞
+                            let on_complete = |results: &[TranslateResult]| {
+                                for (i, r) in results.iter().enumerate() {
+                                    let (restored_source, restored_target, valid) = shield_restore_result(r, &batch_shield_map);
+                                    let target_text = if !r.success {
+                                        r.translated_text.clone()
+                                    } else if valid {
+                                        restored_target
+                                    } else {
+                                        restored_target.clone()
+                                    };
+                                    let status = if r.success && valid { EntryStatus::Completed }
+                                        else if !r.success { EntryStatus::Failed }
+                                        else { EntryStatus::Failed };
+                                    let error_message = if !r.success { r.error.clone() }
+                                        else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
+                                        else { None };
+                                    let entry_mod_name = meta.get(i).map(|&(_, _, f)| f).unwrap_or("");
+                                    let _ = entry_progress_tx.send(EntryProgress {
+                                        key: r.key.clone(),
+                                        mod_name: entry_mod_name.to_string(),
+                                        source_text: restored_source,
+                                        target_text: Some(target_text),
+                                        status,
+                                        error_message,
+                                    });
+                                }
+                            };
+
+                            // 首次翻译尝试
+                            let (results, token_usage) = client.translate_batch(&entries, Some(&on_complete));
+                            let token = token_usage.unwrap_or_default();
+
+                            let all_rate_limited = results.iter().all(|r| {
+                                !r.success && r.error.as_deref().map_or(false, |e| e.starts_with("RATE_LIMITED"))
+                            });
+
+                            // ── 429 退避 + 重试 ───────────────────
+                            if all_rate_limited {
+                                worker_429_count += 1;
+                                let wait_secs = match worker_429_count {
+                                    1 => 30u64,
+                                    2 => 60,
+                                    _ => 120,
+                                };
+                                std::thread::sleep(Duration::from_secs(wait_secs));
+
+                                // 重试一次同一个 batch
+                                let (retry_results, retry_token) = client.translate_batch(&entries, Some(&on_complete));
+                                if let Some(t) = retry_token {
+                                    let mut tm = token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
+                                    tm.prompt_tokens += t.prompt_tokens;
+                                    tm.completion_tokens += t.completion_tokens;
+                                    tm.total_tokens += t.total_tokens;
+                                }
+                                // 用重试结果覆盖（非限流条目可能成功）
+                                let retry_results: Vec<jobs::TranslationResult> = retry_results.into_iter()
+                                    .enumerate().map(|(i, r)| {
+                                        let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
+                                        let (s_text, t_text, s_type) = if r.success {
+                                            (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
+                                        } else {
+                                            (restored_source, r.translated_text, "failed".to_string())
+                                        };
+                                        let &(_k, mid, fname) = &meta[i];
+                                        jobs::TranslationResult {
+                                            key: r.key,
+                                            source_text: s_text,
+                                            target_text: t_text,
+                                            mod_id: mid.to_string(),
+                                            mod_name: fname.to_string(),
+                                            source_type: s_type,
+                                        }
+                                    }).collect();
+
+                                for entry in &retry_results {
+                                    if entry.source_type == "llm" { global_llm_count.fetch_add(1, Ordering::Relaxed); }
+                                    else if entry.source_type == "failed" { global_failed_count.fetch_add(1, Ordering::Relaxed); }
+                                }
+                                result_buf.extend(retry_results);
+                            } else {
+                                worker_429_count = 0;
+                            }
+
+                            // Token 累积（非限流路径或限流后重试的 token 已累加）
+                            if !all_rate_limited {
+                                let mut tm = token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
+                                tm.prompt_tokens += token.prompt_tokens;
+                                tm.completion_tokens += token.completion_tokens;
+                                tm.total_tokens += token.total_tokens;
+                            }
+
+                            // ── 处理结果（非限流路径） ────────────
+                            if !all_rate_limited {
+                                for (i, r) in results.into_iter().enumerate() {
+                                    let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
+                                    let (s_text, t_text, s_type) = if r.success {
+                                        (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
+                                    } else {
+                                        (restored_source, r.translated_text, "failed".to_string())
+                                    };
+                                    let &(_k, mid, fname) = &meta[i];
+                                    let entry = jobs::TranslationResult {
+                                        key: r.key,
+                                        source_text: s_text,
+                                        target_text: t_text,
+                                        mod_id: mid.to_string(),
+                                        mod_name: fname.to_string(),
+                                        source_type: s_type,
+                                    };
+                                    if entry.source_type == "llm" { global_llm_count.fetch_add(1, Ordering::Relaxed); }
+                                    else if entry.source_type == "failed" { global_failed_count.fetch_add(1, Ordering::Relaxed); }
+                                    result_buf.push(entry);
+                                }
+                            }
+
+                            // ── 批量写入（加锁） ──────────────────
+                            buf_count += 1;
+                            if buf_count % RESULTS_FLUSH_INTERVAL == 0 && !result_buf.is_empty() {
+                                let _lock = write_lock.lock().unwrap_or_else(|e| e.into_inner());
+                                let _ = jobs::batch_append_results(&config.root, job_id, &result_buf);
+                                result_buf.clear();
+                            }
+
+                            let cb = completed_batches.fetch_add(1, Ordering::Relaxed) + 1;
+                            let _ = progress_tx.send(PipelineProgress {
+                                current: cb,
+                                total: total_llm_batches,
+                                phase: PipelinePhase::Translating,
+                                mod_name: String::new(),
+                                sub_step: Some(format!("{cb}/{total_llm_batches} 批次")),
+                                stage_status: StageStatus::Running,
+                            });
+
+                            // ── RPM 限速 ────────────────────────────
+                            if !all_rate_limited && llm_cfg.rate_limit_rpm > 0 && initial_concurrency > 0 {
+                                let per_worker_delay = (60000.0 * initial_concurrency as f64 / llm_cfg.rate_limit_rpm as f64) as u64;
+                                if per_worker_delay > 0 {
+                                    std::thread::sleep(Duration::from_millis(per_worker_delay.min(60000)));
                                 }
                             }
                         }
 
-                        let mut batch_shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
-                        let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| {
-                            let sr = shield::protect(&entry.text);
-                            batch_shield_map.insert(entry.key.clone(), (entry.text.clone(), sr.clone()));
-                            TranslationEntry {
-                                key: entry.key.clone(),
-                                text: sr.protected,
-                                mod_id: entry.mod_id.clone(),
-                                source_lang: entry.language.clone(),
-                                target_lang: config.target_language.clone(),
-                                references: batch_refs.clone(),
-                            }
-                        }).collect();
-
-                        // Emit Translating status
-                        for te in &entries {
-                            let fname = key_to_meta.get(te.key.as_str()).map(|&(_, f)| f).unwrap_or("");
-                            let original_text = batch_shield_map.get(te.key.as_str())
-                                .map(|(orig, _)| orig.clone())
-                                .unwrap_or_else(|| te.text.clone());
-                            let _ = entry_progress_tx.send(EntryProgress {
-                                key: te.key.clone(),
-                                mod_name: fname.to_string(),
-                                source_text: original_text,
-                                target_text: None,
-                                status: EntryStatus::Translating,
-                                error_message: None,
-                            });
-                        }
-
-                        // ── 发送给 LLM ──────────────────────────
-                        let on_complete = |results: &[TranslateResult]| {
-                            for r in results {
-                                let (restored_source, restored_target, valid) = shield_restore_result(r, &batch_shield_map);
-                                let target_text = if !r.success {
-                                    r.translated_text.clone()
-                                } else if valid {
-                                    restored_target
-                                } else {
-                                    restored_target.clone()
-                                };
-                                let status = if r.success && valid { EntryStatus::Completed }
-                                    else if !r.success { EntryStatus::Failed }
-                                    else { EntryStatus::Failed };
-                                let error_message = if !r.success { r.error.clone() }
-                                    else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
-                                    else { None };
-                                let entry_mod_name = key_to_meta.get(r.key.as_str())
-                                    .map(|&(_, fname)| fname)
-                                    .unwrap_or("");
-                                let _ = entry_progress_tx.send(EntryProgress {
-                                    key: r.key.clone(),
-                                    mod_name: entry_mod_name.to_string(),
-                                    source_text: restored_source,
-                                    target_text: Some(target_text),
-                                    status,
-                                    error_message,
-                                });
-                            }
-                        };
-
-                        let (results, token_usage) = client.translate_batch(&entries, Some(&on_complete));
-                        let token = token_usage.unwrap_or_default();
-
-                        // ── Token 累积 ──────────────────────────
-                        {
-                            let mut t = token_usage_mutex.lock().unwrap();
-                            t.prompt_tokens += token.prompt_tokens;
-                            t.completion_tokens += token.completion_tokens;
-                            t.total_tokens += token.total_tokens;
-                        }
-
-                        let all_rate_limited = results.iter().all(|r| {
-                            !r.success && r.error.as_deref().map_or(false, |e| e.starts_with("RATE_LIMITED"))
-                        });
-
-                        // ── 逐 worker 429 退避 ──────────────────
-                        if all_rate_limited {
-                            worker_429_count += 1;
-                            let wait_secs = match worker_429_count {
-                                1 => 30u64,
-                                2 => 60,
-                                _ => 120,
-                            };
-                            std::thread::sleep(Duration::from_secs(wait_secs));
-                        } else {
-                            worker_429_count = 0;
-                        }
-
-                        // ── 处理结果 ────────────────────────────
-                        let mut batch_llm_count = 0usize;
-                        let mut batch_failed_count = 0usize;
-                        for r in results {
-                            let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
-                            let (source_text, target_text, source_type) = if r.success {
-                                (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
-                            } else {
-                                (restored_source, r.translated_text, "failed".to_string())
-                            };
-                            let mut entry = jobs::TranslationResult {
-                                key: r.key,
-                                source_text,
-                                target_text,
-                                mod_id: String::new(),
-                                mod_name: String::new(),
-                                source_type,
-                            };
-                            set_mod_meta(&mut entry);
-                            if entry.source_type == "llm" {
-                                batch_llm_count += 1;
-                            } else if entry.source_type == "failed" {
-                                batch_failed_count += 1;
-                            }
-                            result_buf.push(entry);
-                        }
-
-                        global_llm_count.fetch_add(batch_llm_count, Ordering::SeqCst);
-                        global_failed_count.fetch_add(batch_failed_count, Ordering::SeqCst);
-
-                        // ── 批量写入 + 进度 ─────────────────────
-                        buf_count += 1;
-                        if buf_count % RESULTS_FLUSH_INTERVAL == 0 && !result_buf.is_empty() {
+                        // worker 退出前刷剩余结果
+                        if !result_buf.is_empty() {
+                            let _lock = write_lock.lock().unwrap_or_else(|e| e.into_inner());
                             let _ = jobs::batch_append_results(&config.root, job_id, &result_buf);
-                            result_buf.clear();
                         }
+                    }));
 
-                        let cb = completed_batches.fetch_add(1, Ordering::SeqCst) + 1;
-                        let _ = progress_tx.send(PipelineProgress {
-                            current: cb,
-                            total: total_llm_batches,
-                            phase: PipelinePhase::Translating,
-                            mod_name: String::new(),
-                            sub_step: Some(format!("{cb}/{total_llm_batches} 批次")),
-                            stage_status: StageStatus::Running,
-                        });
-
-                        // ── RPM 限速 ────────────────────────────
-                        if !all_rate_limited && llm_cfg.rate_limit_rpm > 0 {
-                            let per_worker_rpm = (llm_cfg.rate_limit_rpm as f64 / initial_concurrency as f64).max(1.0);
-                            let delay_ms = (60000.0 / per_worker_rpm).max(0.0) as u64;
-                            if delay_ms > 0 {
-                                std::thread::sleep(Duration::from_millis(delay_ms.min(5000)));
-                            }
-                        }
-                    }
-
-                    // worker 退出前刷剩余结果
-                    if !result_buf.is_empty() {
-                        let _ = jobs::batch_append_results(&config.root, job_id, &result_buf);
+                    // catch_unwind 防 panic 传播
+                    if let Err(panic_err) = result {
+                        let msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
+                            s.to_string()
+                        } else if let Some(s) = panic_err.downcast_ref::<String>() {
+                            s.clone()
+                        } else {
+                            "未知 panic".to_string()
+                        };
+                        let _ = logging::append_job(&config.root, job_id, format!("LLM worker panic: {msg}"));
                     }
                 });
             }
         });
 
-        accumulated_token_usage = token_usage_mutex.into_inner().unwrap_or_default();
+        // 确保至少一个 worker 成功启动
+        if active_workers.load(Ordering::Relaxed) == 0 {
+            return Err("所有 LLM 工作者启动失败，请检查词典数据库可用性".to_string());
+        }
+
+        accumulated_token_usage = token_usage_mutex.into_inner().unwrap_or_else(|e| e.into_inner());
         llm_count = global_llm_count.load(Ordering::SeqCst);
         failed_count = global_failed_count.load(Ordering::SeqCst);
     }
@@ -651,9 +704,9 @@ pub fn run_pipeline(
         }
         let _ = logging::append_job(&config.root, job_id, "翻译任务在完成前被取消");
 
-        save_job_progress(&config.root, job_id, dict_count + llm_count, failed_count, jobs::TranslationStatus::Cancelled);
+        save_job_progress(&config.root, job_id, non_llm_count + llm_count, failed_count, jobs::TranslationStatus::Cancelled);
         return Ok(PipelineResult {
-            completed: processed, dict_count, llm_count,
+            completed: non_llm_count + llm_count, non_llm_count, llm_count,
             token_usage: accumulated_token_usage,
             actual_source_language: scan_summary.source_language.clone(),
             job_id: job_id.to_string(),
@@ -677,13 +730,13 @@ pub fn run_pipeline(
     });
 
     let _ = logging::append_job(&config.root, job_id, format!(
-        "翻译完成: {processed}/{total} 条目 (词典: {dict_count}, LLM: {llm_count})"
+        "翻译完成: {processed}/{total} 条目 (非 LLM: {non_llm_count}, LLM: {llm_count})"
     ));
 
-    save_job_progress(&config.root, job_id, dict_count + llm_count, failed_count, jobs::TranslationStatus::Completed);
+    save_job_progress(&config.root, job_id, non_llm_count + llm_count, failed_count, jobs::TranslationStatus::Completed);
     Ok(PipelineResult {
-        completed: processed,
-        dict_count,
+        completed: non_llm_count + llm_count,
+        non_llm_count,
         llm_count,
         token_usage: accumulated_token_usage,
         actual_source_language: scan_summary.source_language.clone(),
