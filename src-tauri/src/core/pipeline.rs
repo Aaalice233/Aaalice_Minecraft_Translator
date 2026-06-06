@@ -3,7 +3,7 @@
 // This is the single orchestrator for all translation work.
 // Cancel/state coordination uses module-level statics.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -45,23 +45,47 @@ pub fn register_translation_task(job_id: &str) -> Option<String> {
 
 // ── Pending entry extraction ──────────────────────────────────
 
-/// Extract all source entries that don't have a corresponding target-language entry.
-/// Returns `(entry, file_name)` pairs.
-pub fn extract_pending_entries(summary: &ScanSummary) -> Vec<(&LanguageEntry, &str)> {
+/// Extract ALL source entries.  Each entry carries the existing translation text
+/// if available (from mod-internal target lang file, or from resource packs).
+/// Entries without an existing translation go through dictionary → LLM.
+pub fn extract_pending_entries<'a>(
+    summary: &'a ScanSummary,
+) -> Vec<(&'a LanguageEntry, &'a str, Option<String>)> {
+    // Build resource-pack lookup: (mod_id, key) → target text
+    let rp_lookup: HashMap<(&str, &str), &str> = summary
+        .resource_packs
+        .iter()
+        .flat_map(|rp| rp.entries.iter())
+        .filter(|e| e.language == summary.target_language)
+        .map(|e| ((e.mod_id.as_str(), e.key.as_str()), e.text.as_str()))
+        .collect();
+
     let mut pending = Vec::new();
     for mod_result in &summary.mods {
         let source = &mod_result.resolved_source_language;
         let target = &mod_result.target_language;
-        let target_keys: HashSet<&str> = mod_result
+        // Map: key → existing target text (mod-internal)
+        let target_map: HashMap<&str, &str> = mod_result
             .entries
             .iter()
             .filter(|e| e.language == *target)
-            .map(|e| e.key.as_str())
+            .map(|e| (e.key.as_str(), e.text.as_str()))
             .collect();
+
         for entry in &mod_result.entries {
-            if entry.language == *source && !target_keys.contains(entry.key.as_str()) {
-                pending.push((entry, mod_result.file_name.as_str()));
+            if entry.language != *source {
+                continue;
             }
+            // Priority: mod-internal zh_cn > resource pack > None (→ LLM)
+            let existing = target_map
+                .get(entry.key.as_str())
+                .map(|s| s.to_string())
+                .or_else(|| {
+                    rp_lookup
+                        .get(&(entry.mod_id.as_str(), entry.key.as_str()))
+                        .map(|s| s.to_string())
+                });
+            pending.push((entry, mod_result.file_name.as_str(), existing));
         }
     }
     pending
@@ -72,8 +96,6 @@ fn group_batches<'a>(
     entries: &[(&'a LanguageEntry, &'a str)],
     batch_size: usize,
 ) -> Vec<Vec<(&'a LanguageEntry, &'a str)>> {
-    use std::collections::HashMap;
-
     let mut by_mod: HashMap<&str, Vec<(&LanguageEntry, &str)>> = HashMap::new();
     for item in entries {
         by_mod.entry(item.0.mod_id.as_str()).or_default().push(*item);
@@ -161,11 +183,36 @@ pub fn run_pipeline(
     let mut batch_results: Vec<jobs::TranslationResult> = Vec::new();
     let mut llm_only_entries: Vec<(&LanguageEntry, &str)> = Vec::new();
 
-    for (entry, file_name) in &pending {
+    for (entry, file_name, existing_target) in &pending {
         if processed % 64 == 0 && is_translation_cancelled(job_id) {
             break;
         }
-        if shield::is_placeholder_only(&entry.text) {
+
+        // Priority 1: existing translation from mod-internal zh_cn or resource packs
+        if let Some(target_text) = existing_target {
+            batch_results.push(jobs::TranslationResult {
+                key: entry.key.clone(),
+                source_text: entry.text.clone(),
+                target_text: target_text.clone(),
+                mod_id: entry.mod_id.clone(),
+                mod_name: file_name.to_string(),
+                source_type: "existing".into(),
+            });
+            let _ = log_tx.send(TranslateLogEntry {
+                key: entry.key.clone(),
+                source_text: entry.text.clone(),
+                target_text: target_text.clone(),
+                mod_name: entry.mod_id.clone(),
+                source_type: "existing".into(),
+            });
+            let _ = entry_progress_tx.send(EntryProgress {
+                key: entry.key.clone(),
+                mod_name: file_name.to_string(),
+                source_text: entry.text.clone(),
+                target_text: Some(target_text.clone()),
+                status: EntryStatus::Completed,
+            });
+        } else if shield::is_placeholder_only(&entry.text) {
             batch_results.push(jobs::TranslationResult {
                 key: entry.key.clone(),
                 source_text: entry.text.clone(),
@@ -306,7 +353,7 @@ pub fn run_pipeline(
         client.validate()?;
 
         // Build key → (mod_id, file_name) mapping
-        let key_to_meta: std::collections::HashMap<&str, (&str, &str)> = llm_only_entries
+        let key_to_meta: HashMap<&str, (&str, &str)> = llm_only_entries
             .iter()
             .map(|(entry, file_name)| (entry.key.as_str(), (entry.mod_id.as_str(), *file_name)))
             .collect();
@@ -341,7 +388,7 @@ pub fn run_pipeline(
 
                     // Collect CFPA references for this batch
                     let mut batch_refs = Vec::new();
-                    let mut seen_ref = std::collections::HashSet::new();
+                    let mut seen_ref = HashSet::new();
                     for (entry, _) in batch {
                         if let Ok(matches) = cfpa::fuzzy_search(&dict_conn, &entry.text, &entry.language, &config.target_language, 5) {
                             for m in &matches {
@@ -695,7 +742,12 @@ mod tests {
         };
 
         let pending = extract_pending_entries(&summary);
-        assert_eq!(pending.len(), 1);
-        assert_eq!(pending[0].0.key, "item.test.two");
+        assert_eq!(pending.len(), 2);
+        // item.test.one has existing zh_cn translation
+        let one = pending.iter().find(|(e, _, _)| e.key == "item.test.one").unwrap();
+        assert_eq!(one.2.as_deref(), Some("物品一"));
+        // item.test.two has no zh_cn translation
+        let two = pending.iter().find(|(e, _, _)| e.key == "item.test.two").unwrap();
+        assert_eq!(two.2, None);
     }
 }

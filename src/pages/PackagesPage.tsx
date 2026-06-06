@@ -5,6 +5,10 @@ import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import type { AppLanguage, CopyResult, PackResult, ScanSummary, TranslationJobState } from "../types";
 
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 interface Props {
   language: AppLanguage;
   scanSummary?: ScanSummary | null;
@@ -59,16 +63,27 @@ export function PackagesPage({ language, scanSummary: _scanSummary, settings: _s
     setLoading(true);
     setError("");
     try {
-      const entries = scanSummary.mods.flatMap((mod) =>
-        mod.entries
+      const entries = scanSummary.mods.flatMap((mod) => {
+        // Use existing target-language translation when available
+        const targetMap = new Map(
+          mod.entries
+            .filter((e) => e.language === scanSummary.targetLanguage)
+            .map((e) => [e.key, e.text]),
+        );
+        return mod.entries
           .filter((e) => e.language === scanSummary.sourceLanguage)
-          .map((e) => ({ modId: e.modId, key: e.key, text: e.text }))
-      );
+          .map((e) => ({
+            modId: e.modId,
+            key: e.key,
+            text: targetMap.get(e.key) || e.text,
+            sourceText: e.text,
+          }));
+      });
       const result = await generateTranslationPack(entries, scanSummary.targetLanguage, dryRun);
       setPackResult(result);
       if (!dryRun) setShowConfirm(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -93,7 +108,7 @@ export function PackagesPage({ language, scanSummary: _scanSummary, settings: _s
       setPackResult(result);
       if (!dryRun) setShowConfirm(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrorMessage(err));
     } finally {
       setLoading(false);
     }
@@ -109,7 +124,7 @@ export function PackagesPage({ language, scanSummary: _scanSummary, settings: _s
       setCopyResult(result);
       setShowConfirm(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(toErrorMessage(err));
     }
   };
 

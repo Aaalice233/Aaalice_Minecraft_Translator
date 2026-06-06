@@ -1114,59 +1114,73 @@ th.sorted-default .sort-indicator {
   50% { opacity: 0.6; }
 }
 
-/* ── Entry status panel ── */
-.entry-status-panel {
-  border: 1px solid #ded8cc;
-  border-radius: 6px;
-  padding: 12px 16px;
-  margin: 12px 0;
-  background: #faf8f5;
+/* ── Entry status stacked bar (essb) ── */
+.essb-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
 }
-.entry-status-panel h3 {
-  margin: 0 0 10px 0;
+.essb-track {
+  flex: 1;
+  height: 24px;
+  border-radius: 6px;
+  background: #efeade;
+  overflow: hidden;
+  display: flex;
+}
+.essb-segment {
+  height: 100%;
+  transition: opacity 0.12s ease;
+  cursor: default;
+  position: relative;
+}
+.essb-segment:first-child {
+  border-radius: 6px 0 0 6px;
+}
+.essb-segment:last-child {
+  border-radius: 0 6px 6px 0;
+}
+.essb-segment:only-child {
+  border-radius: 6px;
+}
+.essb-segment:hover {
+  opacity: 0.8;
+}
+.essb-pct-label {
   font-size: 14px;
   font-weight: 600;
   color: #45413a;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: right;
 }
-.entry-status-row {
+.essb-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #45413a;
+}
+.essb-legend-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 5px 0;
-  font-size: 13px;
+  gap: 5px;
 }
-.entry-status-dot {
+.essb-legend-dot {
   width: 8px;
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.entry-status-bar {
-  flex: 1;
-  height: 8px;
-  background: #efeade;
-  border-radius: 4px;
-  overflow: hidden;
-  min-width: 80px;
-}
-.entry-status-bar-fill {
-  height: 100%;
-  border-radius: 4px;
-}
-.entry-status-count {
+.essb-legend-count {
   font-variant-numeric: tabular-nums;
-  min-width: 80px;
-  text-align: right;
   color: #6b665d;
-  font-size: 12px;
+  margin-left: 2px;
 }
-.entry-status-total {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid #efeade;
-  font-size: 12px;
+.essb-legend-total {
+  margin-left: auto;
   font-weight: 600;
   color: #45413a;
 }

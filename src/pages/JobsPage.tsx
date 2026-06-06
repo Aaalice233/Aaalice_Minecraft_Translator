@@ -27,67 +27,14 @@ interface EntryStatusCounts {
   failed: number;
 }
 
-function EntryStatusPanel({
-  entryProgressMap,
-  total,
-  language,
-}: {
-  entryProgressMap: Map<string, EntryProgress>;
-  total: number;
-  language: AppLanguage;
-}) {
-  const counts: EntryStatusCounts = useMemo(() => {
-    const c: EntryStatusCounts = {
-      pending: 0, dictionaryHit: 0, skip: 0,
-      translating: 0, completed: 0, failed: 0,
-    };
-    entryProgressMap.forEach((entry) => {
-      const s = entry.status as keyof EntryStatusCounts;
-      if (s in c) c[s]++;
-    });
-    return c;
-  }, [entryProgressMap]);
-
-  if (total === 0) return null;
-
-  const statuses: Array<{ key: keyof EntryStatusCounts; color: string }> = [
-    { key: "pending", color: "#6b7280" },
-    { key: "dictionaryHit", color: "#3b82f6" },
-    { key: "skip", color: "#9ca3af" },
-    { key: "translating", color: "#f59e0b" },
-    { key: "completed", color: "#22c55e" },
-    { key: "failed", color: "#ef4444" },
-  ];
-
-  return (
-    <div className="entry-status-panel">
-      <h3>翻译状态</h3>
-      {statuses.map(({ key, color }) => (
-        <div className="entry-status-row" key={key}>
-          <span className="entry-status-dot" style={{ background: color }} />
-          <span>{statusLabel(key, language)}</span>
-          <div className="entry-status-bar">
-            <div
-              className="entry-status-bar-fill"
-              style={{
-                width: total > 0 ? `${(counts[key] / total) * 100}%` : "0%",
-                background: color,
-                transition: "width 0.3s ease",
-              }}
-            />
-          </div>
-          <span className="entry-status-count">
-            {counts[key]} / {total}
-          </span>
-        </div>
-      ))}
-      <div className="entry-status-total">
-        <span>总计</span>
-        <span>{total} 条</span>
-      </div>
-    </div>
-  );
-}
+const STATUS_META: Array<{ key: keyof EntryStatusCounts; color: string }> = [
+  { key: "pending", color: "#6b7280" },
+  { key: "dictionaryHit", color: "#3b82f6" },
+  { key: "skip", color: "#9ca3af" },
+  { key: "translating", color: "#f59e0b" },
+  { key: "completed", color: "#22c55e" },
+  { key: "failed", color: "#ef4444" },
+];
 
 interface Props {
   language: AppLanguage;
@@ -220,46 +167,48 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
     }
   }, [logEntries]);
 
+  function toErrorMessage(err: unknown): string {
+    return err instanceof Error ? err.message : String(err);
+  }
+
   async function handleStart() {
     if (!scanSummary) return;
-    cancelledRef.current = false; // reset cancel flag for this new translation
+    cancelledRef.current = false;
+    const instPath = settings.instancePath || scanSummary.instancePath;
+    const srcLang = settings.sourceLanguage || scanSummary.sourceLanguage;
+    const tgtLang = settings.targetLanguage || scanSummary.targetLanguage;
+
     setIsRunning(true);
     setStatus("running");
     setTranslateProgress(null);
     setTranslationResult(null);
     setTranslationError("");
-    setLogEntries([]); // clear log from previous run
+    setLogEntries([]);
     setEntryProgressMap(new Map());
 
     try {
       const result = await startTranslation(
-        settings.instancePath || scanSummary.instancePath,
-        settings.sourceLanguage || scanSummary.sourceLanguage,
-        settings.targetLanguage || scanSummary.targetLanguage,
+        instPath, srcLang, tgtLang,
         scanSummary.actualPendingEntries,
-        scanSummary.jobId,  // scan_job_id — translation loads from persisted scan
+        scanSummary.jobId,
       );
-      if (cancelledRef.current) return; // user cancelled while translation was running
+      if (cancelledRef.current) return;
       setTranslationResult(result);
       setStatus("completed");
-      onCompleteChange?.(true); // update sidebar nav state
+      onCompleteChange?.(true);
 
       // Re-scan to refresh pending counts after translation
       if ("__TAURI_INTERNALS__" in window) {
         try {
           const { scanInstance } = await import("../api/tauri");
-          const newSummary = await scanInstance(
-            settings.instancePath || scanSummary.instancePath,
-            settings.sourceLanguage || scanSummary.sourceLanguage,
-            settings.targetLanguage || scanSummary.targetLanguage,
-          );
+          const newSummary = await scanInstance(instPath, srcLang, tgtLang);
           onScanSummaryChange(newSummary);
         } catch (scanErr) {
-          setTranslationError("翻译后自动重新扫描失败: " + (scanErr instanceof Error ? scanErr.message : String(scanErr)));
+          setTranslationError("翻译后自动重新扫描失败: " + toErrorMessage(scanErr));
         }
       }
     } catch (err) {
-      setTranslationError(err instanceof Error ? err.message : String(err));
+      setTranslationError(toErrorMessage(err));
       setStatus("failed");
     } finally {
       setIsRunning(false);
@@ -277,6 +226,22 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
       console.warn("取消翻译失败：", err);
     }
   }
+
+  const entryCounts = useMemo(() => {
+    const c: EntryStatusCounts = {
+      pending: 0, dictionaryHit: 0, skip: 0,
+      translating: 0, completed: 0, failed: 0,
+    };
+    entryProgressMap.forEach((entry) => {
+      const s = entry.status as keyof EntryStatusCounts;
+      if (s in c) c[s]++;
+    });
+    return c;
+  }, [entryProgressMap]);
+
+  const visibleStatuses = (scanSummary?.actualPendingEntries ?? 0) > 0
+    ? STATUS_META.filter((s) => entryCounts[s.key] > 0)
+    : STATUS_META;
 
   const progressPercent =
     translateProgress && translateProgress.total > 0
@@ -395,50 +360,97 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
         </div>
       )}
 
-      {/* Progress bar — visible during running AND after completion/cancel */}
+      {/* Unified progress section */}
       {(isRunning || status === "completed" || status === "canceled") && (
         <div className="scan-progress">
           <div className="scan-progress-header">
             <strong className="scan-progress-mod" style={{ maxWidth: 300, flex: 1, margin: 0 }}>
-              {translateProgress?.phase === "scanning"
-                ? `正在扫描: ${translateProgress.modName || ""}`
-                : translateProgress?.phase === "extracting"
-                ? "正在提取待翻译条目..."
-                : translateProgress?.phase === "dictionary"
-                ? "正在词典匹配..."
-                : translateProgress?.phase === "translating"
-                ? `正在翻译${translateProgress.subStep ? " (" + translateProgress.subStep + ")" : ""}`
-                : translateProgress
-                ? stageLabel(translateProgress.phase)
-                : t(language, "jobs.translating")}
+              {(() => {
+                if (!translateProgress) return t(language, "jobs.translating");
+                switch (translateProgress.phase) {
+                  case "scanning":
+                    return `正在扫描: ${translateProgress.modName || ""}`;
+                  case "extracting":
+                    return "正在提取待翻译条目...";
+                  case "dictionary":
+                    return "正在词典匹配...";
+                  case "translating":
+                    return `正在翻译${translateProgress.subStep ? " (" + translateProgress.subStep + ")" : ""}`;
+                  default:
+                    return stageLabel(translateProgress.phase);
+                }
+              })()}
             </strong>
             {translateProgress?.phase !== "translating" && (
-              <span>
-                {translateProgress
-                  ? `${translateProgress.current.toLocaleString()} / ${translateProgress.total.toLocaleString()}`
-                  : t(language, "jobs.progressFallback")}
-              </span>
-            )}
-            {translateProgress?.phase !== "translating" && (
-              <span className="percent-label">({progressPercent}%)</span>
+              <>
+                <span>
+                  {translateProgress
+                    ? `${translateProgress.current.toLocaleString()} / ${translateProgress.total.toLocaleString()}`
+                    : t(language, "jobs.progressFallback")}
+                </span>
+                <span className="percent-label">({progressPercent}%)</span>
+              </>
             )}
           </div>
-          <div className="progress-bar-track">
-            <div
-              className="progress-bar-fill"
-              style={{
-                width: translateProgress && translateProgress.total > 0
-                  ? `${progressPercent}%`
-                  : "0%",
-                background: status === "completed" ? "#1f8a5b" : status === "canceled" ? "#b0a99c" : undefined,
-              }}
-            />
-          </div>
-          {translateProgress?.subStep && translateProgress.phase !== "translating" ? (
-            <small className="scan-progress-mod">{translateProgress.subStep}</small>
-          ) : translateProgress?.modName && translateProgress.phase === "scanning" ? (
-            <small className="scan-progress-mod">{translateProgress.modName}</small>
-          ) : null}
+
+          {/* Merged bar: colored stacked when entry progress data exists */}
+          {(isRunning || status === "completed") && scanSummary && scanSummary.actualPendingEntries > 0 ? (
+            <>
+              <div className="essb-container">
+                <div className="essb-track" style={{ height: 20 }}>
+                  {visibleStatuses.map(({ key, color }) => {
+                    const count = entryCounts[key];
+                    const total = scanSummary.actualPendingEntries;
+                    const pct = (count / total) * 100;
+                    return (
+                      <div
+                        key={key}
+                        className="essb-segment"
+                        style={{ width: `${pct}%`, backgroundColor: color }}
+                        title={`${statusLabel(key, language)}: ${count} 条 (${Math.round(pct)}%)`}
+                      />
+                    );
+                  })}
+                </div>
+                <span className="essb-pct-label">
+                  {Math.round((entryCounts.completed / (scanSummary.actualPendingEntries)) * 100)}%
+                </span>
+              </div>
+              <div className="essb-legend">
+                {visibleStatuses.map(({ key, color }) => (
+                  <span className="essb-legend-item" key={key}>
+                    <span className="essb-legend-dot" style={{ backgroundColor: color }} />
+                    {statusLabel(key, language)}
+                    <span className="essb-legend-count">{entryCounts[key]}</span>
+                  </span>
+                ))}
+                <span className="essb-legend-item essb-legend-total">
+                  总计 {(scanSummary.actualPendingEntries).toLocaleString()} 条
+                </span>
+              </div>
+            </>
+          ) : (
+            /* Simple progress bar for non-translating phases or canceled */
+            <>
+              <div className="progress-bar-track">
+                <div
+                  className="progress-bar-fill"
+                  style={{
+                    width: translateProgress && translateProgress.total > 0
+                      ? `${progressPercent}%`
+                      : "0%",
+                    background: status === "completed" ? "#1f8a5b" : status === "canceled" ? "#b0a99c" : undefined,
+                  }}
+                />
+              </div>
+              {translateProgress?.subStep && translateProgress.phase !== "translating" ? (
+                <small className="scan-progress-mod">{translateProgress.subStep}</small>
+              ) : translateProgress?.modName && translateProgress.phase === "scanning" ? (
+                <small className="scan-progress-mod">{translateProgress.modName}</small>
+              ) : null}
+            </>
+          )}
+
           {status === "completed" && (
             <small className="scan-progress-status">
               ✔ {t(language, "jobs.title")} — {translationResult ?? 0} {t(language, "jobs.totalEntries")}
@@ -455,15 +467,6 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
             </small>
           )}
         </div>
-      )}
-
-      {/* Entry status panel */}
-      {(isRunning || status === "completed") && (
-        <EntryStatusPanel
-          entryProgressMap={entryProgressMap}
-          total={(scanSummary?.actualPendingEntries ?? 0)}
-          language={language}
-        />
       )}
 
       {/* Log panel (always visible) */}
@@ -512,14 +515,21 @@ export function JobsPage({ language, scanSummary, onScanSummaryChange, settings,
                     <td>
                       {(() => {
                         const ep = entryProgressMap.get(entry.modName + "::" + entry.key);
-                        const fallbackStatus =
-                          entry.sourceType === "llm" ? "completed"
-                          : entry.sourceType === "skipped" ? "skip"
-                          : entry.sourceType === "dictionary" ? "dictionaryHit"
-                          : entry.sourceType;
+                        const fallbackStatus = (() => {
+                          switch (entry.sourceType) {
+                            case "llm":
+                            case "existing":
+                              return "completed";
+                            case "skipped":
+                              return "skip";
+                            case "dictionary":
+                              return "dictionaryHit";
+                            default:
+                              return entry.sourceType;
+                          }
+                        })();
                         const status = ep ? ep.status : fallbackStatus;
-                        const label = statusLabel(status, language);
-                        return <span className={`badge badge-${status}`}>{label}</span>;
+                        return <span className={`badge badge-${status}`}>{statusLabel(status, language)}</span>;
                       })()}
                     </td>
                   </tr>

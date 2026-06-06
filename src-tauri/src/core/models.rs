@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::sync::atomic::AtomicU64;
 
 /// 默认 Minecraft 模组翻译系统提示词
 pub const DEFAULT_SYSTEM_PROMPT: &str = "你是一个专业 Minecraft 模组汉化翻译专家，精通中英文游戏术语和模组翻译规范。\n\
@@ -58,20 +59,15 @@ pub struct Settings {
     pub system_prompt: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub enum StageStatus {
+    #[default]
     #[serde(rename = "running")]
     Running,
     #[serde(rename = "completed")]
     Completed,
     #[serde(rename = "failed")]
     Failed,
-}
-
-impl Default for StageStatus {
-    fn default() -> Self {
-        StageStatus::Running
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -215,23 +211,11 @@ pub struct ScanSummary {
     pub total_pending_entries: usize,
     /// How many pending entries match existing resource-pack translations.
     pub resource_pack_covered_entries: usize,
-    /// Effective pending after deducting resource pack coverage.
+    /// Total source entries entering the translation queue (includes existing translations).
     pub actual_pending_entries: usize,
     pub warnings: Vec<ScanWarning>,
     #[serde(default)]
     pub cancelled: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct TranslateProgress {
-    pub current: usize,
-    pub total: usize,
-    pub phase: String,
-    pub mod_name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sub_step: Option<String>,
-    pub stage_status: StageStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -358,8 +342,6 @@ pub struct EntryProgress {
     pub status: EntryStatus,
 }
 
-// ── P6: Validation types ───────────────────────────────────────────
-
 /// A single issue found during translation validation.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -385,7 +367,6 @@ pub struct ValidationReport {
     pub format_issues: Vec<ValidationIssue>,
 }
 
-use std::sync::atomic::AtomicU64;
 pub static TOTAL_TOKEN_USAGE_PROMPT: AtomicU64 = AtomicU64::new(0);
 pub static TOTAL_TOKEN_USAGE_COMPLETION: AtomicU64 = AtomicU64::new(0);
 

@@ -109,15 +109,13 @@ impl JobManager {
 
         let entries = crate::core::pipeline::extract_pending_entries(&summary)
             .into_iter()
-            .map(|(entry, file_name)| PendingEntry {
+            .map(|(entry, file_name, _existing)| PendingEntry {
                 key: entry.key.clone(),
                 source_text: entry.text.clone(),
                 mod_id: entry.mod_id.clone(),
                 mod_name: file_name.to_string(),
             })
             .collect();
-        let completed = 0usize;
-        let failed = 0usize;
 
         let job = TranslationJobState {
             job_id: job_id.clone(),
@@ -126,8 +124,8 @@ impl JobManager {
             source_language: summary.source_language.clone(),
             target_language: summary.target_language.clone(),
             entries,
-            completed_entries: completed,
-            failed_entries: failed,
+            completed_entries: 0,
+            failed_entries: 0,
             token_usage: TokenUsage::default(),
             created_at: now_rfc3339(),
             completed_at: None,
@@ -467,14 +465,15 @@ mod tests {
 
         let pending: Vec<PendingEntry> = crate::core::pipeline::extract_pending_entries(&summary)
             .into_iter()
-            .map(|(entry, file_name)| PendingEntry {
+            .map(|(entry, file_name, _existing)| PendingEntry {
                 key: entry.key.clone(),
                 source_text: entry.text.clone(),
                 mod_id: entry.mod_id.clone(),
                 mod_name: file_name.to_string(),
             })
             .collect();
-        assert_eq!(pending.len(), 2);
+        assert_eq!(pending.len(), 3);
+        assert!(pending.iter().any(|e| e.key == "item.a"));
         assert!(pending.iter().any(|e| e.key == "item.b"));
         assert!(pending.iter().any(|e| e.key == "item.c"));
         assert!(pending.iter().all(|e| e.mod_name == "testmod-1.0.jar"));

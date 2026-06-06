@@ -46,7 +46,7 @@ pub async fn start_translation(
     let app_emit = app.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(progress) = progress_rx.recv() {
-            if crate::core::pipeline::is_translation_cancelled(&job_id_progress) {
+            if pipeline::is_translation_cancelled(&job_id_progress) {
                 break;
             }
             if let Err(err) = app_emit.emit("translate-progress", &progress) {
@@ -59,7 +59,7 @@ pub async fn start_translation(
     let app_emit_log = app.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(entry) = log_rx.recv() {
-            if crate::core::pipeline::is_translation_cancelled(&job_id_log) {
+            if pipeline::is_translation_cancelled(&job_id_log) {
                 break;
             }
             if let Err(err) = app_emit_log.emit("translate-log-entry", &entry) {
@@ -72,11 +72,11 @@ pub async fn start_translation(
     let app_emit_entry = app.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(progress) = entry_progress_rx.recv() {
-            if crate::core::pipeline::is_translation_cancelled(&job_id_entry) {
+            if pipeline::is_translation_cancelled(&job_id_entry) {
                 break;
             }
-            if let Err(err) = app_emit_entry.emit("entry-progress", &progress) {
-                eprintln!("entry-progress emit error: {err}");
+            if let Err(err) = app_emit_entry.emit("translate-entry-progress", &progress) {
+                eprintln!("translate-entry-progress emit error: {err}");
             }
         }
     });
@@ -108,7 +108,7 @@ pub async fn start_translation(
     });
 
     let config = PipelineConfig {
-        root,
+        root: root.clone(),
         instance_path: path,
         source_language,
         target_language,
@@ -130,7 +130,7 @@ pub async fn start_translation(
     drop(log_tx);
 
     logging::append_main(
-        &paths::runtime_root().map_err(to_message)?,
+        &root,
         format!("翻译任务完成: {}/{} 条目", result.completed, total_entries.unwrap_or(0)),
     )
     .ok();

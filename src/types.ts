@@ -253,6 +253,7 @@ export interface PackEntry {
   modId: string;
   key: string;
   text: string;
+  sourceText: string;
 }
 
 export interface ConflictInfo {

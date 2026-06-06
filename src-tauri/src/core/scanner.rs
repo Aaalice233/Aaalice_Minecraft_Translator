@@ -155,7 +155,9 @@ pub fn scan_instance(
             })
             .count()
     };
-    let actual_pending_entries = total_pending_entries.saturating_sub(resource_pack_covered_entries);
+    // All source entries enter the pipeline queue; existing translations
+    // (from mod-internal target lang or resource packs) are extracted inline.
+    let actual_pending_entries = total_source_entries;
 
     let mut warnings = validation.warnings.clone();
     warnings.extend(mods.iter().flat_map(|m| m.warnings.clone()));
