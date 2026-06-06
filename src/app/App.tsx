@@ -2,6 +2,8 @@ import {
   BookOpen,
   Boxes,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   FileText,
   HardHat,
   Home,
@@ -36,6 +38,11 @@ type PageKey =
   | "hardcoded"
   | "settings"
   | "logs";
+
+const DEFAULT_SIDEBAR_WIDTH = 232;
+const COLLAPSED_SIDEBAR_WIDTH = 54;
+const MIN_SIDEBAR_WIDTH = 180;
+const MAX_SIDEBAR_WIDTH = 400;
 
 const DISABLED_NAV: ReadonlySet<PageKey> = new Set(["ftb", "hardcoded"] as const);
 
@@ -107,6 +114,39 @@ function AppShell() {
   }, [activePage]);
 
   // Stable per-page callbacks — created once, never cause extra re-renders
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const prevWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
+
+  const toggleSidebar = useCallback(() => {
+    if (sidebarCollapsed) {
+      setSidebarWidth(prevWidthRef.current);
+    } else {
+      prevWidthRef.current = sidebarWidth;
+      setSidebarWidth(COLLAPSED_SIDEBAR_WIDTH);
+    }
+    setSidebarCollapsed((prev) => !prev);
+  }, [sidebarCollapsed, sidebarWidth]);
+
+  // Draggable sidebar resize
+  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startW: sidebarWidth };
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const w = Math.max(MIN_SIDEBAR_WIDTH, Math.min(MAX_SIDEBAR_WIDTH, dragRef.current.startW + (ev.clientX - dragRef.current.startX)));
+      setSidebarWidth(w);
+    };
+    const handleMouseUp = () => {
+      dragRef.current = null;
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+  }, [sidebarWidth]);
+
   const dbBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: b ? "busy" : "idle" } }), [dispatch]);
   const jobsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: b ? "busy" : "idle" } }), [dispatch]);
   const jobsCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: c ? "completed" : "idle" } }), [dispatch]);
@@ -148,8 +188,9 @@ function AppShell() {
   const isLoading = !settings;
 
   return (
-    <div className="app-shell" lang={localeByAppLanguage[language]}>
-      <aside className="sidebar">
+    <div className="app-shell" lang={localeByAppLanguage[language]} style={{ '--sidebar-width': sidebarWidth + 'px' } as React.CSSProperties}>
+      <aside className={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
+        {!sidebarCollapsed && <div className="sidebar-resize-handle" onMouseDown={handleResizeStart} />}
         <nav className="nav-list">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -191,7 +232,7 @@ function AppShell() {
                 disabled={DISABLED_NAV.has(item.key)}
                 onClick={() => setActivePage(item.key)}
                 type="button"
-                data-tooltip={tooltip}
+                data-tooltip={sidebarCollapsed ? t(language, item.labelKey) : tooltip}
               >
                 {navIcon}
                 <span>{t(language, item.labelKey)}</span>
@@ -200,6 +241,10 @@ function AppShell() {
               </button>
             );
           })}
+          <button className="sidebar-toggle" onClick={toggleSidebar} type="button" data-tooltip={sidebarCollapsed ? t(language, "nav.expand") : t(language, "nav.collapse")}>
+            {sidebarCollapsed ? <ChevronRight size={14} strokeWidth={2.5} /> : <ChevronLeft size={14} strokeWidth={2.5} />}
+            <span className="toggle-label">{t(language, sidebarCollapsed ? "nav.expand" : "nav.collapse")}</span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">

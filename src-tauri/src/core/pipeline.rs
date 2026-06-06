@@ -1,7 +1,4 @@
-// Translation pipeline orchestration
-// Coordinates Scan → Extract → Dictionary → LLM → Finalize.
-// This is the single orchestrator for all translation work.
-// Cancel/state coordination uses module-level statics.
+// Scan → Extract → Dictionary → LLM → Finalize pipeline.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -202,7 +199,7 @@ pub fn run_pipeline(
     };
 
     for (entry, file_name, existing_target) in &pending {
-        if processed % 64 == 0 && is_translation_cancelled(job_id) {
+        if is_translation_cancelled(job_id) {
             break;
         }
 

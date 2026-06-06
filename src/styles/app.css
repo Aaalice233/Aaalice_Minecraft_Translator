@@ -24,7 +24,7 @@ select {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 232px 1fr;
+  grid-template-columns: var(--sidebar-width, 232px) 1fr;
   height: 100vh;
   background:
     linear-gradient(90deg, rgba(31, 138, 91, 0.04), transparent 34%),
@@ -36,45 +36,50 @@ select {
   flex-direction: column;
   border-right: 1px solid #ded8cc;
   background: rgba(255, 255, 255, 0.72);
-  padding: 22px 16px;
+  padding: 16px 16px 10px;
+  position: relative;
+  min-width: 0;
+}
+
+.sidebar.collapsed {
+  padding: 10px 6px;
+}
+
+.sidebar.collapsed .nav-list {
+  gap: 2px;
+}
+
+.sidebar.collapsed .nav-item {
+  justify-content: center;
+  padding: 0;
+  width: 36px;
+  height: 36px;
+  margin: 0 auto;
+  gap: 0;
+}
+
+.sidebar.collapsed .nav-item span {
+  display: none;
+}
+
+.sidebar.collapsed .nav-busy-dot,
+.sidebar.collapsed .nav-completed-mark {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  margin: 0;
+}
+
+.sidebar.collapsed .sidebar-footer span:first-child {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-footer {
+  justify-content: center;
 }
 
 .sidebar .nav-list {
   margin-top: 0;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 34px;
-}
-
-.brand-mark {
-  display: grid;
-  width: 54px;
-  height: 54px;
-  place-items: center;
-  border: 2px solid #166b48;
-  border-radius: 6px;
-  background: #1f8a5b;
-  color: white;
-  font-size: 32px;
-  font-weight: 800;
-}
-
-.brand strong,
-.brand span {
-  display: block;
-}
-
-.brand strong {
-  font-size: 18px;
-}
-
-.brand span {
-  color: #1f8a5b;
-  font-weight: 700;
 }
 
 .nav-list {
@@ -161,9 +166,61 @@ select {
 .sidebar-footer {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   margin-top: auto;
   color: #6b665d;
   font-size: 12px;
+  gap: 8px;
+}
+
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #9c9689;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.sidebar-toggle:hover {
+  background: #efeade;
+  color: #1e1d1a;
+}
+
+.sidebar-toggle .toggle-label {
+  white-space: nowrap;
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+
+.sidebar.collapsed .sidebar-toggle {
+  padding: 0;
+}
+
+.sidebar.collapsed .sidebar-toggle .toggle-label {
+  display: none;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 10;
+}
+
+.sidebar-resize-handle:hover {
+  background: rgba(31, 138, 91, 0.2);
 }
 
 .status-dot::before {
@@ -207,6 +264,11 @@ select {
   flex: 1;
   min-height: 0;
   padding: 22px 28px 28px;
+}
+
+/* JobsPage: constrain height so log panel fills remaining space */
+.page-jobs {
+  overflow: hidden;
 }
 
 .page-header {
@@ -485,32 +547,38 @@ select {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
   margin-bottom: 16px;
 }
 
-.stat-card,
-.panel {
-  border: 1px solid #ded8cc;
+.stat-card {
+  border: 1px solid #ede8dc;
   border-radius: 6px;
   background: #fff;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.stat-card {
-  display: grid;
-  gap: 8px;
-  min-height: 112px;
-  padding: 18px;
+.stat-card .stat-label {
+  font-size: 12px;
+  color: #8a8478;
+  font-weight: 500;
 }
 
-.stat-card span,
-.stat-card small {
-  color: #6b665d;
+.stat-card .stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e1d1a;
+  line-height: 1.3;
 }
 
-.stat-card strong {
-  font-size: 24px;
+.stat-card .stat-hint {
+  font-size: 11px;
+  color: #b0a99c;
+  margin-top: 2px;
 }
 
 .dashboard-grid {

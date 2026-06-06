@@ -16,6 +16,8 @@ export type TranslationKey =
   | "nav.validate"
   | "nav.settings"
   | "nav.logs"
+| "nav.collapse"
+| "nav.expand"
   | "dashboard.title"
   | "dashboard.subtitle"
   | "dashboard.scan"
@@ -299,6 +301,8 @@ const zhCn: TranslationMap = {
   "nav.dictionary": "词典",
   "nav.settings": "设置",
   "nav.logs": "调试",
+  "nav.collapse": "收起侧栏",
+  "nav.expand": "展开侧栏",
   "dashboard.title": "项目扫描概览",
   "dashboard.subtitle": "扫描实例中的模组语言文件和已有目标语言资源包。",
   "dashboard.scan": "开始扫描",
@@ -551,6 +555,8 @@ const enUs: TranslationMap = {
   "nav.dictionary": "Dictionary",
   "nav.settings": "Settings",
   "nav.logs": "Debug",
+  "nav.collapse": "Collapse sidebar",
+  "nav.expand": "Expand sidebar",
   "dashboard.title": "Project scan overview",
   "dashboard.subtitle": "Scan mod language files and existing target-language resource packs.",
   "dashboard.scan": "Start scan",
@@ -737,6 +743,8 @@ const jaJp: TranslationMap = {
   "nav.dictionary": "辞書",
   "nav.settings": "設定",
   "nav.logs": "デバッグ",
+  "nav.collapse": "サイドバーを折りたたむ",
+  "nav.expand": "サイドバーを展開",
   "dashboard.title": "プロジェクトスキャン概要",
   "dashboard.subtitle": "Mod の言語ファイルと既存の対象言語リソースパックをスキャンします。",
   "dashboard.scan": "スキャン開始",
@@ -880,6 +888,8 @@ const koKr: TranslationMap = {
   "nav.dictionary": "사전",
   "nav.settings": "설정",
   "nav.logs": "디버그",
+  "nav.collapse": "사이드바 접기",
+  "nav.expand": "사이드바 펼치기",
   "dashboard.title": "프로젝트 스캔 개요",
   "dashboard.subtitle": "모드 언어 파일과 기존 대상 언어 리소스 팩을 스캔합니다.",
   "dashboard.scan": "스캔 시작",
@@ -1025,6 +1035,8 @@ const ruRu: TranslationMap = {
   "nav.dictionary": "Словарь",
   "nav.settings": "Настройки",
   "nav.logs": "Отладка",
+  "nav.collapse": "Свернуть панель",
+  "nav.expand": "Развернуть панель",
   "dashboard.title": "Обзор сканирования проекта",
   "dashboard.subtitle": "Сканирование языковых файлов модов и ресурс-паков.",
   "dashboard.scan": "Начать сканирование",

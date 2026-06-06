@@ -444,9 +444,9 @@ export function DashboardPage({
       <div className="stats-grid">
         {stats.map((stat) => (
           <article className="stat-card" key={stat.label}>
-            <span>{stat.label}</span>
-            <strong>{stat.value.toLocaleString(numberLocale)}</strong>
-            <small>{stat.hint}</small>
+            <span className="stat-label">{stat.label}</span>
+            <span className="stat-value">{stat.value.toLocaleString(numberLocale)}</span>
+            {stat.hint && <span className="stat-hint">{stat.hint}</span>}
           </article>
         ))}
       </div>

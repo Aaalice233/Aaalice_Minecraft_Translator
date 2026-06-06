@@ -135,6 +135,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   useTauriEvent<TranslateProgress>("translate-progress", setTranslateProgress);
 
   useTauriEvent<TranslateLogEntry[]>("translate-log-entries", (entries) => {
+    if (cancelledRef.current) return;
     setLogEntries((prev) => {
       const next = [...prev, ...entries];
       return next.length > MAX_LOG ? next.slice(-MAX_LOG) : next;
@@ -142,6 +143,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   });
 
   useTauriEvent<EntryProgress[]>("translate-entry-progresses", (entries) => {
+    if (cancelledRef.current) return;
     setEntryProgressMap((prev) => {
       const next = new Map(prev);
       for (const entry of entries) {
@@ -269,7 +271,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   }, []);
 
   return (
-    <section className="page">
+    <section className="page page-jobs">
       <div className="page-header">
         <div>
           <h1>{t(language, "jobs.title")}</h1>
