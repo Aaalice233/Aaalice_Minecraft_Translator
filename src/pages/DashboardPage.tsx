@@ -486,7 +486,11 @@ export function DashboardPage({
               </div>
             </div>
           ))}
-          {!scanSummary && <div className="resource-section-empty">{t(language, "dashboard.emptyResource")}</div>}
+          {(!scanSummary || scanSummary.resourcePacks.length === 0) && (
+            <div className="resource-section-empty">
+              {t(language, "dashboard.emptyResource")}
+            </div>
+          )}
         </div>
       </div>
 

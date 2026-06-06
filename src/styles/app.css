@@ -932,11 +932,14 @@ th.sorted-default .sort-indicator {
 }
 
 .resource-pack {
-  padding: 8px 0;
+  padding: 10px 12px;
+  background: #faf8f5;
+  border: 1px solid #ede8dc;
+  border-radius: 5px;
 }
 
 .resource-pack + .resource-pack {
-  border-top: 1px solid #efeade;
+  margin-top: 6px;
 }
 
 .resource-pack-top {
