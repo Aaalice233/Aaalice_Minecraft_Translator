@@ -21,7 +21,7 @@ import { JobsPage } from "../pages/JobsPage";
 import { LogsPage } from "../pages/LogsPage";
 import { PackagesPage } from "../pages/PackagesPage";
 import { PlaceholderPage } from "../pages/PlaceholderPage";
-import { SettingsPage } from "../pages/SettingsPage";
+import { applyFont, SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
 import { getSettings } from "../api/tauri";
 import { AppProvider, useAppState } from "./AppContext";
@@ -189,13 +189,13 @@ function AppShell() {
     [activePage, language, scanSummary, settings, mountedPages, dbBusy, jobsBusy, jobsCompleted, packsBusy],
   );
 
-  // 同步已保存的主题和字体到 data-* 属性（预览由 SettingsPage 即时设置）
+  // 同步已保存的主题和字体到 data-* / style 属性（预览由 SettingsPage 即时设置）
   useEffect(() => {
     if (settings?.uiTheme) {
       document.documentElement.dataset.theme = settings.uiTheme;
     }
     if (settings?.uiFont) {
-      document.documentElement.dataset.font = settings.uiFont;
+      applyFont(settings.uiFont);
     }
   }, [settings?.uiTheme, settings?.uiFont]);
 

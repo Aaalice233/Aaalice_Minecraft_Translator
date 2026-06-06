@@ -32,6 +32,7 @@ pub fn run() {
             commands::pick_instance_folder,
             commands::open_path,
             commands::fetch_llm_models,
+            commands::list_fonts,
             commands::read_logs,
             // P2: Dictionary
             commands::search_dictionary,

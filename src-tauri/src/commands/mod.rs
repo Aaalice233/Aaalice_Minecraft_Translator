@@ -3,6 +3,7 @@
 // Re-exports ensure lib.rs continues to see `commands::function_name`.
 
 pub mod dictionary;
+pub mod fonts;
 pub mod game;
 pub mod logs;
 pub mod jobs;
@@ -14,6 +15,7 @@ pub mod translate;
 pub mod validate;
 
 pub use dictionary::*;
+pub use fonts::*;
 pub use game::*;
 pub use logs::*;
 pub use jobs::*;

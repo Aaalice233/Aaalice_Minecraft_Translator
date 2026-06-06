@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchLlmModels, saveSettings } from "../api/tauri";
+import { fetchLlmModels, getSystemFonts, saveSettings } from "../api/tauri";
 import {
   appLanguages,
   minecraftLanguageOptions,
@@ -42,6 +42,22 @@ const tabs = [
   { key: "advanced", labelKey: "settings.tab.advanced", icon: Database },
 ] as const satisfies ReadonlyArray<{ key: SettingsTab; labelKey: TranslationKey; icon: LucideIcon }>;
 
+/** 预设字体键名列表 — 与 CSS [data-font] 选择器对应 */
+export const FONT_PRESETS = ["system", "yahei", "noto", "simsun"] as const;
+
+/** 应用字体到文档根元素：预设走 data-font 属性，自定义走 --ui-font CSS 变量 */
+export function applyFont(font: string): void {
+  const presets: readonly string[] = FONT_PRESETS;
+  if (presets.includes(font)) {
+    document.documentElement.dataset.font = font;
+    document.documentElement.style.removeProperty("--ui-font");
+  } else {
+    document.documentElement.dataset.font = "";
+    const quoted = font.includes(" ") ? `"${font}"` : font;
+    document.documentElement.style.setProperty("--ui-font", `${quoted}, sans-serif`);
+  }
+}
+
 export function SettingsPage({ settings, onSettingsChange }: Props) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("language");
   const [draft, setDraft] = useState(settings);
@@ -50,6 +66,8 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   const [error, setError] = useState("");
   const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [showCustomModel, setShowCustomModel] = useState(false);
+  const [fonts, setFonts] = useState<string[]>([]);
+  const [isLoadingFonts, setIsLoadingFonts] = useState(false);
   const language = normalizeAppLanguage(draft.appLanguage);
 
   const currentTitle = useMemo(
@@ -101,6 +119,17 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
       setIsFetchingModels(false);
     }
   }
+
+  // 进入外观选项卡时懒加载系统字体列表
+  useEffect(() => {
+    if (activeTab === "appearance" && fonts.length === 0 && !isLoadingFonts) {
+      setIsLoadingFonts(true);
+      getSystemFonts()
+        .then(setFonts)
+        .catch(() => setFonts([]))
+        .finally(() => setIsLoadingFonts(false));
+    }
+  }, [activeTab, fonts.length, isLoadingFonts]);
 
   return (
     <section className="page">
@@ -209,17 +238,27 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
               </label>
               <label className="field">
                 {t(language, "settings.uiFont")}
+                {isLoadingFonts && <small className="field-hint">{t(language, "settings.loadingFonts")}</small>}
                 <select
                   value={draft.uiFont}
                   onChange={(event) => {
                     const newFont = event.target.value;
                     setDraft((prev) => ({ ...prev, uiFont: newFont }));
-                    document.documentElement.dataset.font = newFont;
+                    applyFont(newFont);
                   }}
                 >
-                  {(["system", "yahei", "noto", "simsun"] as const).map((key) => (
-                    <option key={key} value={key}>{t(language, `settings.uiFontOption.${key}` as TranslationKey)}</option>
-                  ))}
+                  <optgroup label={t(language, "settings.uiFontPresets")}>
+                    {FONT_PRESETS.map((key) => (
+                      <option key={key} value={key}>{t(language, `settings.uiFontOption.${key}` as TranslationKey)}</option>
+                    ))}
+                  </optgroup>
+                  {fonts.length > 0 && (
+                    <optgroup label={t(language, "settings.uiFontSystem", { count: fonts.length })}>
+                      {fonts.map((font) => (
+                        <option key={font} value={font}>{font}</option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
               </label>
             </div>

@@ -169,6 +169,9 @@ export type TranslationKey =
   | "settings.uiFontOption.yahei"
   | "settings.uiFontOption.noto"
   | "settings.uiFontOption.simsun"
+  | "settings.uiFontPresets"
+  | "settings.uiFontSystem"
+  | "settings.loadingFonts"
   | "settings.uiTheme"
   | "settings.uiThemeOption.default"
   | "settings.uiThemeOption.ocean"
@@ -475,6 +478,9 @@ const zhCn: TranslationMap = {
   "settings.uiFontOption.yahei": "微软雅黑",
   "settings.uiFontOption.noto": "思源黑体",
   "settings.uiFontOption.simsun": "宋体",
+  "settings.uiFontPresets": "预设",
+  "settings.uiFontSystem": "系统字体（{count} 个）",
+  "settings.loadingFonts": "正在加载…",
   "settings.uiTheme": "主题",
   "settings.uiThemeOption.default": "经典",
   "settings.uiThemeOption.ocean": "海洋蓝",
@@ -650,6 +656,9 @@ const enUs: TranslationMap = {
   "settings.uiFontOption.yahei": "Microsoft YaHei",
   "settings.uiFontOption.noto": "Noto Sans SC",
   "settings.uiFontOption.simsun": "SimSun",
+  "settings.uiFontPresets": "Presets",
+  "settings.uiFontSystem": "System Fonts ({count})",
+  "settings.loadingFonts": "Loading…",
   "settings.uiTheme": "Theme",
   "settings.uiThemeOption.default": "Classic",
   "settings.uiThemeOption.ocean": "Ocean Blue",
@@ -846,6 +855,9 @@ const jaJp: TranslationMap = {
   "settings.uiFontOption.yahei": "Microsoft YaHei",
   "settings.uiFontOption.noto": "Noto Sans SC",
   "settings.uiFontOption.simsun": "SimSun",
+  "settings.uiFontPresets": "プリセット",
+  "settings.uiFontSystem": "システムフォント（{count}）",
+  "settings.loadingFonts": "読み込み中…",
   "settings.uiTheme": "テーマ",
   "settings.uiThemeOption.default": "クラシック",
   "settings.uiThemeOption.ocean": "オーシャンブルー",
@@ -1005,6 +1017,9 @@ const koKr: TranslationMap = {
   "settings.uiFontOption.yahei": "Microsoft YaHei",
   "settings.uiFontOption.noto": "Noto Sans SC",
   "settings.uiFontOption.simsun": "SimSun",
+  "settings.uiFontPresets": "프리셋",
+  "settings.uiFontSystem": "시스템 글꼴 ({count}개)",
+  "settings.loadingFonts": "로딩 중…",
   "settings.uiTheme": "테마",
   "settings.uiThemeOption.default": "클래식",
   "settings.uiThemeOption.ocean": "오션 블루",
@@ -1249,6 +1264,9 @@ const ruRu: TranslationMap = {
   "settings.uiFontOption.yahei": "Microsoft YaHei",
   "settings.uiFontOption.noto": "Noto Sans SC",
   "settings.uiFontOption.simsun": "SimSun",
+  "settings.uiFontPresets": "Пресеты",
+  "settings.uiFontSystem": "Системные шрифты ({count})",
+  "settings.loadingFonts": "Загрузка…",
   "settings.uiTheme": "Тема",
   "settings.uiThemeOption.default": "Классика",
   "settings.uiThemeOption.ocean": "Океанский синий",

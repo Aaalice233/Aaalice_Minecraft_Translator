@@ -256,6 +256,30 @@ export async function generatePackFromJob(
   });
 }
 
+// ── Font API ────────────────────────────────────────────────
+
+/** 浏览器预览模式下使用的常见系统字体后备列表 */
+const FALLBACK_FONTS = [
+  "Arial", "Arial Black", "Calibri", "Cambria", "Candara",
+  "Comic Sans MS", "Consolas", "Courier New", "DengXian",
+  "FangSong", "Georgia", "Helvetica", "Impact", "KaiTi",
+  "Lucida Console", "Lucida Sans Unicode", "Microsoft Sans Serif",
+  "Microsoft YaHei", "Microsoft YaHei UI", "NSimSun",
+  "Noto Sans", "Noto Sans SC", "Noto Serif", "Noto Serif SC",
+  "Palatino Linotype", "Segoe UI", "SimHei", "SimSun",
+  "Source Han Sans", "Source Han Sans SC", "Source Han Serif",
+  "STKaiti", "STSong", "Tahoma", "Times New Roman",
+  "Trebuchet MS", "Verdana", "Wingdings", "Yu Gothic",
+];
+
+/** 获取系统已安装的字体列表 */
+export async function getSystemFonts(): Promise<string[]> {
+  if (!isTauriRuntime()) {
+    return FALLBACK_FONTS;
+  }
+  return tauriInvoke<string[]>("list_fonts");
+}
+
 export async function readLogs(): Promise<ReadLogsResult> {
   if (!isTauriRuntime()) {
     return { entries: [], fileSize: 0 };
