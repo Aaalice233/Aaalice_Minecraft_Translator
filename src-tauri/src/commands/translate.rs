@@ -67,10 +67,6 @@ pub async fn start_translation(
     let (log_tx, log_rx) = mpsc::channel::<TranslateLogEntry>();
     let (entry_progress_tx, entry_progress_rx) = mpsc::channel::<EntryProgress>();
 
-    let progress_tx_work = progress_tx.clone();
-    let log_tx_work = log_tx.clone();
-    let entry_progress_tx_work = entry_progress_tx.clone();
-
     // Progress reader (debounced: emit latest value every ~100ms to avoid flooding the frontend)
     let app_emit = app.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
@@ -137,7 +133,7 @@ pub async fn start_translation(
     };
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        pipeline::run_pipeline(config, &job_id, &*pipeline::GLOBAL_CANCEL, progress_tx_work, log_tx_work, entry_progress_tx_work)
+        pipeline::run_pipeline(config, &job_id, &*pipeline::GLOBAL_CANCEL, progress_tx, log_tx, entry_progress_tx)
     })
     .await
     .map_err(|err| err.to_string())??;
