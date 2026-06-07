@@ -341,7 +341,7 @@ pub fn batch_append_results(
             .map_err(|e| format!("创建目录失败 ({}): {e}", parent.display()))?;
     }
 
-    let mut lines = String::new();
+    let mut lines = String::with_capacity(results.len() * 120);
     for r in results {
         lines.push_str(
             &serde_json::to_string(r)

@@ -67,9 +67,59 @@ function entryProgKey(modName: string, key: string): string {
   return modName + "::" + key;
 }
 
+/** Module-level status helper: reads from EP map or falls back to sourceType. */
+function getEntryStatusFromEP(
+  ep: EntryProgress | undefined,
+  entry: TranslateLogEntry,
+): string {
+  if (ep) return ep.status;
+  switch (entry.sourceType) {
+    case "llm":
+    case "existing":
+      return "completed";
+    case "skipped":
+      return "skip";
+    case "dictionary":
+      return "dictionaryHit";
+    default:
+      return entry.sourceType;
+  }
+}
+
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+const LogRow = React.memo(function LogRow({
+  entry,
+  language,
+  copyEntry: onCopy,
+  entryProgressRef,
+}: {
+  entry: TranslateLogEntry;
+  language: AppLanguage;
+  copyEntry: (entry: TranslateLogEntry) => void;
+  entryProgressRef: { current: Map<string, EntryProgress> };
+}) {
+  const ep = entryProgressRef.current.get(entryProgKey(entry.modName, entry.key));
+  const tgtText = entry.targetText || ep?.targetText || '';
+  const st = getEntryStatusFromEP(ep, entry);
+  const errorMsg = ep?.errorMessage;
+  return (
+    <tr className="copy-log-row" onClick={() => onCopy(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
+      <td>{entry.key}</td>
+      <td title={entry.sourceText}>{entry.sourceText}</td>
+      <td title={tgtText}>{tgtText}</td>
+      <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
+      <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
+      <td>
+        <span className={`badge badge-${st}`} data-tooltip={st === "failed" && errorMsg ? errorMsg : undefined}>
+          {statusLabel(st, language)}
+        </span>
+      </td>
+    </tr>
+  );
+});
 
 function useTauriEvent<T>(
   event: string,
@@ -753,26 +803,15 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                 </tr>
               </thead>
               <tbody>
-                {filteredEntries.map((entry, idx) => {
-                  const tgtText = entry.targetText || getEntryFromRef(entry.modName, entry.key)?.targetText || '';
-                  const st = getEntryStatus(entry);
-                  const ep = getEntryFromRef(entry.modName, entry.key);
-                  const errorMsg = ep?.errorMessage;
-                  return (
-                    <tr key={`${entry.key}-${idx}`} className="copy-log-row" onClick={() => copyEntry(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
-                      <td>{entry.key}</td>
-                      <td title={entry.sourceText}>{entry.sourceText}</td>
-                      <td title={tgtText}>{tgtText}</td>
-                      <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
-                      <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
-                      <td>
-                        <span className={`badge badge-${st}`} data-tooltip={st === "failed" && errorMsg ? errorMsg : undefined}>
-                          {statusLabel(st, language)}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {filteredEntries.map((entry, idx) => (
+                  <LogRow
+                    key={`${entry.key}-${idx}`}
+                    entry={entry}
+                    language={language}
+                    copyEntry={copyEntry}
+                    entryProgressRef={entryProgressRef}
+                  />
+                ))}
               </tbody>
             </table>
           )}
