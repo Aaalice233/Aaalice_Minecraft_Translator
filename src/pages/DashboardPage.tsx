@@ -105,7 +105,7 @@ export function DashboardPage({
 
   const numberLocale = localeByAppLanguage[language];
   const progressPercent = (p: ScanProgressEvent) =>
-    p.total === 0 ? 0 : Math.round((p.current / p.total) * 100);
+    p.total === 0 ? 0 : Math.min(Math.round((p.current / p.total) * 100), 100);
   const stats = useMemo(
     () => [
       { label: t(language, "dashboard.stats.mods"), value: scanSummary?.mods.length ?? 0, hint: t(language, "dashboard.stats.modsHint") },
