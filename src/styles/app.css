@@ -391,6 +391,11 @@ p {
   transform-origin: center;
 }
 
+.spinning {
+  animation: spin 1.2s linear infinite;
+  transform-origin: center;
+}
+
 .ghost-button {
   border: 1px solid #ded8cc;
   background: var(--bg-surface);

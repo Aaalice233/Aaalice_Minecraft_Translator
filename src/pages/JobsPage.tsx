@@ -172,6 +172,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   const [logVersion, setLogVersion] = useState(0);
   const entryProgressMapRef = useRef<Map<string, EntryProgress>>(new Map());
   const [entryProgressVersion, setEntryProgressVersion] = useState(0);
+  const [isRetrying, setIsRetrying] = useState(false);
   const [filterTerm, setFilterTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
@@ -345,6 +346,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       } catch { return; }
     }
 
+    setIsRetrying(true);
+    setTranslateProgress(null);
     setStatus("running");
     try {
       const result = await retryFailedEntries(retryJobId, srcLang, tgtLang);
@@ -355,6 +358,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       if (cancelledRef.current) return;
       setTranslationError(toErrorMessage(err));
       setStatus("failed");
+    } finally {
+      setIsRetrying(false);
     }
   }
 
@@ -550,11 +555,16 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         </div>
       )}
 
-      {status === "completed" && translationResult !== null && (
+      {(status === "completed" || (status === "running" && isRetrying)) && translationResult !== null && (
         <div className="alert success" style={{ marginBottom: 16 }}>
           <CheckCircle size={17} />
           <span>{t(language, "jobs.completed.message", { count: translationResult })}</span>
-          {entryCounts.failed > 0 && (
+          {isRetrying ? (
+            <span className="alert-action-button" style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: 0.7 }}>
+              <RefreshCw size={15} className="spinning" />
+              {t(language, "jobs.retrying")}
+            </span>
+          ) : entryCounts.failed > 0 && (
             <button
               className="alert-action-button"
               onClick={handleRetry}

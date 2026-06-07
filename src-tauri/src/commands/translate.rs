@@ -250,7 +250,7 @@ pub async fn retry_failed_entries(
         })
         .collect();
 
-    // Rewrite the entire JSONL
+    // Rewrite the entire JSONL (atomic: write to tmp then rename)
     let out_path = paths::translate_job_results_path(&root, &job_id);
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)
@@ -262,8 +262,11 @@ pub async fn retry_failed_entries(
             .map_err(|e| format!("序列化失败: {e}"))?);
         content.push('\n');
     }
-    std::fs::write(&out_path, &content)
+    let tmp_path = out_path.with_extension("jsonl.tmp");
+    std::fs::write(&tmp_path, &content)
         .map_err(|e| format!("写入翻译结果失败: {e}"))?;
+    std::fs::rename(&tmp_path, &out_path)
+        .map_err(|e| format!("重命名翻译结果文件失败: {e}"))?;
 
     // 6. Update job state
     if let Ok(Some(mut job)) = manager.load(&job_id) {
@@ -271,7 +274,8 @@ pub async fn retry_failed_entries(
         let new_failed = merged.iter().filter(|r| r.source_type == "failed").count();
         job.completed_entries = new_completed;
         job.failed_entries = new_failed;
-        let _ = manager.save(&job);
+        manager.save(&job)
+            .map_err(|e| format!("保存翻译任务状态失败: {e}"))?;
     }
 
     // Send completion progress
