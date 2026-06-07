@@ -657,14 +657,6 @@ fn llm_phase(
                                 tm.completion_tokens += t.completion_tokens;
                                 tm.total_tokens += t.total_tokens;
                             }
-                            // 如果重试仍然全部限流，on_complete 没有被调用（见 llm.rs RATE_LIMITED 路径），
-                            // 需要在此处手动调用，以免前端条目卡在"翻译中"状态。
-                            let retry_all_rate_limited = retry_results.iter().all(|r| {
-                                !r.success && r.error.as_deref().map_or(false, |e| e.starts_with("RATE_LIMITED"))
-                            });
-                            if retry_all_rate_limited {
-                                on_complete(&retry_results);
-                            }
                             let retry_results: Vec<jobs::TranslationResult> = retry_results.into_iter()
                                 .enumerate().map(|(i, r)| {
                                     let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
