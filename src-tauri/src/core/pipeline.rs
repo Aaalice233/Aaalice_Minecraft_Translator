@@ -76,7 +76,7 @@ impl Default for CancelToken {
 
 // Global default instance — used by backward-compatible free functions.
 use std::sync::LazyLock;
-static GLOBAL_CANCEL: LazyLock<CancelToken> = LazyLock::new(CancelToken::new);
+pub(crate) static GLOBAL_CANCEL: LazyLock<CancelToken> = LazyLock::new(CancelToken::new);
 
 /// Check whether the current translation job should stop.
 pub fn is_translation_cancelled(job_id: &str) -> bool {
@@ -635,7 +635,7 @@ fn llm_phase(
                             }
                         };
 
-                        let (results, token_usage) = client.translate_batch(&entries, Some(&on_complete));
+                        let (results, token_usage) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
                         let token = token_usage.unwrap_or_default();
 
                         let all_rate_limited = results.iter().all(|r| {
@@ -651,7 +651,7 @@ fn llm_phase(
                             };
                             std::thread::sleep(Duration::from_secs(wait_secs));
 
-                            let (retry_results, retry_token) = client.translate_batch(&entries, Some(&on_complete));
+                            let (retry_results, retry_token) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
                             if let Some(t) = retry_token {
                                 let mut tm = token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
                                 tm.prompt_tokens += t.prompt_tokens;
@@ -1187,7 +1187,7 @@ pub fn retry_failed_entries(
             }
         };
 
-        let (results, _token) = client.translate_batch(&entries, Some(&on_complete));
+        let (results, _token) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
 
         for r in results.into_iter() {
             let (restored_source, restored_target, valid) = shield_restore_result(&r, &shield_map);

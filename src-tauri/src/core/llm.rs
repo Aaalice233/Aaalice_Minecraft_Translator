@@ -100,6 +100,7 @@ impl LlmClient {
         &self,
         entries: &[TranslationEntry],
         on_batch_complete: Option<&(dyn Fn(&[TranslateResult]) + Sync)>,
+        cancel_check: Option<&(dyn Fn() -> bool + Sync)>,
     ) -> (Vec<TranslateResult>, Option<super::models::TokenUsage>) {
         if entries.is_empty() {
             tracing::debug!("translate_batch 收到空条目列表，跳过");
@@ -146,6 +147,13 @@ impl LlmClient {
 
         for attempt in 0..max_retries {
             if attempt > 0 {
+                // 取消时跳过重试
+                if let Some(check) = cancel_check {
+                    if check() {
+                        tracing::info!(attempt, "取消翻译，跳过重试");
+                        break;
+                    }
+                }
                 let delay = Duration::from_millis(1000u64 * 2u64.pow(attempt.min(5)));
                 tracing::warn!(
                     attempt,
@@ -154,6 +162,13 @@ impl LlmClient {
                     "LLM 请求重试"
                 );
                 std::thread::sleep(delay);
+                // 睡眠后再次检查取消（避免重试期间被取消）
+                if let Some(check) = cancel_check {
+                    if check() {
+                        tracing::info!(attempt, "取消翻译，跳过重试");
+                        break;
+                    }
+                }
             }
 
             match send_request(&self.http_client, &url, &self.api_key, &body) {

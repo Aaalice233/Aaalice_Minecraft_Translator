@@ -235,6 +235,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         postCompletionRescan.current = false;
         return;
       }
+      // 取消状态下不清空重置（避免覆盖 cancel 状态）
+      if (status === "canceled") return;
       setStatus("idle");
       setTranslationResult(null);
       setTranslationError("");
@@ -261,7 +263,10 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
   }, []);
 
-  useTauriEvent<TranslateProgress>("translate-progress", setTranslateProgress);
+  useTauriEvent<TranslateProgress>("translate-progress", (progress) => {
+    if (cancelledRef.current) return;
+    setTranslateProgress(progress);
+  });
 
   useTauriEvent<TranslateLogEntry[]>("translate-log-entries", (entries) => {
     if (cancelledRef.current) return;
@@ -361,6 +366,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       setTranslationResult(null);
     } catch (err) {
       console.warn("取消翻译失败：", err);
+      setStatus("canceled");
+      setTranslationError("取消失败: " + toErrorMessage(err));
     }
   }
 
