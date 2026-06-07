@@ -626,17 +626,24 @@ fn llm_phase(
                         let on_complete = |results: &[TranslateResult]| {
                             for (i, r) in results.iter().enumerate() {
                                 let (restored_source, restored_target, valid) = shield_restore_result(r, &batch_shield_map);
+                                let original = batch_shield_map.get(r.key.as_str())
+                                    .map(|(orig, _)| orig.as_str()).unwrap_or("");
+                                let is_noop = r.success && valid && restored_source == restored_target
+                                    && !shield::is_placeholder_only(original)
+                                    && original.chars().any(|c| c.is_alphabetic());
                                 let target_text = if !r.success {
                                     r.translated_text.clone()
-                                } else if valid {
+                                } else if valid && !is_noop {
                                     restored_target
                                 } else {
                                     restored_target.clone()
                                 };
-                                let status = if r.success && valid { EntryStatus::Completed }
+                                let status = if is_noop { EntryStatus::Failed }
+                                    else if r.success && valid { EntryStatus::Completed }
                                     else if !r.success { EntryStatus::Failed }
                                     else { EntryStatus::Failed };
-                                let error_message = if !r.success { r.error.clone() }
+                                let error_message = if is_noop { Some("LLM 返回了原文，未进行翻译".to_string()) }
+                                    else if !r.success { r.error.clone() }
                                     else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
                                     else { None };
                                 let entry_mod_name = meta.get(i).map(|&(_, _, f)| f).unwrap_or("");
@@ -714,7 +721,14 @@ fn llm_phase(
                         if !all_rate_limited {
                             for (i, r) in results.into_iter().enumerate() {
                                 let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
-                                let (s_text, t_text, s_type) = if r.success {
+                                let original = batch_shield_map.get(r.key.as_str())
+                                    .map(|(orig, _)| orig.as_str()).unwrap_or("");
+                                let is_noop = r.success && valid && restored_source == restored_target
+                                    && !shield::is_placeholder_only(original)
+                                    && original.chars().any(|c| c.is_alphabetic());
+                                let (s_text, t_text, s_type) = if is_noop {
+                                    (restored_source.clone(), restored_target.clone(), "failed".to_string())
+                                } else if r.success {
                                     (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
                                 } else {
                                     (restored_source, r.translated_text, "failed".to_string())
@@ -817,6 +831,23 @@ fn llm_phase(
     logging::append_main(format!(
         "LLM 翻译阶段完成: 成功 {llm_count} 条目, 失败 {failed_count} 条目",
     )).ok();
+
+    // Flush final Completed events for all LLM results to ensure no entry
+    // is left stuck in Translating/Pending state on the frontend.
+    if let Ok(results) = jobs::JobManager::new(config.root.clone()).load_results(job_id) {
+        for r in &results {
+            if r.source_type == "llm" {
+                let _ = entry_progress_tx.send(EntryProgress {
+                    key: r.key.clone(),
+                    mod_name: r.mod_name.clone(),
+                    source_text: r.source_text.clone(),
+                    target_text: Some(r.target_text.clone()),
+                    status: EntryStatus::Completed,
+                    error_message: None,
+                });
+            }
+        }
+    }
 
     Ok(LlmPhaseResult {
         accumulated_token_usage: token_usage_mutex.into_inner().unwrap_or_else(|e| e.into_inner()),
@@ -926,10 +957,22 @@ impl Phase for LlmPhase {
             llm_entries
         } else {
             let before = llm_entries.len();
-            let filtered = llm_entries
-                .into_iter()
-                .filter(|(entry, _)| !completed_keys.contains(&entry.key))
-                .collect::<Vec<_>>();
+            let mut filtered = Vec::with_capacity(llm_entries.len());
+            for (entry, file_name) in llm_entries {
+                if completed_keys.contains(&entry.key) {
+                    // Send Completed event so the frontend doesn't see a stale Pending
+                    let _ = ctx.entry_progress_tx.send(EntryProgress {
+                        key: entry.key.clone(),
+                        mod_name: file_name.clone(),
+                        source_text: entry.text.clone(),
+                        target_text: None,
+                        status: EntryStatus::Completed,
+                        error_message: None,
+                    });
+                } else {
+                    filtered.push((entry, file_name));
+                }
+            }
             let skipped = before - filtered.len();
             if skipped > 0 {
                 let _ = logging::append_main(format!(
