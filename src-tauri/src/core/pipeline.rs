@@ -626,26 +626,16 @@ fn llm_phase(
                         let on_complete = |results: &[TranslateResult]| {
                             for (i, r) in results.iter().enumerate() {
                                 let (restored_source, restored_target, valid) = shield_restore_result(r, &batch_shield_map);
-                                let original = batch_shield_map.get(r.key.as_str())
-                                    .map(|(orig, _)| orig.as_str()).unwrap_or("");
-                                // Only flag multi-word phrases (contain spaces). Single words like
-                                // URL, Lootr, EFLN or hyphenated names are proper nouns LLM correctly
-                                // left untranslated.
-                                let is_noop = r.success && valid && restored_source == restored_target
-                                    && !shield::is_placeholder_only(original)
-                                    && original.contains(' ')
-                                    && original.chars().any(|c| c.is_alphabetic());
                                 let target_text = if !r.success {
                                     r.translated_text.clone()
-                                } else if valid && !is_noop {
+                                } else if valid {
                                     restored_target
                                 } else {
                                     restored_target.clone()
                                 };
-                                let ok = r.success && valid && !is_noop;
+                                let ok = r.success && valid;
                                 let status = if ok { EntryStatus::Completed } else { EntryStatus::Failed };
-                                let error_message = if is_noop { Some("LLM 返回了原文，未进行翻译".to_string()) }
-                                    else if !r.success { r.error.clone() }
+                                let error_message = if !r.success { r.error.clone() }
                                     else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
                                     else { None };
                                 let entry_mod_name = meta.get(i).map(|&(_, _, f)| f).unwrap_or("");
@@ -721,18 +711,11 @@ fn llm_phase(
                         if !all_rate_limited {
                             for (i, r) in results.into_iter().enumerate() {
                                 let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
-                                let original = batch_shield_map.get(r.key.as_str())
-                                    .map(|(orig, _)| orig.as_str()).unwrap_or("");
-                                // Same multi-word heuristic as on_complete above.
-                                let is_noop = r.success && valid && restored_source == restored_target
-                                    && !shield::is_placeholder_only(original)
-                                    && original.contains(' ')
-                                    && original.chars().any(|c| c.is_alphabetic());
-                                let ok = r.success && valid && !is_noop;
+                                let ok = r.success && valid;
                                 let (s_text, t_text, s_type) = if ok {
                                     (restored_source, restored_target, "llm".to_string())
                                 } else {
-                                    (restored_source, if r.success { restored_target } else { r.translated_text }, "failed".to_string())
+                                    (restored_source, r.translated_text.clone(), "failed".to_string())
                                 };
                                 let &(_k, mid, fname) = &meta[i];
                                 let entry = jobs::TranslationResult {
