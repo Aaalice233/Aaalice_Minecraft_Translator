@@ -96,13 +96,13 @@ const LogRow = React.memo(function LogRow({
   language,
   copyEntry: onCopy,
   entryProgressRef,
-  _version,
+  version,
 }: {
   entry: TranslateLogEntry;
   language: AppLanguage;
   copyEntry: (entry: TranslateLogEntry) => void;
   entryProgressRef: { current: Map<string, EntryProgress> };
-  _version: number;
+  version: number;
 }) {
   const ep = entryProgressRef.current.get(entryProgKey(entry.modName, entry.key));
   const tgtText = entry.targetText || ep?.targetText || '';
@@ -168,7 +168,6 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   const isRunning = status === "running";
   const [translationResult, setTranslationResult] = useState<number | null>(state.translationResult);
   const [translationError, setTranslationError] = useState<string>(state.translationError);
-  // Append-only log buffer: ref avoids O(n) spread-on-update, version counter triggers re-render.
   const logRef = useRef<TranslateLogEntry[]>([]);
   const [logVersion, setLogVersion] = useState(0);
   const entryProgressMapRef = useRef<Map<string, EntryProgress>>(new Map());
@@ -455,11 +454,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     return result;
   }, [logVersion, filterTerm, filters, sortConfig, entryProgressVersion]);
 
-  const entryProgressRef = entryProgressMapRef;
-
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
-      const tgt = entry.targetText || entryProgressRef.current.get(entryProgKey(entry.modName, entry.key))?.targetText || "";
+      const tgt = entry.targetText || entryProgressMapRef.current.get(entryProgKey(entry.modName, entry.key))?.targetText || "";
       await navigator.clipboard.writeText(
         `${csvQuote(entry.key)},${csvQuote(entry.sourceText)},${csvQuote(tgt)},${csvQuote(entry.modName)}`,
       );
@@ -828,8 +825,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                     entry={entry}
                     language={language}
                     copyEntry={copyEntry}
-                    entryProgressRef={entryProgressRef}
-                    _version={entryProgressVersion}
+                    entryProgressRef={entryProgressMapRef}
+                    version={entryProgressVersion}
                   />
                 );
               }}
