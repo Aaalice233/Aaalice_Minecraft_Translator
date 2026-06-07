@@ -109,7 +109,7 @@ const LogRow = React.memo(function LogRow({
   const st = getEntryStatusFromEP(ep, entry);
   const errorMsg = ep?.errorMessage;
   return (
-    <tr className="copy-log-row" onClick={() => onCopy(entry)} title={t(language, "jobs.logPanel.copyEntry")}>
+    <>
       <td>{entry.key}</td>
       <td title={entry.sourceText}>{entry.sourceText}</td>
       <td title={tgtText}>{tgtText}</td>
@@ -120,7 +120,7 @@ const LogRow = React.memo(function LogRow({
           {statusLabel(st, language)}
         </span>
       </td>
-    </tr>
+    </>
   );
 });
 
@@ -737,6 +737,20 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                     {children}
                   </table>
                 ),
+                TableRow: ({ children, ...rest }) => {
+                  const index = (rest as any)["data-index"];
+                  const entry = index !== undefined ? filteredEntries[index] : null;
+                  return (
+                    <tr
+                      className="copy-log-row"
+                      onClick={() => entry && copyEntry(entry)}
+                      title={t(language, "jobs.logPanel.copyEntry")}
+                      {...rest}
+                    >
+                      {children}
+                    </tr>
+                  );
+                },
               }}
               fixedHeaderContent={() => (
                 <tr>
@@ -843,7 +857,6 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                 const entry = filteredEntries[index];
                 return (
                   <LogRow
-                    key={`${entry.key}-${index}`}
                     entry={entry}
                     language={language}
                     copyEntry={copyEntry}
