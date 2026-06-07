@@ -326,7 +326,7 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
         r#"请将以下 Minecraft 模组文本从 {source_label} ({source_lang}) 翻译为 {target_label} ({target_lang})。
 
 {mod_context}规则：
-1. 保留所有格式代码（%s、%d、%1$s、%2$d、§a、§l 等）
+1. 输入文本中的格式代码已被替换为 __SHIELD_0__、__SHIELD_1__ 等标记，你必须**完全保留**这些标记的原样（包括数字后缀）
 2. 保留所有占位符（{{player}}、{{0}}、<> 等）
 3. 保持 JSON 结构不变
 4. 只返回 JSON 数组，格式为 [{{"key": "...", "text": "翻译文本"}}, ...]
