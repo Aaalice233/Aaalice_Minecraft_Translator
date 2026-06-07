@@ -226,7 +226,6 @@ pub async fn retry_failed_entries(
         },
     }).ok_or("请先配置 LLM 设置")?;
 
-    // 4. Run retry pipeline
     let retried = pipeline::retry_failed_entries(
         &root, &job_id, &source_language, &target_language, &llm,
         &*pipeline::GLOBAL_CANCEL, &progress_tx, &entry_progress_tx,
@@ -235,11 +234,9 @@ pub async fn retry_failed_entries(
     let retried_success = retried.iter().filter(|r| r.source_type == "llm").count();
     let retried_failed = retried.iter().filter(|r| r.source_type == "failed").count();
 
-    // 5. Merge retried results back into the original JSONL
     let merged: Vec<jobs::TranslationResult> = all_results.into_iter()
         .map(|r| {
             if r.source_type == "failed" {
-                // Replace with retried version if available
                 retried.iter()
                     .find(|nr| nr.key == r.key && nr.mod_name == r.mod_name)
                     .cloned()
@@ -268,10 +265,9 @@ pub async fn retry_failed_entries(
     std::fs::rename(&tmp_path, &out_path)
         .map_err(|e| format!("重命名翻译结果文件失败: {e}"))?;
 
-    // 6. Update job state
     if let Ok(Some(mut job)) = manager.load(&job_id) {
         let new_completed = merged.iter().filter(|r| r.source_type != "failed").count();
-        let new_failed = merged.iter().filter(|r| r.source_type == "failed").count();
+        let new_failed = merged.len() - new_completed;
         job.completed_entries = new_completed;
         job.failed_entries = new_failed;
         manager.save(&job)

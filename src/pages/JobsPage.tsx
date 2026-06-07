@@ -560,7 +560,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
           <CheckCircle size={17} />
           <span>{t(language, "jobs.completed.message", { count: translationResult })}</span>
           {isRetrying ? (
-            <span className="alert-action-button" style={{ display: "inline-flex", alignItems: "center", gap: 6, opacity: 0.7 }}>
+            <span className="alert-action-button retrying-indicator">
               <RefreshCw size={15} className="spinning" />
               {t(language, "jobs.retrying")}
             </span>
