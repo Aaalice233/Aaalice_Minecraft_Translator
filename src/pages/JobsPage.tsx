@@ -716,6 +716,21 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               followOutput
               style={{ height: "100%" }}
               totalCount={filteredEntries.length}
+              components={{
+                Table: ({ children, ...rest }) => (
+                  <table {...rest}>
+                    <colgroup>
+                      <col style={{ width: "14%" }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "16%" }} />
+                      <col style={{ width: "10%" }} />
+                      <col style={{ width: "10%" }} />
+                    </colgroup>
+                    {children}
+                  </table>
+                ),
+              }}
               fixedHeaderContent={() => (
                 <tr>
                   {([
