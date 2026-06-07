@@ -158,7 +158,6 @@ export function DashboardPage({
     const mods = scanSummary?.mods ?? [];
     let result = mods;
 
-    // Apply filters
     const activeFilterKeys = Object.keys(filters);
     if (activeFilterKeys.length > 0) {
       result = result.filter((mod) =>
@@ -189,7 +188,6 @@ export function DashboardPage({
       );
     }
 
-    // Apply sorting
     if (sortConfig) {
       result = [...result].sort((a, b) => {
         const dir = sortConfig.direction === "asc" ? 1 : -1;
@@ -217,7 +215,6 @@ export function DashboardPage({
         return cmp * dir;
       });
     }
-    // if sortConfig is null, keep original backend sort (fileName asc)
 
     return result;
   }, [scanSummary?.mods, sortConfig, filters]);
@@ -629,7 +626,7 @@ export function DashboardPage({
                                 <span>{col.label}</span>
                                 <button
                                   className="filter-popover-clear"
-                                  onClick={() => { handleFilterChange(col.key, null); }}
+                                  onClick={() => handleFilterChange(col.key, null)}
                                   type="button"
                                   data-tooltip={t(language, "tooltip.clearFilter")}
                                 >
