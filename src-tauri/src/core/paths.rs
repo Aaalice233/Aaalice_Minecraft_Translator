@@ -1,21 +1,15 @@
 use std::{io, path::PathBuf};
 
 pub fn runtime_root() -> io::Result<PathBuf> {
-    // Use the executable's location to determine runtime root.
-    // During development (cargo): .../src-tauri/target/{debug,release}/exe
-    // For installed app:           install_dir/exe
     let exe = std::env::current_exe().map_err(|e| {
         tracing::error!("Failed to resolve executable path: {e}");
-        io::Error::new(
-            io::ErrorKind::Other,
-            format!("无法获取可执行文件路径: {e}"),
-        )
+        io::Error::new(io::ErrorKind::Other, format!("无法获取可执行文件路径: {e}"))
     })?;
 
     if let Some(dir) = exe.parent() {
         let dir_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
         if dir_name == "debug" || dir_name == "release" {
-            // Development mode: exe is in .../src-tauri/target/{debug,release}/
+            // Development: exe in .../src-tauri/target/{debug,release}/ — walk up to project root
             let mut root = dir.to_path_buf();
             for _ in 0..3 {
                 if let Some(parent) = root.parent() {
@@ -25,7 +19,7 @@ pub fn runtime_root() -> io::Result<PathBuf> {
             tracing::trace!(resolved = %root.display(), mode = "development");
             return Ok(root);
         }
-        // Installed mode: use exe's own directory
+        // Installed: use exe's own directory
         tracing::trace!(resolved = %dir.display(), mode = "installed");
         return Ok(dir.to_path_buf());
     }
@@ -67,13 +61,20 @@ pub fn jobs_dir(root: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// Path to a translation job's lightweight state file (stats only).
+///
+/// NOTE: `job_id` already contains the "translate_" prefix from `new_job_id("translate")`.
+/// This function no longer adds a redundant prefix, so the file name is `translate_xxx.json`.
+/// See also `translate_job_results_path`.
 pub fn translate_job_state_path(root: &std::path::Path, job_id: &str) -> std::path::PathBuf {
-    root.join("data").join("jobs").join(format!("translate_{job_id}.json"))
+    root.join("data").join("jobs").join(format!("{job_id}.json"))
 }
 
 /// Path to a translation job's results file (JSONL, one result per line).
+///
+/// NOTE: `job_id` already contains the "translate_" prefix from `new_job_id("translate")`.
+/// This function no longer adds a redundant prefix, so the file name is `translate_xxx_results.jsonl`.
 pub fn translate_job_results_path(root: &std::path::Path, job_id: &str) -> std::path::PathBuf {
-    root.join("data").join("jobs").join(format!("translate_{job_id}_results.jsonl"))
+    root.join("data").join("jobs").join(format!("{job_id}_results.jsonl"))
 }
 
 /// Delete all scan_*.json cache files in the jobs directory.

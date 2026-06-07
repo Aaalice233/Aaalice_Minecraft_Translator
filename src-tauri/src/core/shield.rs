@@ -268,19 +268,30 @@ pub fn validate_translation_results(
         // Check placeholder preservation
         let source_shield = protect(&entry.source_text);
         let valid = validate(&source_shield.tokens, &result.target_text);
-        if !valid {
-            report.failed += 1;
-            report.placeholder_issues.push(models::ValidationIssue {
-                key: entry.key.clone(),
-                mod_id: entry.mod_id.clone(),
-                source_text: entry.source_text.clone(),
-                target_text: result.target_text.clone(),
-                issue_type: "placeholder_missing".to_string(),
-                description: "翻译结果缺少占位符，可能被 LLM 破坏".to_string(),
-                severity: "error".to_string(),
-            });
-        } else {
+        if valid {
             report.passed += 1;
+            continue;
+        }
+
+        let is_retryable = result.source_type == "llm" || result.source_type == "failed";
+        let issue = models::ValidationIssue {
+            key: entry.key.clone(),
+            mod_id: entry.mod_id.clone(),
+            source_text: entry.source_text.clone(),
+            target_text: result.target_text.clone(),
+            issue_type: "placeholder_missing".to_string(),
+            description: if is_retryable {
+                "翻译结果缺少占位符，可能被 LLM 破坏".to_string()
+            } else {
+                "词典条目译文缺少占位符，请检查词典".to_string()
+            },
+            severity: if is_retryable { "error" } else { "warning" }.to_string(),
+        };
+        if is_retryable {
+            report.failed += 1;
+            report.placeholder_issues.push(issue);
+        } else {
+            report.format_issues.push(issue);
         }
     }
 

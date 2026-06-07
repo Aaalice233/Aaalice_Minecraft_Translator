@@ -177,16 +177,20 @@ impl JobManager {
     // ── Load ─────────────────────────────────────────────────────────
 
     /// Load a specific translation job by its job_id.
+    /// Tries the canonical path first, then falls back to the legacy
+    /// double-prefix path for files created before prefix normalization.
     pub fn load(&self, job_id: &str) -> Result<Option<TranslationJobState>, String> {
         let path = paths::translate_job_state_path(&self.root, job_id);
-        if !path.is_file() {
-            return Ok(None);
+        if path.is_file() {
+            return read_job_file(&path);
         }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("读取 job 状态失败 ({}): {e}", path.display()))?;
-        serde_json::from_str(&content)
-            .map(Some)
-            .map_err(|e| format!("解析 job 状态失败: {e}"))
+        // Backward compatibility: try legacy double-prefix path
+        let legacy = self.root.join("data").join("jobs")
+            .join(format!("translate_{job_id}.json"));
+        if legacy.is_file() {
+            return read_job_file(&legacy);
+        }
+        Ok(None)
     }
 
     /// Find the most recent translation job on disk (by mtime).
@@ -289,27 +293,20 @@ impl JobManager {
     }
 
     /// Read all results for a job from its .jsonl file.
-    ///
-    /// For large jobs with 50k+ entries this reads line-by-line; for the
-    /// current UI we load everything into memory (typical job < 10k lines).
-    /// If memory becomes a concern, switch to a streaming iterator.
+    /// Tries the canonical path first, then falls back to the legacy
+    /// double-prefix path for files created before the prefix fix.
     pub fn load_results(&self, job_id: &str) -> Result<Vec<TranslationResult>, String> {
         let path = paths::translate_job_results_path(&self.root, job_id);
-        if !path.is_file() {
-            return Ok(Vec::new());
+        if path.is_file() {
+            return parse_results_file(&path);
         }
-
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| format!("读取翻译结果失败 ({}): {e}", path.display()))?;
-
-        content
-            .lines()
-            .filter(|l| !l.trim().is_empty())
-            .map(|line| {
-                serde_json::from_str::<TranslationResult>(line)
-                    .map_err(|e| format!("解析翻译结果行失败: {e}"))
-            })
-            .collect()
+        // Backward compatibility: try legacy double-prefix path
+        let legacy = self.root.join("data").join("jobs")
+            .join(format!("translate_{job_id}_results.jsonl"));
+        if legacy.is_file() {
+            return parse_results_file(&legacy);
+        }
+        Ok(Vec::new())
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
@@ -327,6 +324,29 @@ impl JobManager {
         serde_json::from_str(&content)
             .map_err(|e| format!("解析扫描结果失败: {e}"))
     }
+}
+
+// ── Internal helpers ────────────────────────────────────────────────
+
+fn read_job_file(path: &std::path::Path) -> Result<Option<TranslationJobState>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("读取 job 状态失败 ({}): {e}", path.display()))?;
+    serde_json::from_str(&content)
+        .map(Some)
+        .map_err(|e| format!("解析 job 状态失败: {e}"))
+}
+
+fn parse_results_file(path: &std::path::Path) -> Result<Vec<TranslationResult>, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("读取翻译结果失败 ({}): {e}", path.display()))?;
+    content
+        .lines()
+        .filter(|l| !l.trim().is_empty())
+        .map(|line| {
+            serde_json::from_str::<TranslationResult>(line)
+                .map_err(|e| format!("解析翻译结果行失败: {e}"))
+        })
+        .collect()
 }
 
 /// Append multiple translation results to a job's .jsonl file in one IO operation.
@@ -364,33 +384,21 @@ pub fn batch_append_results(
 
 // ── Free functions ──────────────────────────────────────────────────
 
-/// RFC 3339-ish timestamp string.
+/// RFC 3339-ish timestamp string (e.g. "2026-06-05T12:34:56+08:00").
 pub fn now_rfc3339() -> String {
-    // Simple local time without pulling in chrono.
-    // Format: "2026-06-05T12:34:56+08:00"
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();
     let secs = now.as_secs();
-
-    // Days since epoch
     let days = secs / 86400;
     let time_secs = secs % 86400;
     let hours = time_secs / 3600;
     let minutes = (time_secs % 3600) / 60;
     let seconds = time_secs % 60;
-
-    // Date from days since epoch (Gruz's algorithm)
     let (year, month, day) = civil_from_days(days as i64);
-
-    // Determine local UTC offset (Windows: use fixed +08:00 as heuristic)
-    // On Windows we default to +08:00 (China); the format is informational,
-    // not used for scheduling.
-    let tz = "+08:00";
-
     format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}{}",
-        year, month, day, hours, minutes, seconds, tz
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}+08:00",
+        year, month, day, hours, minutes, seconds
     )
 }
 

@@ -380,6 +380,8 @@ fn dictionary_phase(
 
     if !batch_results.is_empty() {
         let _ = jobs::batch_append_results(&config.root, job_id, &batch_results);
+        // Sync checkpoint so crash recovery finds these entries
+        save_job_progress(&config.root, job_id, non_llm_count, 0, jobs::TranslationStatus::Running);
     }
 
     Ok(DictionaryPhaseResult { processed, non_llm_count, llm_only_entries })
@@ -765,6 +767,10 @@ fn llm_phase(
                     if !result_buf.is_empty() {
                         let _lock = write_lock.lock().unwrap_or_else(|e| e.into_inner());
                         let _ = jobs::batch_append_results(&config.root, job_id, &result_buf);
+                        // Update checkpoint after final batch so crash doesn't orphan it
+                        let final_completed = global_llm_count.load(Ordering::Relaxed);
+                        let final_failed = global_failed_count.load(Ordering::Relaxed);
+                        save_job_progress(&config.root, job_id, final_completed, final_failed, jobs::TranslationStatus::Running);
                     }
                 }));
 
@@ -1018,15 +1024,23 @@ fn load_completed_keys(root: &std::path::Path, job_id: &str) -> std::collections
 /// Persist job progress counters to disk. Called in both completion and cancellation paths.
 fn save_job_progress(root: &std::path::Path, job_id: &str, completed: usize, failed: usize, status: jobs::TranslationStatus) {
     let manager = jobs::JobManager::new(root.to_path_buf());
-    if let Ok(Some(mut job)) = manager.load(job_id) {
-        job.completed_entries = completed;
-        job.failed_entries = failed;
-        if matches!(status, jobs::TranslationStatus::Completed) {
-            job.completed_at = Some(jobs::now_rfc3339());
+    match manager.load(job_id) {
+        Ok(Some(mut job)) => {
+            job.completed_entries = completed;
+            job.failed_entries = failed;
+            if matches!(status, jobs::TranslationStatus::Completed) {
+                job.completed_at = Some(jobs::now_rfc3339());
+            }
+            job.status = status;
+            if let Err(err) = manager.save(&job) {
+                let _ = logging::append_job(job_id, format!("保存 job 状态失败: {err}"));
+            }
         }
-        job.status = status;
-        if let Err(err) = manager.save(&job) {
-            let _ = logging::append_job(job_id, format!("保存 job 状态失败: {err}"));
+        Ok(None) => {
+            let _ = logging::append_job(job_id, format!("保存进度时未找到 job 状态文件 (可能已清理)，跳过"));
+        }
+        Err(err) => {
+            let _ = logging::append_job(job_id, format!("保存进度时加载 job 状态失败: {err}"));
         }
     }
 }

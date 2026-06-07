@@ -789,7 +789,7 @@ fn parse_json_entries(
             }
             warnings.push(warning(
                 "json_parse_failed",
-                &format!("解析 JSON 语言文件失败 {source_file}: {err}"),
+                &format!("跳过无法解析的 JSON 语言文件 {source_file}: {err}"),
                 jar_path,
             ));
             ParsedLanguageFile::failed()
