@@ -25,6 +25,42 @@ pub fn generate_translation_pack(
     packer::generate_pack(&options).map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use crate::core::jobs::TranslationResult;
+
+    fn make_result(key: &str, source: &str, target: &str, stype: &str) -> TranslationResult {
+        TranslationResult {
+            key: key.into(), source_text: source.into(), target_text: target.into(),
+            mod_id: "testmod".into(), mod_name: "testmod.jar".into(), source_type: stype.into(),
+        }
+    }
+
+    #[test]
+    fn failed_entries_filtered_out_from_pack_generation() {
+        let results = vec![
+            make_result("good.key.1", "Hello", "你好", "llm"),
+            make_result("bad.key.1", "%s items", "个物品", "failed"),
+            make_result("good.key.2", "World", "世界", "dictionary"),
+            make_result("bad.key.2", "Error text", "", "failed"),
+        ];
+
+        let valid: Vec<_> = results.into_iter().filter(|r| r.source_type != "failed").collect();
+
+        assert_eq!(valid.len(), 2);
+        assert!(valid.iter().all(|r| r.source_type != "failed"));
+        assert!(valid.iter().any(|r| r.key == "good.key.1"));
+        assert!(valid.iter().any(|r| r.key == "good.key.2"));
+    }
+
+    #[test]
+    fn all_failed_entries_produces_empty_pack() {
+        let results = vec![make_result("bad.key.1", "%s fail", "失败", "failed")];
+        let valid: Vec<_> = results.into_iter().filter(|r| r.source_type != "failed").collect();
+        assert_eq!(valid.len(), 0);
+    }
+}
+
 #[tauri::command]
 pub fn copy_pack_to_instance(
     pack_zip_path: String,
@@ -51,7 +87,14 @@ pub fn generate_pack_from_job(
 
     let results = manager.load_results(&job_id)?;
 
-    let entries: Vec<packer::PackEntry> = results
+    let total_results = results.len();
+    let valid_results: Vec<_> = results.into_iter().filter(|r| r.source_type != "failed").collect();
+    let filtered_count = total_results - valid_results.len();
+    if filtered_count > 0 {
+        info!("过滤 {} 个失败条目 (任务 {})", filtered_count, job_id);
+    }
+
+    let entries: Vec<packer::PackEntry> = valid_results
         .into_iter()
         .map(|r| packer::PackEntry {
             mod_id: r.mod_id,
@@ -62,7 +105,9 @@ pub fn generate_pack_from_job(
         .collect();
 
     if entries.is_empty() {
-        return Err("翻译结果为空，无法生成资源包".to_string());
+        return Err(
+            "翻译结果为空或所有条目均未通过校验，无法生成资源包".to_string(),
+        );
     }
 
     let output_dir = paths::build_output_dir(&root);

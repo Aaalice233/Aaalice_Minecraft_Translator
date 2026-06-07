@@ -1,3 +1,10 @@
+// ═══════════════════════════════════════════════════════════
+// ⚠️ TYPE SYNC: These interfaces must stay in sync with
+// src-tauri/src/core/models.rs (Rust side). Both use
+// #[serde(rename_all = "camelCase")] for field naming.
+// When adding/changing a field here, update models.rs too.
+// ═══════════════════════════════════════════════════════════
+
 export interface Settings {
   appLanguage: AppLanguage;
   sourceLanguage: string;
@@ -293,6 +300,16 @@ export interface PackResult {
   entryCount: number;
   conflicts: ConflictInfo[];
 }
+
+/** Structured error from the translation pipeline (mirrors Rust models::PipelineError). */
+export type PipelineErrorType =
+  | { type: "config"; message: string }
+  | { type: "io"; message: string }
+  | { type: "llm"; message: string }
+  | { type: "cancelled" }
+  | { type: "not_found"; message: string }
+  | { type: "internal"; message: string }
+  | { type: "dictionary"; message: string };
 
 export interface CopyResult {
   success: boolean;

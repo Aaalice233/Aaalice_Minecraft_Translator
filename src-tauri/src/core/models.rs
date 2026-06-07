@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::AtomicU64;
 
+// ═══════════════════════════════════════════════════════════
+// ⚠️ TYPE SYNC: Serialized structs here must stay in sync
+// with src/types.ts (TypeScript side). Both use
+// #[serde(rename_all = "camelCase")] to produce camelCase
+// JSON field names matching the TypeScript interfaces.
+// When adding/changing a field here, update types.ts too.
+// ═══════════════════════════════════════════════════════════
+
 /// 默认 Minecraft 模组翻译系统提示词
 pub const DEFAULT_SYSTEM_PROMPT: &str = "你是一个专业 Minecraft 模组汉化翻译专家，精通中英文游戏术语和模组翻译规范。\n\
 \n\
@@ -407,6 +415,53 @@ pub struct ValidationReport {
     pub placeholder_issues: Vec<ValidationIssue>,
     pub format_issues: Vec<ValidationIssue>,
 }
+
+/// Structured error type for the translation pipeline.
+///
+/// Replaces bare `Result<_, String>` in pipeline phases with a categorised
+/// error enum so the frontend can display different error types differently
+/// (e.g. configuration errors vs IO errors vs LLM errors).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "type", content = "message", rename_all = "camelCase")]
+pub enum PipelineError {
+    /// Invalid or missing configuration (e.g. LLM not configured).
+    #[serde(rename = "config")]
+    Config(String),
+    /// File system or I/O error (scan, read, write).
+    #[serde(rename = "io")]
+    Io(String),
+    /// LLM API call failed (network, auth, rate limit).
+    #[serde(rename = "llm")]
+    Llm(String),
+    /// User cancelled the operation.
+    #[serde(rename = "cancelled")]
+    Cancelled,
+    /// Job or resource not found.
+    #[serde(rename = "not_found")]
+    NotFound(String),
+    /// Internal pipeline logic error.
+    #[serde(rename = "internal")]
+    Internal(String),
+    /// Dictionary error.
+    #[serde(rename = "dictionary")]
+    Dictionary(String),
+}
+
+impl std::fmt::Display for PipelineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PipelineError::Config(msg) => write!(f, "配置错误: {msg}"),
+            PipelineError::Io(msg) => write!(f, "IO 错误: {msg}"),
+            PipelineError::Llm(msg) => write!(f, "LLM 错误: {msg}"),
+            PipelineError::Cancelled => write!(f, "已取消"),
+            PipelineError::NotFound(msg) => write!(f, "未找到: {msg}"),
+            PipelineError::Internal(msg) => write!(f, "内部错误: {msg}"),
+            PipelineError::Dictionary(msg) => write!(f, "词典错误: {msg}"),
+        }
+    }
+}
+
+impl std::error::Error for PipelineError {}
 
 pub static TOTAL_TOKEN_USAGE_PROMPT: AtomicU64 = AtomicU64::new(0);
 pub static TOTAL_TOKEN_USAGE_COMPLETION: AtomicU64 = AtomicU64::new(0);

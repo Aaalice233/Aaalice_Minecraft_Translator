@@ -25,6 +25,7 @@ import { applyFont, SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
 import { getSettings } from "../api/tauri";
 import { AppProvider, useAppState } from "./AppContext";
+import { useAppStore } from "../stores/appStore";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
 import type { ScanSummary, Settings } from "../types";
@@ -76,12 +77,41 @@ function AppShell() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
   const [loadError, setLoadError] = useState("");
   const { state, dispatch } = useAppState();
+  // Zustand store (runs alongside AppContext during migration)
+  const store = useAppStore();
   const { settings, scanSummary, navStates } = state;
   const language = normalizeAppLanguage(settings?.appLanguage);
 
+  // Sync AppContext → Zustand store on state changes
+  // This allows pages to gradually migrate to direct store access.
+  const syncedDispatch: typeof dispatch = (action) => {
+    dispatch(action);
+    // Mirror to Zustand store
+    switch (action.type) {
+      case "SET_SETTINGS":
+        store.setSettings(action.payload);
+        break;
+      case "SET_SCAN_SUMMARY":
+        store.setScanSummary(action.payload);
+        break;
+      case "SET_NAV_STATE":
+        store.setNavState(action.payload.key, action.payload.status);
+        break;
+      case "SET_TRANSLATION_STATUS":
+        store.setTranslationStatus(action.payload.status, action.payload.result, action.payload.error);
+        break;
+      case "SET_TRANSLATION_JOB_ID":
+        store.setTranslationJobId(action.payload);
+        break;
+      case "SET_PACKAGES_JOB_ID":
+        store.setPackagesJobId(action.payload);
+        break;
+    }
+  };
+
   useEffect(() => {
     getSettings()
-      .then((s) => dispatch({ type: "SET_SETTINGS", payload: s }))
+      .then((s) => syncedDispatch({ type: "SET_SETTINGS", payload: s }))
       .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
   }, [dispatch]);
 
@@ -149,18 +179,22 @@ function AppShell() {
     document.addEventListener("mouseup", handleMouseUp);
   }, [sidebarWidth]);
 
-  const dbBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: b ? "busy" : "idle" } }), [dispatch]);
-  const dbCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: c ? "completed" : "idle" } }), [dispatch]);
-  const jobsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: b ? "busy" : "idle" } }), [dispatch]);
-  const jobsCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: c ? "completed" : "idle" } }), [dispatch]);
-  const packsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "packages", status: b ? "busy" : "idle" } }), [dispatch]);
+  const setNavBusy = useCallback((key: PageKey, busy: boolean) =>
+    syncedDispatch({ type: "SET_NAV_STATE", payload: { key, status: busy ? "busy" : "idle" } }), [syncedDispatch]);
+  const setNavCompleted = useCallback((key: PageKey, done: boolean) =>
+    syncedDispatch({ type: "SET_NAV_STATE", payload: { key, status: done ? "completed" : "idle" } }), [syncedDispatch]);
+  const dbBusy = useCallback((b: boolean) => setNavBusy("dashboard", b), [setNavBusy]);
+  const dbCompleted = useCallback((c: boolean) => setNavCompleted("dashboard", c), [setNavCompleted]);
+  const jobsBusy = useCallback((b: boolean) => setNavBusy("jobs", b), [setNavBusy]);
+  const jobsCompleted = useCallback((c: boolean) => setNavCompleted("jobs", c), [setNavCompleted]);
+  const packsBusy = useCallback((b: boolean) => setNavBusy("packages", b), [setNavBusy]);
   const handleSettingsChange = useCallback(
-    (s: Settings) => dispatch({ type: "SET_SETTINGS", payload: s }),
-    [dispatch],
+    (s: Settings) => syncedDispatch({ type: "SET_SETTINGS", payload: s }),
+    [syncedDispatch],
   );
   const handleScanSummaryChange = useCallback(
-    (s: ScanSummary | null) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s }),
-    [dispatch],
+    (s: ScanSummary | null) => syncedDispatch({ type: "SET_SCAN_SUMMARY", payload: s }),
+    [syncedDispatch],
   );
 
   const renderPage = useCallback(

@@ -4,16 +4,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// Sanitize a filename component to prevent path traversal attacks.
-/// Replaces path separators and common dangerous characters with underscores.
+/// Replace dangerous path characters with underscores.
 fn sanitize_name(name: &str) -> String {
-    name.chars()
-        .map(|ch| match ch {
-            '/' | '\\' | ':' | '>' | '<' | '"' | '|' | '?' | '*' => '_',
-            c if c.is_ascii_control() => '_',
-            _ => ch,
-        })
-        .collect::<String>()
+    name.replace(|c: char| c.is_ascii_control() || matches!(c, '/' | '\\' | ':' | '>' | '<' | '"' | '|' | '?' | '*'), "_")
         .trim_matches('.')
         .to_string()
 }
@@ -90,7 +83,6 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
             if let Ok(pack_dir_path) = std::fs::read_dir(&pack_dir) {
                 for entry in pack_dir_path.flatten() {
                     if entry.path().is_dir() {
-                        let _mod_id = entry.file_name().to_string_lossy().to_string();
                         let lang_path = entry.path().join("lang").join(format!("{}.json", options.target_language));
                         if lang_path.exists() {
                             if let Ok(content) = std::fs::read_to_string(&lang_path) {
@@ -249,7 +241,7 @@ fn add_dir_to_zip(
     Ok(())
 }
 
-/// Resolve a user-provided instance path to canonical form, preventing path traversal.
+/// Canonicalize a path and reject system-directory symlink attacks.
 fn sanitize_instance_path(input: &str) -> io::Result<String> {
     let path = Path::new(input);
     // Use canonicalize to resolve symlinks and `..` components.
@@ -257,6 +249,30 @@ fn sanitize_instance_path(input: &str) -> io::Result<String> {
     let canonical = path
         .canonicalize()
         .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "实例路径无效或不存在"))?;
+
+    // Defense-in-depth: after resolving symlinks, verify the path is not in a
+    // protected system directory. This prevents an attacker from using a symlink
+    // inside the instance path to redirect file operations to arbitrary locations.
+    #[cfg(windows)]
+    {
+        let canonical_lower = canonical.to_string_lossy().to_lowercase();
+        let disallowed = [
+            "\\windows\\",
+            "\\program files\\",
+            "\\program files (x86)\\",
+            "\\system32\\",
+            "\\syswow64\\",
+        ];
+        for prefix in &disallowed {
+            if canonical_lower.contains(prefix) {
+                return Err(io::Error::new(
+                    io::ErrorKind::PermissionDenied,
+                    format!("路径指向系统目录，已被拒绝: {}", canonical.display()),
+                ));
+            }
+        }
+    }
+
     Ok(canonical.to_string_lossy().to_string())
 }
 
@@ -330,6 +346,21 @@ mod tests {
     #[test]
     fn copy_to_resourcepacks_nonexistent_returns_error() {
         let result = copy_to_resourcepacks("/nonexistent/ pack.zip", "/tmp", false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn sanitize_valid_instance_path_succeeds() {
+        // Verify that a normal, non-system directory passes sanitization.
+        let tmp = std::env::temp_dir();
+        let result = sanitize_instance_path(&tmp.to_string_lossy());
+        assert!(result.is_ok(), "Temp dir should be accepted: {:?}", result);
+    }
+
+    #[test]
+    fn sanitize_nonexistent_path_fails() {
+        // Verify that a non-existent path is rejected.
+        let result = sanitize_instance_path("C:\\nonexistent_path_12345");
         assert!(result.is_err());
     }
 }

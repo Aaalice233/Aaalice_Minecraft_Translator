@@ -204,6 +204,7 @@ fn dictionary_phase(
     let log_tx = ctx.log_tx;
     let entry_progress_tx = ctx.entry_progress_tx;
 
+    eprintln!("dictionary_phase: processing {} pending entries", pending.len());
     let prefer_user_dict = config.llm.as_ref().map(|c| c.prefer_user_dict).unwrap_or(false);
     let dict_db_path = paths::dictionary_db_path(&config.root);
     let dict_conn = dictionary::open(&dict_db_path).map_err(|e| format!("打开词典失败: {e}"))?;
@@ -346,6 +347,7 @@ fn dictionary_phase(
     flush_dict_batch(&mut entry_progress_buf, &mut log_buf);
 
     let non_llm_count = processed - llm_only_entries.len();
+    eprintln!("dictionary_phase: processed={}, non_llm={}, llm_only={}", processed, non_llm_count, llm_only_entries.len());
     logging::append_main(format!(
         "词典匹配完成: 共 {processed} 条目, 非 LLM {non_llm_count}, 待 LLM 翻译 {}",
         llm_only_entries.len()
@@ -411,14 +413,26 @@ impl Pipeline {
     pub fn run(&self, ctx: &mut PipelineContext) -> Result<PipelineResult, String> {
         for phase in &self.phases {
             if ctx.cancel.is_cancelled(ctx.job_id) {
-                break;
+                // Cancelled between phases: return partial result instead of Err,
+                // so the caller (e.g. run_pipeline, backend command) can distinguish
+                // cancellation from a genuine pipeline failure.
+                return Ok(PipelineResult {
+                    completed: ctx.non_llm_count + ctx.llm_count,
+                    non_llm_count: ctx.non_llm_count,
+                    llm_count: ctx.llm_count,
+                    token_usage: ctx.accumulated_token_usage.clone(),
+                    actual_source_language: ctx.config.source_language.clone(),
+                    job_id: ctx.job_id.to_string(),
+                });
             }
             match phase.run(ctx)? {
                 PhaseOutcome::Continue => {}
                 PhaseOutcome::StopAndReturn(result) => return Ok(result),
             }
         }
-        Err("Pipeline completed without a final result — Phase 5 not reached".to_string())
+        // All phases completed but none returned StopAndReturn — should not happen
+        // when FinalizePhase is the last phase, but handle gracefully.
+        Err("Pipeline completed without a final result — all phases returned Continue".to_string())
     }
 }
 
@@ -473,29 +487,17 @@ fn llm_phase(
         });
     }
 
+    eprintln!("llm_phase START: {} entries into LLM phase", llm_only_entries.len());
     let llm_cfg = config.llm.as_ref().ok_or_else(|| "LLM 未配置，但有待翻译条目需要 LLM 翻译".to_string())?;
     let effective_batch_size = llm_cfg.batch_size.max(1);
 
+    // Check for existing checkpointed results — if the program crashed mid-translation
+    // and restarted, skip entries that already have results in the JSONL.
     let batches = chunk_entries(llm_only_entries, effective_batch_size);
     let total_llm_batches = batches.len();
     let initial_concurrency = llm_cfg.concurrency.min(total_llm_batches).max(1);
 
-    let client = LlmClient {
-        base_url: llm_cfg.base_url.clone(),
-        api_key: llm_cfg.api_key.clone(),
-        model: llm_cfg.model.clone(),
-        temperature: llm_cfg.temperature,
-        max_tokens: llm_cfg.max_tokens,
-        concurrency: llm_cfg.concurrency,
-        batch_size: llm_cfg.batch_size,
-        retry_count: llm_cfg.retry_count,
-        timeout_secs: llm_cfg.timeout_secs,
-        system_prompt: llm_cfg.system_prompt.clone(),
-        http_client: LlmClient::build_http_client(llm_cfg.timeout_secs),
-        effective_concurrency: std::sync::atomic::AtomicUsize::new(initial_concurrency),
-        consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
-    };
-
+    let client = build_llm_client(llm_cfg, initial_concurrency);
     client.validate()?;
 
     logging::append_main(format!(
@@ -526,25 +528,32 @@ fn llm_phase(
     let write_lock = std::sync::Mutex::new(());
     const RESULTS_FLUSH_INTERVAL: usize = 5;
     let active_workers = std::sync::atomic::AtomicUsize::new(0);
+    let panicked_workers = std::sync::atomic::AtomicUsize::new(0);
     let next_batch = std::sync::atomic::AtomicUsize::new(0);
     let completed_batches = std::sync::atomic::AtomicUsize::new(0);
     let global_llm_count = std::sync::atomic::AtomicUsize::new(0);
     let global_failed_count = std::sync::atomic::AtomicUsize::new(0);
     let token_usage_mutex = std::sync::Mutex::new(TokenUsage::default());
 
+    // Open one shared dictionary connection for all workers (SQLite is read-only in workers,
+    // so mutex contention is minimal). Previously each worker opened its own connection.
+    //
+    // NOTE: `shared_dict` lives at least as long as this function. Since `std::thread::scope`
+    // waits for all spawned threads before returning, borrowing it from scoped threads is safe.
+    let shared_dict = match dictionary::open(dict_db_path) {
+        Ok(conn) => std::sync::Arc::new(std::sync::Mutex::new(conn)),
+        Err(e) => {
+            logging::append_job(job_id, format!("打开词典失败: {e}")).ok();
+            return Err(format!("打开词典失败: {e}"));
+        }
+    };
+
     std::thread::scope(|s| {
         for _ in 0..initial_concurrency {
             s.spawn(|| {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let worker_dict = match dictionary::open(dict_db_path) {
-                        Ok(conn) => conn,
-                        Err(e) => {
-                            let _ = logging::append_job(job_id, format!("worker 打开词典失败: {e}"));
-                            return;
-                        }
-                    };
-
                     active_workers.fetch_add(1, Ordering::Relaxed);
+                    eprintln!("WORKER: started (worker #{})", active_workers.load(Ordering::Relaxed));
                     let mut worker_429_count = 0usize;
                     let batch_capacity = RESULTS_FLUSH_INTERVAL * effective_batch_size;
                     let mut result_buf: Vec<jobs::TranslationResult> = Vec::with_capacity(batch_capacity);
@@ -569,11 +578,16 @@ fn llm_phase(
 
                         let mut batch_refs = Vec::new();
                         let mut seen_ref = HashSet::new();
-                        for (entry, _) in batch {
-                            if let Ok(matches) = cfpa::fuzzy_search(&worker_dict, &entry.text, &entry.language, &config.target_language, 5) {
-                                for m in &matches {
-                                    if seen_ref.insert(m.source_text.clone()) {
-                                        batch_refs.push((m.source_text.clone(), m.target_text.clone()));
+                        // Short-lived dict lock: acquire, search, release before the
+                        // long-running LLM call below.
+                        {
+                            let dict_guard = shared_dict.lock().unwrap_or_else(|e| e.into_inner());
+                            for (entry, _) in batch {
+                                if let Ok(matches) = cfpa::fuzzy_search(&dict_guard, &entry.text, &entry.language, &config.target_language, 5) {
+                                    for m in &matches {
+                                        if seen_ref.insert(m.source_text.clone()) {
+                                            batch_refs.push((m.source_text.clone(), m.target_text.clone()));
+                                        }
                                     }
                                 }
                             }
@@ -635,7 +649,9 @@ fn llm_phase(
                             }
                         };
 
+                        eprintln!("WORKER: calling translate_batch for batch {}, {} entries", bi, entries.len());
                         let (results, token_usage) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
+                        eprintln!("WORKER: translate_batch returned {} results", results.len());
                         let token = token_usage.unwrap_or_default();
 
                         let all_rate_limited = results.iter().all(|r| {
@@ -720,6 +736,11 @@ fn llm_phase(
                         if buf_count % RESULTS_FLUSH_INTERVAL == 0 && !result_buf.is_empty() {
                             let _lock = write_lock.lock().unwrap_or_else(|e| e.into_inner());
                             let _ = jobs::batch_append_results(&config.root, job_id, &result_buf);
+                            // Save job progress as a checkpoint after each flush,
+                            // so a crash between flushes doesn't lose all progress.
+                            let completed_now = global_llm_count.load(Ordering::Relaxed);
+                            let failed_now = global_failed_count.load(Ordering::Relaxed);
+                            save_job_progress(&config.root, job_id, completed_now, failed_now, jobs::TranslationStatus::Running);
                             result_buf.clear();
                         }
 
@@ -748,6 +769,7 @@ fn llm_phase(
                 }));
 
                 if let Err(panic_err) = result {
+                    panicked_workers.fetch_add(1, Ordering::Relaxed);
                     let msg = if let Some(s) = panic_err.downcast_ref::<&str>() {
                         s.to_string()
                     } else if let Some(s) = panic_err.downcast_ref::<String>() {
@@ -761,12 +783,31 @@ fn llm_phase(
         }
     });
 
+    let panicked_count = panicked_workers.load(Ordering::Relaxed);
+    if panicked_count > 0 {
+        let claimed = next_batch.load(Ordering::Relaxed);
+        let completed = completed_batches.load(Ordering::Relaxed);
+        let orphaned = claimed.saturating_sub(completed);
+        let _ = logging::append_job(
+            job_id,
+            format!(
+                "LLM 翻译阶段: {panicked_count} 个工作者发生 panic，丢失 {orphaned} 个批次的翻译结果"
+            ),
+        );
+        let _ = logging::append_main(format!(
+            "LLM 翻译阶段警告: {panicked_count} 个工作者发生 panic，{} 个条目可能未被翻译",
+            orphaned * effective_batch_size,
+        ));
+    }
+
     if active_workers.load(Ordering::Relaxed) == 0 {
+        eprintln!("llm_phase: ALL WORKERS FAILED");
         return Err("所有 LLM 工作者启动失败，请检查词典数据库可用性".to_string());
     }
 
     let llm_count = global_llm_count.load(Ordering::SeqCst);
     let failed_count = global_failed_count.load(Ordering::SeqCst);
+    eprintln!("llm_phase: llm_count={}, failed_count={}", llm_count, failed_count);
     logging::append_main(format!(
         "LLM 翻译阶段完成: 成功 {llm_count} 条目, 失败 {failed_count} 条目",
     )).ok();
@@ -871,6 +912,27 @@ impl Phase for LlmPhase {
         let dict_db_path = ctx.dict_db_path.clone()
             .unwrap_or_else(|| paths::dictionary_db_path(&ctx.config.root));
         let llm_entries = std::mem::take(&mut ctx.llm_only_entries);
+        eprintln!("LlmPhase::run: {} entries to translate", llm_entries.len());
+
+        // Checkpoint recovery: skip entries already in the JSONL results file
+        let completed_keys = load_completed_keys(&ctx.config.root, ctx.job_id);
+        let llm_entries: Vec<_> = if completed_keys.is_empty() {
+            llm_entries
+        } else {
+            let before = llm_entries.len();
+            let filtered = llm_entries
+                .into_iter()
+                .filter(|(entry, _)| !completed_keys.contains(&entry.key))
+                .collect::<Vec<_>>();
+            let skipped = before - filtered.len();
+            if skipped > 0 {
+                let _ = logging::append_main(format!(
+                    "LLM 翻译阶段: 从检查点恢复，跳过 {skipped} 个已翻译条目"
+                ));
+            }
+            filtered
+        };
+
         let result = llm_phase(ctx, &llm_entries, &dict_db_path)?;
         ctx.accumulated_token_usage = result.accumulated_token_usage;
         ctx.llm_count = result.llm_count;
@@ -889,6 +951,7 @@ impl Phase for FinalizePhase {
         let llm_count = ctx.llm_count;
         let failed_count = ctx.failed_count;
         let completed = non_llm_count + llm_count;
+        eprintln!("FinalizePhase: non_llm={}, llm={}, completed={}", non_llm_count, llm_count, completed);
 
         if ctx.cancel.is_cancelled(ctx.job_id) {
             let _ = logging::append_job(ctx.job_id, "翻译任务在完成前被取消");
@@ -932,6 +995,25 @@ impl Phase for FinalizePhase {
 }
 
 // ── Main pipeline ─────────────────────────────────────────────
+
+/// Check if a previous translation run left checkpointed results for this job.
+/// Returns the set of already-translated keys so the pipeline can skip them.
+fn load_completed_keys(root: &std::path::Path, job_id: &str) -> std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    let results_path = paths::translate_job_results_path(root, job_id);
+    if !results_path.exists() {
+        return HashSet::new();
+    }
+    let mut completed = HashSet::new();
+    if let Ok(content) = std::fs::read_to_string(&results_path) {
+        for line in content.lines() {
+            if let Ok(result) = serde_json::from_str::<jobs::TranslationResult>(line) {
+                completed.insert(result.key);
+            }
+        }
+    }
+    completed
+}
 
 /// Persist job progress counters to disk. Called in both completion and cancellation paths.
 fn save_job_progress(root: &std::path::Path, job_id: &str, completed: usize, failed: usize, status: jobs::TranslationStatus) {
@@ -1069,6 +1151,26 @@ fn resolve_scan(
     Ok(summary)
 }
 
+/// Build an LlmClient from configuration, shared by llm_phase and retry_failed_entries.
+/// This eliminates the duplicated LlmClient construction that was present in both code paths.
+fn build_llm_client(llm_cfg: &LlmConfig, effective_concurrency: usize) -> LlmClient {
+    LlmClient {
+        base_url: llm_cfg.base_url.clone(),
+        api_key: llm_cfg.api_key.clone(),
+        model: llm_cfg.model.clone(),
+        temperature: llm_cfg.temperature,
+        max_tokens: llm_cfg.max_tokens,
+        concurrency: llm_cfg.concurrency,
+        batch_size: llm_cfg.batch_size,
+        retry_count: llm_cfg.retry_count,
+        timeout_secs: llm_cfg.timeout_secs,
+        system_prompt: llm_cfg.system_prompt.clone(),
+        http_client: LlmClient::build_http_client(llm_cfg.timeout_secs),
+        effective_concurrency: std::sync::atomic::AtomicUsize::new(effective_concurrency),
+        consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
+    }
+}
+
 /// Retry failed entries from a previous translation job.
 /// Skips scan/extract/dictionary phases, runs only LLM translation on
 /// entries whose `source_type == "failed"`, and returns the new results.
@@ -1105,22 +1207,7 @@ pub fn retry_failed_entries(
     });
 
     let effective_concurrency = llm_cfg.concurrency.min(total).max(1);
-    let client = LlmClient {
-        base_url: llm_cfg.base_url.clone(),
-        api_key: llm_cfg.api_key.clone(),
-        model: llm_cfg.model.clone(),
-        temperature: llm_cfg.temperature,
-        max_tokens: llm_cfg.max_tokens,
-        concurrency: llm_cfg.concurrency,
-        batch_size: llm_cfg.batch_size,
-        retry_count: llm_cfg.retry_count,
-        timeout_secs: llm_cfg.timeout_secs,
-        system_prompt: llm_cfg.system_prompt.clone(),
-        http_client: LlmClient::build_http_client(llm_cfg.timeout_secs),
-        effective_concurrency: std::sync::atomic::AtomicUsize::new(effective_concurrency),
-        consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
-    };
-
+    let client = build_llm_client(llm_cfg, effective_concurrency);
     client.validate()?;
 
     let mut retried: Vec<jobs::TranslationResult> = Vec::with_capacity(total);

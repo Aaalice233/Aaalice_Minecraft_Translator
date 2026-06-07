@@ -1917,3 +1917,480 @@ button.essb-legend-item:hover {
   font-size: 11px;
   font-weight: 600;
 }
+
+/* ═══════════════════════════════════════════════════
+ * ValidatePage — 三栏式工作台布局
+ * ═══════════════════════════════════════════════════ */
+
+.validate-workspace .workspace-layout {
+  display: grid;
+  grid-template-columns: 220px 1fr 300px;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  margin-top: 16px;
+}
+
+.validate-workspace .workspace-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+
+.validate-workspace .workspace-main {
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.validate-workspace .workspace-detail {
+  overflow-y: auto;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+  padding-left: 16px;
+}
+
+/* ── Workspace card ── */
+.workspace-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.workspace-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--text-primary);
+}
+
+/* ── Vertical stat rows ── */
+.validate-stats-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.validate-stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.validate-stat-row .stat-label {
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.validate-stat-row .stat-value {
+  font-weight: 700;
+  font-size: 16px;
+  font-family: "JetBrains Mono", monospace;
+  color: var(--text-primary);
+}
+
+.validate-stat-row.success .stat-value { color: var(--accent); }
+.validate-stat-row.error .stat-value { color: var(--danger); }
+.validate-stat-row.warning .stat-value { color: var(--accent-hover); }
+
+/* ── Mini bar chart ── */
+.validate-bar-chart {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--bg-muted);
+  margin-top: 8px;
+}
+
+.validate-bar-chart .bar-segment { transition: width 0.3s ease; }
+.validate-bar-chart .bar-segment.success { background: var(--accent); }
+.validate-bar-chart .bar-segment.error { background: var(--danger); }
+.validate-bar-chart .bar-segment.warning { background: #d4a72c; }
+
+/* ── Filter chips ── */
+.validate-filter-group {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.filter-chip:hover {
+  background: var(--bg-muted);
+}
+
+.filter-chip.active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+
+.chip-count {
+  font-size: 11px;
+  opacity: 0.7;
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* ── Accordion mod groups ── */
+.validate-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mod-group {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-surface);
+}
+
+.mod-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: var(--bg-surface);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.mod-group-header:hover {
+  background: var(--bg-muted);
+}
+
+.mod-group-header .mod-name {
+  flex: 1;
+}
+
+.mod-group-header .mod-count {
+  font-weight: 400;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.mod-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+
+.mod-badge.error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.mod-badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.mod-group-issues {
+  border-top: 1px solid var(--border);
+}
+
+.issue-row {
+  display: grid;
+  grid-template-columns: 20px 70px 1fr 1.5fr;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+  padding: 7px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.issue-row:last-child {
+  border-bottom: none;
+}
+
+.issue-row:hover {
+  background: var(--bg-muted);
+}
+
+.issue-row.selected {
+  background: var(--accent-bg);
+}
+
+.issue-type-icon {
+  display: flex;
+  align-items: center;
+}
+
+.issue-badge-type {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.issue-key {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.issue-source {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ── Detail panel ── */
+.detail-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.detail-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.detail-section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.detail-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-meta-row {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  font-size: 12px;
+}
+
+.detail-label {
+  color: var(--text-muted);
+  min-width: 52px;
+  flex-shrink: 0;
+}
+
+.detail-value {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.severity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.severity-badge.error {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.severity-badge.warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* ── Compare view ── */
+.detail-compare {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.compare-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.compare-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.compare-text {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 8px;
+  background: var(--bg-muted);
+  border-radius: 4px;
+  word-break: break-all;
+  white-space: pre-wrap;
+}
+
+.compare-text.source {
+  background: var(--bg-muted);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.compare-text.target.edit-area {
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  font-family: inherit;
+  resize: vertical;
+  min-height: 60px;
+}
+
+.compare-text.target.edit-area:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.detail-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* ── Shortcuts ── */
+.shortcut-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.shortcut-list kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid var(--border-input);
+  background: var(--bg-surface);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  margin-right: 4px;
+  min-width: 18px;
+  text-align: center;
+}
+
+/* ── Compact alert ── */
+.alert.compact {
+  padding: 6px 10px;
+  font-size: 12px;
+  margin-bottom: 0;
+}
+
+/* ── Error/Warning icon colors ── */
+.severity-error { color: var(--danger); }
+.severity-warning { color: #d4a72c; }
+.icon-error { color: var(--danger); }
+.icon-warning { color: #d4a72c; }
+
+.text-muted { color: var(--text-muted); }
+
+/* ── Batch toolbar ── */
+.batch-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  margin-bottom: 4px;
+}
+
+.batch-count {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-text);
+}
+
+/* ── Checkbox + issue row wrapper ── */
+.issue-row-wrap {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+}
+
+.issue-row-wrap:last-child {
+  border-bottom: none;
+}
+
+.issue-row-wrap:hover {
+  background: var(--bg-muted);
+}
+
+.issue-row-wrap.selected {
+  background: var(--accent-bg);
+}
+
+.issue-checkbox {
+  display: flex;
+  align-items: center;
+  padding: 0 0 0 10px;
+  cursor: pointer;
+}
+
+.issue-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.issue-row-wrap .issue-row {
+  border-bottom: none;
+  flex: 1;
+}
