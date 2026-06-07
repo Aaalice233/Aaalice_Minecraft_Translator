@@ -683,7 +683,7 @@ fn llm_phase(
                                     } else {
                                         (restored_source, r.translated_text, "failed".to_string())
                                     };
-                                    let &(_k, mid, fname) = &meta[i];
+                                    let &(_, mid, fname) = &meta[i];
                                     let entry = jobs::TranslationResult {
                                         key: r.key,
                                         source_text: s_text,
@@ -699,16 +699,12 @@ fn llm_phase(
                             result_buf.extend(retry_results);
                         } else {
                             worker_429_count = 0;
-                        }
-
-                        if !all_rate_limited {
-                            let mut tm = token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
-                            tm.prompt_tokens += token.prompt_tokens;
-                            tm.completion_tokens += token.completion_tokens;
-                            tm.total_tokens += token.total_tokens;
-                        }
-
-                        if !all_rate_limited {
+                            {
+                                let mut tm = token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
+                                tm.prompt_tokens += token.prompt_tokens;
+                                tm.completion_tokens += token.completion_tokens;
+                                tm.total_tokens += token.total_tokens;
+                            }
                             for (i, r) in results.into_iter().enumerate() {
                                 let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
                                 let ok = r.success && valid;
@@ -717,7 +713,7 @@ fn llm_phase(
                                 } else {
                                     (restored_source, r.translated_text.clone(), "failed".to_string())
                                 };
-                                let &(_k, mid, fname) = &meta[i];
+                                let &(_, mid, fname) = &meta[i];
                                 let entry = jobs::TranslationResult {
                                     key: r.key,
                                     source_text: s_text,
@@ -1030,8 +1026,7 @@ impl Phase for FinalizePhase {
 
 /// Check if a previous translation run left checkpointed results for this job.
 /// Returns the set of already-translated keys so the pipeline can skip them.
-fn load_completed_keys(root: &std::path::Path, job_id: &str) -> std::collections::HashSet<String> {
-    use std::collections::HashSet;
+fn load_completed_keys(root: &std::path::Path, job_id: &str) -> HashSet<String> {
     let results_path = paths::translate_job_results_path(root, job_id);
     if !results_path.exists() {
         return HashSet::new();
@@ -1237,8 +1232,6 @@ pub fn retry_failed_entries(
     progress_tx: &mpsc::Sender<PipelineProgress>,
     entry_progress_tx: &mpsc::Sender<EntryProgress>,
 ) -> Result<Vec<jobs::TranslationResult>, String> {
-    use std::collections::HashMap;
-
     let manager = jobs::JobManager::new(root.to_path_buf());
     let all_results = manager.load_results(job_id)?;
 
