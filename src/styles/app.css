@@ -1457,6 +1457,12 @@ th.sorted-default .sort-indicator {
   contain-intrinsic-size: 30px;
 }
 
+/* Dashboard mod table: same virtual-scroll optimization */
+.dashboard-grid .table-wrap table tbody tr {
+  content-visibility: auto;
+  contain-intrinsic-size: 38px;
+}
+
 .log-panel-body .copy-log-row:hover {
   background: #f0ede6;
 }

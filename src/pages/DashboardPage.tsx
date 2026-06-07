@@ -1,5 +1,6 @@
 import { AlertTriangle, Filter, FolderOpen, Loader2, RefreshCcw, ScanLine, Square, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import type { AppLanguage, ModScanResult, ScanProgressEvent, ScanSummary, ScanWarning, Settings } from "../types";
@@ -14,6 +15,45 @@ interface Props {
   language: AppLanguage;
   onBusyChange?: (busy: boolean) => void;
 }
+
+const ModRow = React.memo(({ mod, copiedKey, copyFlash, getPending, language }: {
+  mod: ModScanResult;
+  copiedKey: string | null;
+  copyFlash: (text: string, key: string) => Promise<void>;
+  getPending: (mod: ModScanResult) => number;
+  language: AppLanguage;
+}) => (
+  <tr>
+    <td
+      className="copy-cell mod-name"
+      onClick={() => copyFlash(mod.fileName, `n-${mod.jarPath}`)}
+      onKeyDown={(e) => e.key === "Enter" && copyFlash(mod.fileName, `n-${mod.jarPath}`)}
+      tabIndex={0}
+      title={mod.fileName}
+    >
+      {mod.fileName}
+      {copiedKey === `n-${mod.jarPath}` && <span className="copy-flash">{t(language, "common.copied")}</span>}
+    </td>
+    <td
+      className="copy-cell mod-id"
+      onClick={() => copyFlash(mod.modId, `i-${mod.jarPath}`)}
+      onKeyDown={(e) => e.key === "Enter" && copyFlash(mod.modId, `i-${mod.jarPath}`)}
+      tabIndex={0}
+      title={mod.modId}
+    >
+      {mod.modId}
+      {copiedKey === `i-${mod.jarPath}` && <span className="copy-flash">{t(language, "common.copied")}</span>}
+    </td>
+    <td>{mod.formats.join(" / ") || "-"}</td>
+    <td>{mod.languageFileCount}</td>
+    <td>{getPending(mod)}</td>
+    <td>
+      <span className={mod.hasTargetLanguage ? "badge success" : "badge muted"}>
+        {mod.hasTargetLanguage ? t(language, "dashboard.hasTarget") : t(language, "dashboard.needsTranslation")}
+      </span>
+    </td>
+  </tr>
+));
 
 function CollapsibleWarnings({ warnings, language }: { warnings: ScanWarning[]; language: AppLanguage }) {
   const [expanded, setExpanded] = useState(false);
@@ -83,6 +123,8 @@ export function DashboardPage({
 
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string | { min?: number; max?: number }>>({});
+  const [searchText, setSearchText] = useState("");
+  const debouncedSearch = useDebouncedValue(searchText, 200);
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
   const copyFlash = useCallback(async (text: string, key: string) => {
@@ -242,6 +284,7 @@ export function DashboardPage({
     setScanProgress(null);
     setError("");
     setSortConfig(null);
+    setSearchText("");
     setFilters({});
     setOpenFilter(null);
     try {
@@ -261,6 +304,11 @@ export function DashboardPage({
       setIsCancelling(false);
     }
   }
+
+  // Sync debounced search text into filters (avoids per-keystroke re-render of full table)
+  useEffect(() => {
+    handleFilterChange("fileName", debouncedSearch || null);
+  }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSort(column: string) {
     setSortConfig((prev) => {
@@ -510,13 +558,13 @@ export function DashboardPage({
                   type="text"
                   className="mod-search-input"
                   placeholder={t(language, "dashboard.filterSearch")}
-                  value={(filters.fileName as string) || ""}
-                  onChange={(e) => handleFilterChange("fileName", e.target.value || null)}
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
                 />
-                {(filters.fileName as string) && (
+                {searchText && (
                   <button
                     className="mod-search-clear"
-                    onClick={() => handleFilterChange("fileName", null)}
+                    onClick={() => { setSearchText(""); }}
                     type="button"
                   >
                     <X size={13} />
@@ -663,36 +711,14 @@ export function DashboardPage({
                   </tr>
                 )}
                 {processedMods.map((mod) => (
-                  <tr key={mod.jarPath}>
-                    <td
-                      className="copy-cell mod-name"
-                      onClick={() => copyFlash(mod.fileName, `n-${mod.jarPath}`)}
-                      onKeyDown={(e) => e.key === "Enter" && copyFlash(mod.fileName, `n-${mod.jarPath}`)}
-                      tabIndex={0}
-                      title={mod.fileName}
-                    >
-                      {mod.fileName}
-                      {copiedKey === `n-${mod.jarPath}` && <span className="copy-flash">{t(language, "common.copied")}</span>}
-                    </td>
-                    <td
-                      className="copy-cell mod-id"
-                      onClick={() => copyFlash(mod.modId, `i-${mod.jarPath}`)}
-                      onKeyDown={(e) => e.key === "Enter" && copyFlash(mod.modId, `i-${mod.jarPath}`)}
-                      tabIndex={0}
-                      title={mod.modId}
-                    >
-                      {mod.modId}
-                      {copiedKey === `i-${mod.jarPath}` && <span className="copy-flash">{t(language, "common.copied")}</span>}
-                    </td>
-                    <td>{mod.formats.join(" / ") || "-"}</td>
-                    <td>{mod.languageFileCount}</td>
-                    <td>{getPending(mod)}</td>
-                    <td>
-                      <span className={mod.hasTargetLanguage ? "badge success" : "badge muted"}>
-                        {mod.hasTargetLanguage ? t(language, "dashboard.hasTarget") : t(language, "dashboard.needsTranslation")}
-                      </span>
-                    </td>
-                  </tr>
+                  <ModRow
+                    key={mod.jarPath}
+                    mod={mod}
+                    copiedKey={copiedKey}
+                    copyFlash={copyFlash}
+                    getPending={getPending}
+                    language={language}
+                  />
                 ))}
                 {!scanSummary && (
                   <tr>
