@@ -638,10 +638,8 @@ fn llm_phase(
                                 } else {
                                     restored_target.clone()
                                 };
-                                let status = if is_noop { EntryStatus::Failed }
-                                    else if r.success && valid { EntryStatus::Completed }
-                                    else if !r.success { EntryStatus::Failed }
-                                    else { EntryStatus::Failed };
+                                let ok = r.success && valid && !is_noop;
+                                let status = if ok { EntryStatus::Completed } else { EntryStatus::Failed };
                                 let error_message = if is_noop { Some("LLM 返回了原文，未进行翻译".to_string()) }
                                     else if !r.success { r.error.clone() }
                                     else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
@@ -686,26 +684,24 @@ fn llm_phase(
                             let retry_results: Vec<jobs::TranslationResult> = retry_results.into_iter()
                                 .enumerate().map(|(i, r)| {
                                     let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
-                                    let (s_text, t_text, s_type) = if r.success {
-                                        (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
+                                    let (s_text, t_text, s_type) = if r.success && valid {
+                                        (restored_source, restored_target, "llm".to_string())
                                     } else {
                                         (restored_source, r.translated_text, "failed".to_string())
                                     };
                                     let &(_k, mid, fname) = &meta[i];
-                                    jobs::TranslationResult {
+                                    let entry = jobs::TranslationResult {
                                         key: r.key,
                                         source_text: s_text,
                                         target_text: t_text,
                                         mod_id: mid.to_string(),
                                         mod_name: fname.to_string(),
                                         source_type: s_type,
-                                    }
+                                    };
+                                    count_result(&entry, &global_llm_count, &global_failed_count);
+                                    entry
                                 }).collect();
 
-                            for entry in &retry_results {
-                                if entry.source_type == "llm" { global_llm_count.fetch_add(1, Ordering::Relaxed); }
-                                else if entry.source_type == "failed" { global_failed_count.fetch_add(1, Ordering::Relaxed); }
-                            }
                             result_buf.extend(retry_results);
                         } else {
                             worker_429_count = 0;
@@ -726,12 +722,11 @@ fn llm_phase(
                                 let is_noop = r.success && valid && restored_source == restored_target
                                     && !shield::is_placeholder_only(original)
                                     && original.chars().any(|c| c.is_alphabetic());
-                                let (s_text, t_text, s_type) = if is_noop {
-                                    (restored_source.clone(), restored_target.clone(), "failed".to_string())
-                                } else if r.success {
-                                    (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
+                                let ok = r.success && valid && !is_noop;
+                                let (s_text, t_text, s_type) = if ok {
+                                    (restored_source, restored_target, "llm".to_string())
                                 } else {
-                                    (restored_source, r.translated_text, "failed".to_string())
+                                    (restored_source, if r.success { restored_target } else { r.translated_text }, "failed".to_string())
                                 };
                                 let &(_k, mid, fname) = &meta[i];
                                 let entry = jobs::TranslationResult {
@@ -742,8 +737,7 @@ fn llm_phase(
                                     mod_name: fname.to_string(),
                                     source_type: s_type,
                                 };
-                                if entry.source_type == "llm" { global_llm_count.fetch_add(1, Ordering::Relaxed); }
-                                else if entry.source_type == "failed" { global_failed_count.fetch_add(1, Ordering::Relaxed); }
+                                count_result(&entry, &global_llm_count, &global_failed_count);
                                 result_buf.push(entry);
                             }
                         }
@@ -1085,6 +1079,19 @@ fn save_job_progress(root: &std::path::Path, job_id: &str, completed: usize, fai
         Err(err) => {
             let _ = logging::append_job(job_id, format!("保存进度时加载 job 状态失败: {err}"));
         }
+    }
+}
+
+/// Count a TranslationResult entry into the appropriate global counter.
+fn count_result(
+    entry: &jobs::TranslationResult,
+    llm_counter: &std::sync::atomic::AtomicUsize,
+    failed_counter: &std::sync::atomic::AtomicUsize,
+) {
+    match entry.source_type.as_str() {
+        "llm" => { llm_counter.fetch_add(1, Ordering::Relaxed); }
+        "failed" => { failed_counter.fetch_add(1, Ordering::Relaxed); }
+        _ => {}
     }
 }
 
