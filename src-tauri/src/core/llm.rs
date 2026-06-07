@@ -239,9 +239,9 @@ impl LlmClient {
                                 error: Some(e.clone()),
                             })
                             .collect();
-                        if let Some(cb) = on_batch_complete {
-                            cb(&results);
-                        }
+                        // 注意：不在 RATE_LIMITED 路径调用 on_batch_complete。
+                        // 限流是可重试的临时错误，pipeline 外部有重试逻辑
+                        // 并会在重试完成后统一处理回调。
                         return (results, None);
                     }
                     last_error = format!("API 请求失败: {e}");
