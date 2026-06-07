@@ -38,8 +38,18 @@
 - `tests/`：前端单元测试和 Minecraft fixture；新增行为优先补最小 fixture 测试。
 - `docs/`：产品规格、架构计划、UI 风格和 agent 测试计划。
 - `scripts/`：Windows 打包脚本（package-exe.bat / .ps1）。
-- `data/`：运行期本地数据目录，例如 `settings.json`；不要把用户本地设置当成源码常量。
-- `assets/`：应用图标源和后续可复用静态资产。
+- `data/`：运行期本地数据目录，例如 `settings.json`、`dictionary.sqlite`、`jobs/translate_*_results.jsonl`。
+- `data/jobs/`：翻译任务的 JSONL 结果文件（`translate_<timestamp>_results.jsonl`）和 job 状态文件（`translate_<timestamp>.json`）。
+  - JSONL 每行一个 `TranslationResult`：`{ key, sourceText, targetText, modId, modName, sourceType }`。
+  - `sourceType` 取值：`"llm"`（LLM 翻译成功）、`"failed"`（LLM 翻译失败或 shield 验证失败）、`"dictionary"`（词典命中）。
+  - 出现问题时优先检查 JSONL 中的 `sourceType` 字段，可以快速区分 LLM 执行成功 vs shield 验证失败。
+- `logs/`：运行期日志目录。
+  - `logs/main.log`：主日志文件，格式 `[unix_seconds] LEVEL message`，使用 tracing + tracing_appender 异步写入。
+    - 日志在程序启动时重置（"main.log 已重置"行标记启动点）。
+    - 包含扫描、词典匹配、LLM 请求、取消等关键事件。
+    - 搜索 `LLM batch 翻译完成 total=80 success_count=X fail_count=Y` 快速查看 batch 级成功率。
+    - API 密钥等敏感信息会被 redact_secret 模块自动脱敏（`sk-` 前缀、bearer token、16+ 字符长密钥）。
+  - `logs/errors/`、`logs/jobs/`：目录已创建但当前未使用（遗留结构）。
 
 ## 关键架构决策
 
