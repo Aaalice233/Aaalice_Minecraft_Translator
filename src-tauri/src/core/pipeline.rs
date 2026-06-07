@@ -628,8 +628,12 @@ fn llm_phase(
                                 let (restored_source, restored_target, valid) = shield_restore_result(r, &batch_shield_map);
                                 let original = batch_shield_map.get(r.key.as_str())
                                     .map(|(orig, _)| orig.as_str()).unwrap_or("");
+                                // Only flag multi-word phrases (contain spaces). Single words like
+                                // URL, Lootr, EFLN or hyphenated names are proper nouns LLM correctly
+                                // left untranslated.
                                 let is_noop = r.success && valid && restored_source == restored_target
                                     && !shield::is_placeholder_only(original)
+                                    && original.contains(' ')
                                     && original.chars().any(|c| c.is_alphabetic());
                                 let target_text = if !r.success {
                                     r.translated_text.clone()
@@ -719,8 +723,10 @@ fn llm_phase(
                                 let (restored_source, restored_target, valid) = shield_restore_result(&r, &batch_shield_map);
                                 let original = batch_shield_map.get(r.key.as_str())
                                     .map(|(orig, _)| orig.as_str()).unwrap_or("");
+                                // Same multi-word heuristic as on_complete above.
                                 let is_noop = r.success && valid && restored_source == restored_target
                                     && !shield::is_placeholder_only(original)
+                                    && original.contains(' ')
                                     && original.chars().any(|c| c.is_alphabetic());
                                 let ok = r.success && valid && !is_noop;
                                 let (s_text, t_text, s_type) = if ok {
