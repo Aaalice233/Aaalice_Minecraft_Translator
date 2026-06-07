@@ -554,7 +554,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                 <div className="essb-track" style={{ height: 20 }}>
                   {visibleStatuses.map(({ key, color }) => {
                     const count = entryCounts[key];
-                    const total = scanSummary.actualPendingEntries;
+                    const total = scanSummary.totalPendingEntries;
                     const pct = (count / total) * 100;
                     return (
                       <div
@@ -567,7 +567,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                   })}
                 </div>
                 <span className="essb-pct-label">
-                  {Math.round((entryCounts.completed / (scanSummary.actualPendingEntries)) * 100)}%
+                  {Math.min(Math.round((entryCounts.completed / (scanSummary.totalPendingEntries || 1)) * 100), 100)}%
                 </span>
               </div>
               <div className="essb-legend">
