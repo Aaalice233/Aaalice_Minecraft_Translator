@@ -90,16 +90,36 @@ pub async fn start_translation(
     let entry_progress_tx_work = entry_progress_tx.clone();
     let job_id_progress = job_id.clone();
 
-    // Progress reader (low frequency, not batched)
+    // Progress reader (debounced: emit latest value every ~100ms to avoid flooding the frontend)
     let app_emit = app.clone();
     let cancel_progress = cancel.clone();
     let _ = tauri::async_runtime::spawn_blocking(move || {
-        while let Ok(progress) = progress_rx.recv() {
-            if cancel_progress.is_cancelled(&job_id_progress) {
-                break;
-            }
-            if let Err(err) = app_emit.emit("translate-progress", &progress) {
-                tracing::error!("translate-progress emit error: {err}");
+        let mut last_progress: Option<PipelineProgress> = None;
+        loop {
+            match progress_rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(progress) => {
+                    if cancel_progress.is_cancelled(&job_id_progress) {
+                        break;
+                    }
+                    last_progress = Some(progress);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if cancel_progress.is_cancelled(&job_id_progress) {
+                        break;
+                    }
+                    if let Some(ref p) = last_progress {
+                        if let Err(err) = app_emit.emit("translate-progress", &p) {
+                            tracing::error!("translate-progress emit error: {err}");
+                        }
+                        last_progress = None;
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    if let Some(ref p) = last_progress {
+                        let _ = app_emit.emit("translate-progress", &p);
+                    }
+                    break;
+                }
             }
         }
     });
