@@ -96,11 +96,13 @@ const LogRow = React.memo(function LogRow({
   language,
   copyEntry: onCopy,
   entryProgressRef,
+  _version,
 }: {
   entry: TranslateLogEntry;
   language: AppLanguage;
   copyEntry: (entry: TranslateLogEntry) => void;
   entryProgressRef: { current: Map<string, EntryProgress> };
+  _version: number;
 }) {
   const ep = entryProgressRef.current.get(entryProgKey(entry.modName, entry.key));
   const tgtText = entry.targetText || ep?.targetText || '';
@@ -827,6 +829,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                     language={language}
                     copyEntry={copyEntry}
                     entryProgressRef={entryProgressRef}
+                    _version={entryProgressVersion}
                   />
                 );
               }}
