@@ -24,7 +24,10 @@ pub struct ShieldResult {
 
 fn percent_regex() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"%(\d+\$)?[-#+ 0,]*(\d+)?(\.\d+)?[tT]?[dsfFeEgGxXoOaAcCbBhHn]").unwrap())
+    // 注意：flags 中不含空格，防止匹配到 %% of 中的 "% o" 这类虚假 token。
+    // 空格是 Java Formatter 的合法 flag（正数前加空格），但在 Minecraft lang
+    // 文件中极为罕见，且利大于弊地排除它避免了 %% 转义后的 false positive。
+    RE.get_or_init(|| Regex::new(r"%(\d+\$)?[-#+0,]*(\d+)?(\.\d+)?[tT]?[dsfFeEgGxXoOaAcCbBhHn]").unwrap())
 }
 
 fn brace_regex() -> &'static Regex {
@@ -332,6 +335,19 @@ mod tests {
         assert!(result.tokens.iter().any(|t| t.original == "%1$d"));
         assert!(result.tokens.iter().any(|t| t.original == "%2$d"));
         assert!(result.tokens.iter().any(|t| t.original.contains("%")));
+    }
+
+    #[test]
+    fn double_percent_not_matched() {
+        // Java %% 表示字面量 %，不应被 percent_regex 匹配
+        let src = "Your sharpened tool has 75%% of its uses left.";
+        let tgt = "你磨过的工具还有 75% 的使用次数。";
+        let shield = protect(src);
+        assert!(shield.tokens.is_empty(), "%% should produce NO tokens, got {}: {:?}", shield.tokens.len(), shield.tokens);
+        assert_eq!(shield.protected, src, "protected text should equal original when no placeholders");
+        let restored = restore(&tgt, &shield.tokens);
+        assert_eq!(restored, tgt, "restore should not change LLM output when no tokens");
+        assert!(validate(&shield.tokens, &restored), "validate should return true when no tokens");
     }
 
     #[test]
