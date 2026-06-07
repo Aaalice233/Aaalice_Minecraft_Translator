@@ -15,7 +15,6 @@ interface Props {
   onBusyChange?: (busy: boolean) => void;
 }
 
-/** Collapsible warnings panel — collapsed by default, expands on click. */
 function CollapsibleWarnings({ warnings, language }: { warnings: ScanWarning[]; language: AppLanguage }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -61,15 +60,12 @@ export function DashboardPage({
   const [error, setError] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Keep ref in sync for timeout closures
   useEffect(() => { isScanningRef.current = isScanning; }, [isScanning]);
 
-  // Sync scanning busy state to sidebar nav
   useEffect(() => {
     dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: isScanning ? "busy" : "idle" } });
   }, [isScanning, dispatch]);
 
-  // Notify sidebar nav when scan completes
   const prevIsScanning = useRef(isScanning);
   useEffect(() => {
     if (prevIsScanning.current && !isScanning && scanSummary && !scanSummary.cancelled && !error) {
@@ -94,7 +90,7 @@ export function DashboardPage({
       await navigator.clipboard.writeText(text);
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 1200);
-    } catch { /* clipboard not available */ }
+    } catch {}
   }, []);
 
   const stageLabel = (phase: string): string => {
@@ -208,7 +204,6 @@ export function DashboardPage({
     };
   }, []);
 
-  // Click outside to close filter popover
   useEffect(() => {
     if (!openFilter) return;
     const handler = (e: MouseEvent) => {
@@ -242,8 +237,8 @@ export function DashboardPage({
   async function handleScan() {
     setIsScanning(true);
     setIsCancelling(false);
-    dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "idle" } }); // clear completed state on re-scan
-    dispatch({ type: "SET_SCAN_SUMMARY", payload: null }); // clear old scan results immediately
+    dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "idle" } });
+    dispatch({ type: "SET_SCAN_SUMMARY", payload: null });
     setScanProgress(null);
     setError("");
     setSortConfig(null);
@@ -332,7 +327,6 @@ export function DashboardPage({
     return pendingCache.get(mod.jarPath) ?? 0;
   }
 
-  /** Check if a numeric value falls within a min/max filter range. */
   function inRange(actual: number, filter: unknown): boolean {
     if (typeof filter !== "object" || filter === null) return true;
     const range = filter as { min?: number; max?: number };
@@ -406,7 +400,7 @@ export function DashboardPage({
             placeholder={t(language, "dashboard.instancePlaceholder")}
           />
         </label>
-<button
+        <button
         className="ghost-button"
         type="button"
         data-tooltip={t(language, "tooltip.pickInstance")}
