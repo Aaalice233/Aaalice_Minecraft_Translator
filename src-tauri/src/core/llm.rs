@@ -296,12 +296,11 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
     }
 
     // Collect distinct mod_ids for context
-    let mut mod_ids: Vec<&str> = entries.iter()
+    let mod_ids: Vec<&str> = entries.iter()
         .map(|e| e.mod_id.as_str())
-        .collect::<std::collections::HashSet<_>>()
+        .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    mod_ids.sort();
     let mod_context = if mod_ids.len() > 1 {
         format!(
             "本次请求中的条目来自以下 {} 个模组：{}\n请根据每个模组的语境选择合适的译法。\n\n",
@@ -327,6 +326,8 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
 
 {mod_context}规则：
 1. 输入文本中的格式代码已被替换为 __SHIELD_0__、__SHIELD_1__ 等标记，你必须**完全保留**这些标记的原样（包括数字后缀）
+   - 这些标记包含 § 颜色/格式码（§b=淡蓝色、§r=重置、§l=加粗、§o=斜体），它们控制文字外观，不是装饰
+   - 删除它们会导致游戏内文字丢失颜色和格式，不同段落混在一起无法辨认
 2. 保留所有占位符（{{player}}、{{0}}、<> 等）
 3. 保持 JSON 结构不变
 4. 只返回 JSON 数组，格式为 [{{"key": "...", "text": "翻译文本"}}, ...]
@@ -342,20 +343,16 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
     );
 
     // Append CFPA reference dictionary if available
-    let all_refs: Vec<&(String, String)> = entries.iter()
+    let mut seen = std::collections::HashSet::new();
+    let ref_lines: Vec<String> = entries.iter()
         .flat_map(|e| e.references.iter())
+        .filter(|(s, _)| seen.insert(s.clone()))
+        .take(30)
+        .map(|(s, t)| format!("{} → {}", s, t))
         .collect();
 
-    if !all_refs.is_empty() {
-        let mut seen = std::collections::HashSet::new();
-        let ref_lines: Vec<String> = all_refs.iter()
-            .filter(|(s, _)| seen.insert(s.clone()))
-            .take(30)
-            .map(|(s, t)| format!("{} → {}", s, t))
-            .collect();
-
-        if !ref_lines.is_empty() {
-            prompt = format!(
+    if !ref_lines.is_empty() {
+        prompt = format!(
                 "{}
 
 ## 参考词汇表（CFPA 汉化组词典中可能相关的对照）
@@ -366,7 +363,6 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
                 prompt,
                 ref_lines.join("\n")
             );
-        }
     }
 
     prompt
