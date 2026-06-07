@@ -130,7 +130,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const cancelledRef = useRef(false);
   const postCompletionRescan = useRef(false);
 
-  /** Derive entry status from progress map or fall back based on sourceType. */
   function getEntryStatus(entry: TranslateLogEntry): string {
     const ep = entryProgressMap.get(entryProgKey(entry.modName, entry.key));
     if (ep) return ep.status;
@@ -147,8 +146,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     }
   }
 
-  const knownSourceTypes = KNOWN_SOURCE_TYPES;
-  const knownStatuses = KNOWN_STATUSES;
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
 
@@ -335,7 +332,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const filteredEntries = useMemo(() => {
     let result = logRef.current;
 
-    // Apply global fuzzy search (modName + key)
     if (filterTerm) {
       const term = filterTerm.toLowerCase();
       result = result.filter(
@@ -345,7 +341,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
       );
     }
 
-    // Apply per-column filters
     const activeKeys = Object.keys(filters);
     if (activeKeys.length > 0) {
       result = result.filter((entry) =>
@@ -372,7 +367,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
       );
     }
 
-    // Apply sorting
     if (sortConfig) {
       result = [...result].sort((a, b) => {
         const dir = sortConfig.direction === "asc" ? 1 : -1;
@@ -418,7 +412,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
         `${csvQuote(entry.key)},${csvQuote(entry.sourceText)},${csvQuote(tgt)},${csvQuote(entry.modName)}`,
       );
     } catch {
-      // clipboard not available
+      // clipboard unavailable
     }
   }, []);
 
@@ -521,7 +515,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
         </div>
       )}
 
-      {/* Compact summary (idle) — replaces old stats-grid */}
       {scanSummary && scanSummary.actualPendingEntries > 0 && status === "idle" && (
         <div className="idle-summary">
           <span className="idle-summary-item">
@@ -537,7 +530,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
         </div>
       )}
 
-      {/* Unified progress section */}
       {(isRunning || status === "completed" || status === "canceled") && (
         <div className="scan-progress">
           <div className="scan-progress-header">
@@ -556,7 +548,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
             )}
           </div>
 
-          {/* Merged bar: colored stacked when entry progress data exists */}
           {(isRunning || status === "completed") && scanSummary && scanSummary.actualPendingEntries > 0 ? (
             <>
               <div className="essb-container">
@@ -609,7 +600,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
               </div>
             </>
           ) : (
-            /* Simple progress bar for non-translating phases or canceled */
             <>
               <div className="progress-bar-track">
                 <div
@@ -643,7 +633,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
         </div>
       )}
 
-      {/* Log panel (always visible) */}
       <div className="log-panel" style={{ marginTop: isRunning || status !== "idle" ? 16 : 0 }}>
         <div className="log-panel-header">
           <h3>{t(language, "jobs.logPanel.title")}</h3>
@@ -724,7 +713,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                                   <X size={13} />
                                 </button>
                               </div>
-                              {(col.key === "key" || col.key === "sourceText" || col.key === "targetText" || col.key === "modName") && (
+                              {["key", "sourceText", "targetText", "modName"].includes(col.key) && (
                                 <input
                                   type="text"
                                   value={filters[col.key] || ""}
@@ -740,7 +729,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                                   autoFocus
                                 >
                                   <option value="">全部</option>
-                                  {knownSourceTypes.map((st) => (
+                                  {KNOWN_SOURCE_TYPES.map((st) => (
                                     <option key={st} value={st}>{sourceTypeLabel(st, language)}</option>
                                   ))}
                                 </select>
@@ -752,7 +741,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
                                   autoFocus
                                 >
                                   <option value="">全部</option>
-                                  {knownStatuses.map((st) => (
+                                  {KNOWN_STATUSES.map((st) => (
                                     <option key={st} value={st}>{statusLabel(st, language)}</option>
                                   ))}
                                 </select>
