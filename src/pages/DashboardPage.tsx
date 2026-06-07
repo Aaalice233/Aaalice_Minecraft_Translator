@@ -62,7 +62,7 @@ function CollapsibleWarnings({ warnings, language }: { warnings: ScanWarning[]; 
     <div className="warnings-collapsible">
       <button
         className="warnings-toggle"
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => setExpanded((p) => !p)}
         type="button"
         aria-expanded={expanded}
       >
@@ -307,7 +307,7 @@ export function DashboardPage({
 
   // Sync debounced search text into filters (avoids per-keystroke re-render of full table)
   useEffect(() => {
-    handleFilterChange("fileName", debouncedSearch || null);
+    handleFilterChange("fileName", debouncedSearch);
   }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleSort(column: string) {
@@ -564,7 +564,7 @@ export function DashboardPage({
                 {searchText && (
                   <button
                     className="mod-search-clear"
-                    onClick={() => { setSearchText(""); }}
+                    onClick={() => setSearchText("")}
                     type="button"
                   >
                     <X size={13} />
