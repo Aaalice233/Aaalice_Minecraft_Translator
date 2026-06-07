@@ -1,4 +1,6 @@
 # Agent/app state (only ignore ephemeral runtime data)
+.pi/
+.until-done/
 .codex/
 .claude/worktrees/
 .claude/tmp/

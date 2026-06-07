@@ -68,7 +68,6 @@ pub fn validate_instance(path: String) -> io::Result<InstanceValidation> {
 }
 
 pub fn scan_instance(
-    root: &Path,
     path: String,
     source_language: String,
     target_language: String,
@@ -80,11 +79,11 @@ pub fn scan_instance(
     let target_language = normalize_target_language(&target_language)?;
     let job_id = logging::new_job_id("scan");
     let validation = validate_instance(path.clone())?;
-    logging::append_main(root, format!("扫描任务创建成功，任务 ID: {job_id}"))?;
-    logging::append_job(root, &job_id, format!("开始扫描实例: {}", validation.instance_path))?;
+    logging::append_main(format!("扫描任务创建成功，任务 ID: {job_id}"))?;
+    logging::append_job(&job_id, format!("开始扫描实例: {}", validation.instance_path))?;
 
     if !validation.is_valid {
-        logging::append_error(root, &job_id, "实例缺少 mods/，扫描失败")?;
+        logging::append_error(&job_id, "实例缺少 mods/，扫描失败")?;
         return Err(io::Error::new(io::ErrorKind::NotFound, "实例缺少 mods/，无法扫描"));
     }
 
@@ -162,9 +161,9 @@ pub fn scan_instance(
             })
             .count()
     };
-    // Pending entries excluding those with existing target-language translations
-    // (existing translations are extracted inline during pipeline Phase 2).
-    let actual_pending_entries = total_pending_entries;
+    // Actual pending entries: exclude both built-in target language translations
+    // AND resource-pack-covered entries (they don't need LLM translation).
+    let actual_pending_entries = total_pending_entries.saturating_sub(resource_pack_covered_entries);
 
     let mut warnings = validation.warnings.clone();
     warnings.extend(mods.iter().flat_map(|m| m.warnings.clone()));
@@ -204,7 +203,6 @@ pub fn scan_instance(
         });
 
         logging::append_job(
-            root,
             &job_id,
             format!(
                 "扫描完成：模组 {} 个，语言文件 {} 个，{} {} 条，{} {} 条，资源包 {} 个",
@@ -222,7 +220,6 @@ pub fn scan_instance(
         for (i, mod_result) in mods.iter().enumerate() {
             let pending = mod_result.source_entries.saturating_sub(mod_result.target_entries);
             logging::append_job(
-                root,
                 &job_id,
                 format!(
                     "[模组] {}: 来源条目={} 目标条目={} 待翻译={}",
@@ -242,7 +239,6 @@ pub fn scan_instance(
 
         // Total summary
         logging::append_job(
-            root,
             &job_id,
             format!(
                 "扫描汇总: {} 模组, {} 语言文件, {} 来源条目, {} 目标条目, {} 待翻译条目",
@@ -262,6 +258,22 @@ pub fn scan_instance(
             sub_step: None,
             stage_status: StageStatus::Completed,
         });
+
+        logging::append_main(
+            format!(
+                "扫描完成：{} 模组, {} 语言文件, {} 来源条目, {} 目标条目, {} 待翻译",
+                mods.len(),
+                total_language_files,
+                total_source_entries,
+                total_target_entries,
+                actual_pending_entries
+            ),
+        )?;
+    }
+
+    // Log cancellation to main log if mid-flight cancel happened
+    if cancel.load(Ordering::SeqCst) {
+        logging::append_main("扫描已被用户取消".to_string())?;
     }
 
     let cancelled = cancel.load(Ordering::SeqCst);
@@ -320,19 +332,10 @@ pub fn scan_mods(
                 .unwrap_or_default();
 
             // Check cancel before doing heavy IO (zip reading)
-            if cancel.load(Ordering::SeqCst) {
-                let current = completed.fetch_add(1, Ordering::SeqCst) + 1;
-                progress(ScanProgress {
-                    current,
-                    total,
-                    mod_name: file_name.clone(),
-                    phase: "scan".to_string(),
-                    sub_step: None,
-                    stage_status: StageStatus::Running,
-                });
-                return ModScanResult {
+            let result = if cancel.load(Ordering::SeqCst) {
+                ModScanResult {
                     mod_id: String::new(),
-                    file_name,
+                    file_name: file_name.clone(),
                     jar_path: String::new(),
                     language_file_count: 0,
                     recovered_language_files: 0,
@@ -346,10 +349,11 @@ pub fn scan_mods(
                     formats: Vec::new(),
                     entries: Vec::new(),
                     warnings: Vec::new(),
-                };
-            }
+                }
+            } else {
+                scan_mod_jar(&path, &file_name, source_language, target_language)
+            };
 
-            let result = scan_mod_jar(&path, source_language, target_language);
             let current = completed.fetch_add(1, Ordering::SeqCst) + 1;
             progress(ScanProgress {
                 current,
@@ -397,8 +401,7 @@ pub fn scan_resourcepacks(
             .strip_suffix(".zip")
             .unwrap_or(&lower)
             .trim_end_matches(|c: char| c.is_ascii_digit() || c == '-' || c == '.');
-        names_lower.iter().any(|nl| *nl == lower)
-            || stripped_refs.iter().any(|sr| *sr == stripped)
+        stripped_refs.iter().any(|sr| *sr == stripped)
     };
 
     // Pre-collect known packs and sort by name so progress emission order
@@ -440,11 +443,8 @@ pub fn scan_resourcepacks(
     Ok(results)
 }
 
-fn scan_mod_jar(path: &Path, source_language: &str, target_language: &str) -> ModScanResult {
-    let file_name = path
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_default();
+fn scan_mod_jar(path: &Path, file_name: &str, source_language: &str, target_language: &str) -> ModScanResult {
+    let file_name = file_name.to_string();
     let mut warnings = Vec::new();
     let mut entries = Vec::new();
     let mut formats = BTreeSet::new();
@@ -1025,17 +1025,15 @@ fn is_target_lang_file(path: &str, target_language: &str) -> bool {
     (path.starts_with("assets/") || path.contains("/assets/"))
         && path.contains("/lang/")
         && (path.ends_with(&format!("/{target_language}.json"))
-            || path.ends_with(&format!("/{target_language}.lang"))
-            || path.ends_with(&format!("lang/{target_language}.json"))
-            || path.ends_with(&format!("lang/{target_language}.lang")))
+            || path.ends_with(&format!("/{target_language}.lang")))
 }
 
 fn normalize_source_language(value: &str) -> io::Result<String> {
     let normalized = value.trim().to_ascii_lowercase();
-    if normalized.is_empty() {
+    if normalized.is_empty() || normalized == "auto" {
         return Ok("auto".to_string());
     }
-    if normalized == "auto" || is_locale_code(&normalized) {
+    if is_locale_code(&normalized) {
         return Ok(normalized);
     }
     Err(io::Error::new(
@@ -1270,7 +1268,6 @@ Second line",
 
     #[test]
     fn progress_callback_is_called_for_each_jar() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
         let calls = AtomicUsize::new(0);
         let cancel = AtomicBool::new(false);
         let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &cancel, &|p: ScanProgress| {

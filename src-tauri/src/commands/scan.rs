@@ -5,6 +5,8 @@ use std::sync::mpsc;
 use tauri::Emitter;
 use tauri_plugin_dialog::DialogExt;
 
+use tracing::info;
+
 use crate::core::{
     models::{InstanceValidation, ScanProgress, ScanSummary},
     paths, scanner, settings,
@@ -79,7 +81,7 @@ pub async fn scan_instance(
     let _ = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(progress) = progress_rx.recv() {
             if let Err(err) = app_emit.emit("scan-progress", &progress) {
-                eprintln!("scan-progress emit error: {err}");
+                tracing::error!("scan-progress emit error: {err}");
             }
         }
     });
@@ -93,7 +95,6 @@ pub async fn scan_instance(
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         scanner::scan_instance(
-            &root,
             safe_path,
             source_language,
             target_language,
@@ -121,7 +122,7 @@ pub async fn scan_instance(
                     let _ = std::fs::create_dir_all(parent);
                 }
                 if let Err(err) = std::fs::write(&job_path, json) {
-                    let _ = crate::core::logging::append_main(&root_for_log, format!("扫描结果写入失败 ({}): {err}", job_path.display()));
+                    let _ = crate::core::logging::append_main(format!("扫描结果写入失败 ({}): {err}", job_path.display()));
                 }
             }
         });
@@ -138,6 +139,7 @@ pub fn cancel_scan() -> Result<(), String> {
 
 #[tauri::command]
 pub fn pick_instance_folder(app: tauri::AppHandle, locale: Option<String>) -> Result<Option<String>, String> {
+    info!("pick_instance_folder");
     let _ = locale;
     match app.dialog().file().set_title("选择实例").blocking_pick_folder() {
         Some(path) => {

@@ -31,7 +31,7 @@ fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
                     batch.push(item);
                     if batch.len() >= 512 {
                         if let Err(err) = app.emit(event_name, &batch) {
-                            eprintln!("{event_name} emit error: {err}");
+                            tracing::error!("{event_name} emit error: {err}");
                         }
                         batch.clear();
                     }
@@ -45,7 +45,7 @@ fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
                     }
                     if !batch.is_empty() {
                         if let Err(err) = app.emit(event_name, &batch) {
-                            eprintln!("{event_name} emit error: {err}");
+                            tracing::error!("{event_name} emit error: {err}");
                         }
                         batch.clear();
                     }
@@ -77,7 +77,7 @@ pub async fn start_translation(
     // Also register in the global instance for cross-command cancel detection.
     pipeline::register_translation_task(&job_id);
 
-    logging::append_main(&root, format!("翻译任务创建成功，任务 ID: {job_id}"))
+    logging::append_main(format!("翻译任务创建成功，任务 ID: {job_id}"))
         .map_err(|err| err.to_string())?;
 
     // Channels: progress events + log entries + entry-level progress
@@ -99,7 +99,7 @@ pub async fn start_translation(
                 break;
             }
             if let Err(err) = app_emit.emit("translate-progress", &progress) {
-                eprintln!("translate-progress emit error: {err}");
+                tracing::error!("translate-progress emit error: {err}");
             }
         }
     });
@@ -155,7 +155,6 @@ pub async fn start_translation(
     drop(entry_progress_tx);
 
     logging::append_main(
-        &root,
         format!("翻译任务完成: {} 条目", result.completed),
     )
     .ok();
@@ -167,7 +166,6 @@ pub async fn start_translation(
 pub fn cancel_translation() -> Result<(), String> {
     pipeline::cancel_current_translation();
     let _ = logging::append_main(
-        &paths::runtime_root().map_err(|err| err.to_string())?,
         "翻译任务被用户取消",
     );
     Ok(())

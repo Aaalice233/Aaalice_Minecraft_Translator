@@ -1,8 +1,5 @@
 use crate::core::{packer, paths};
-
-fn to_message(err: impl std::fmt::Display) -> String {
-    err.to_string()
-}
+use tracing::info;
 
 #[tauri::command]
 pub fn generate_translation_pack(
@@ -11,9 +8,10 @@ pub fn generate_translation_pack(
     dry_run: bool,
     pack_format: Option<u32>,
 ) -> Result<packer::PackResult, String> {
-    let root = paths::runtime_root().map_err(to_message)?;
+    info!("generate_translation_pack: entries={}, target_language={}, dry_run={}", entries.len(), target_language, dry_run);
+    let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let output_dir = paths::build_output_dir(&root);
-    std::fs::create_dir_all(&output_dir).map_err(to_message)?;
+    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
     let options = packer::PackOptions {
         target_language,
@@ -24,7 +22,7 @@ pub fn generate_translation_pack(
         pack_format: pack_format.unwrap_or(15),
     };
 
-    packer::generate_pack(&options).map_err(to_message)
+    packer::generate_pack(&options).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -33,7 +31,8 @@ pub fn copy_pack_to_instance(
     instance_path: String,
     overwrite: bool,
 ) -> Result<packer::CopyResult, String> {
-    packer::copy_to_resourcepacks(&pack_zip_path, &instance_path, overwrite).map_err(to_message)
+    info!("copy_pack_to_instance: pack={}, instance={}, overwrite={}", pack_zip_path, instance_path, overwrite);
+    packer::copy_to_resourcepacks(&pack_zip_path, &instance_path, overwrite).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -42,10 +41,11 @@ pub fn generate_pack_from_job(
     target_language: String,
     dry_run: bool,
 ) -> Result<packer::PackResult, String> {
-    let root = paths::runtime_root().map_err(to_message)?;
+    info!("generate_pack_from_job: job_id={}, target_language={}, dry_run={}", job_id, target_language, dry_run);
+    let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let manager = crate::core::jobs::JobManager::new(root.clone());
 
-    let _job = manager
+    manager
         .load(&job_id)?
         .ok_or_else(|| format!("翻译任务 {job_id} 未找到"))?;
 
@@ -66,7 +66,7 @@ pub fn generate_pack_from_job(
     }
 
     let output_dir = paths::build_output_dir(&root);
-    std::fs::create_dir_all(&output_dir).map_err(to_message)?;
+    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
     let options = packer::PackOptions {
         target_language,
@@ -77,5 +77,5 @@ pub fn generate_pack_from_job(
         pack_format: 15,
     };
 
-    packer::generate_pack(&options).map_err(to_message)
+    packer::generate_pack(&options).map_err(|e| e.to_string())
 }

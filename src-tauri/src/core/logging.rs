@@ -1,118 +1,131 @@
 use std::{
-    fs::{self, OpenOptions},
-    io::{self, Write},
+    fmt::Write as _,
+    fs,
+    io,
     path::Path,
-    sync::OnceLock,
+    sync::{Once, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use regex::Regex;
+use tracing::{error, info};
+use tracing_subscriber::{
+    fmt::{self, format::Writer, FormatEvent, FormatFields},
+    layer::SubscriberExt,
+    EnvFilter, Registry,
+};
 
-pub fn init_main_log(root: &Path) -> io::Result<()> {
+pub mod redact;
+use redact::redact_secret;
+
+/// Log formatter: `[unix_seconds] LEVEL message` — compatible with frontend parser.
+struct LogFormatter;
+
+impl<S, N> FormatEvent<S, N> for LogFormatter
+where
+    S: tracing::Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
+    N: for<'a> FormatFields<'a> + 'static,
+{
+    fn format_event(
+        &self,
+        ctx: &fmt::FmtContext<'_, S, N>,
+        writer: Writer<'_>,
+        event: &tracing::Event<'_>,
+    ) -> std::fmt::Result {
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let level = event.metadata().level();
+
+        let mut buf = String::new();
+        write!(&mut buf, "[{secs}] {level} ").ok();
+
+        let buf_writer = Writer::new(&mut buf);
+        ctx.format_fields(buf_writer, event)?;
+        writeln!(&mut buf)?;
+
+        let mut writer = writer;
+        writer.write_str(&buf)
+    }
+}
+
+/// Once guard to prevent multiple subscriber initialization.
+static LOG_INIT: Once = Once::new();
+
+/// Holds the `WorkerGuard` so the non-blocking writer thread lives until
+/// process exit. Stored in a `OnceLock` so it is properly dropped (and
+/// the background buffer flushed) on normal shutdown, unlike `mem::forget`
+/// which would leak the guard and lose tail entries on crash.
+static _LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
+
+/// Initialize the tracing-based logging system.
+///
+/// Creates `<root>/logs/` directory,
+/// then sets up a global tracing subscriber with non-blocking file I/O.
+///
+/// The `WorkerGuard` is held in a `OnceLock` so it is dropped (and the
+/// remaining buffer flushed) during normal process shutdown.
+pub fn init(root: &Path) -> io::Result<()> {
     let logs_dir = root.join("logs");
-    fs::create_dir_all(logs_dir.join("jobs"))?;
-    fs::create_dir_all(logs_dir.join("errors"))?;
-    fs::write(
-        logs_dir.join("main.log"),
-        format!("[{}] INFO 程序启动，main.log 已重置\n", timestamp()),
-    )
+    fs::create_dir_all(&logs_dir)?;
+
+    LOG_INIT.call_once(|| {
+        let file_appender = tracing_appender::rolling::never(&logs_dir, "main.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+        let subscriber = Registry::default()
+            .with(EnvFilter::new("info"))
+            .with(
+                fmt::Layer::new()
+                    .event_format(LogFormatter)
+                    .with_writer(non_blocking)
+                    .with_ansi(false),
+            );
+
+        let _ = tracing::subscriber::set_global_default(subscriber);
+        // Store guard for proper drop-on-exit; if somehow initialized twice
+        // (which LOG_INIT prevents), the second attempt is silently ignored.
+        let _ = _LOG_GUARD.set(guard);
+    });
+
+    // Always write startup line regardless of which init won the race
+    append_main("程序启动 (tracing)").ok();
+    Ok(())
 }
 
-pub fn append_main(root: &Path, message: impl AsRef<str>) -> io::Result<()> {
-    append(root.join("logs").join("main.log"), "INFO", message.as_ref())
+/// Log an INFO message to the main log.
+pub fn append_main(message: impl AsRef<str>) -> io::Result<()> {
+    let msg = redact_secret(message.as_ref());
+    info!("{msg}");
+    Ok(())
 }
 
-pub fn append_job(root: &Path, job_id: &str, message: impl AsRef<str>) -> io::Result<()> {
-    append(
-        root.join("logs").join("jobs").join(format!("{job_id}.log")),
-        "INFO",
-        message.as_ref(),
-    )
+/// Log an INFO message tagged with a job_id (visible as structured field).
+pub fn append_job(job_id: &str, message: impl AsRef<str>) -> io::Result<()> {
+    let msg = redact_secret(message.as_ref());
+    info!(job_id = %job_id, "{msg}");
+    Ok(())
 }
 
-pub fn append_error(root: &Path, job_id: &str, message: impl AsRef<str>) -> io::Result<()> {
-    append(
-        root.join("logs").join("errors").join(format!("{job_id}.log")),
-        "ERROR",
-        message.as_ref(),
-    )
+/// Log an ERROR message tagged with a job_id.
+pub fn append_error(job_id: &str, message: impl AsRef<str>) -> io::Result<()> {
+    let msg = redact_secret(message.as_ref());
+    error!(job_id = %job_id, "{msg}");
+    Ok(())
 }
 
+/// Generate a unique job ID with the given prefix and current millisecond timestamp.
 pub fn new_job_id(prefix: &str) -> String {
     let millis = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
+        .map(|d| d.as_millis())
         .unwrap_or_default();
     format!("{prefix}_{millis}")
 }
 
-fn append(path: std::path::PathBuf, level: &str, message: &str) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    writeln!(file, "[{}] {level} {}", timestamp(), redact_secret(message))
-}
+// ── Direct file append (for read_logs file reading & startup) ──────────────
 
-fn timestamp() -> String {
-    let secs = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
-        .unwrap_or_default();
-    secs.to_string()
-}
+// ── Tests ───────────────────────────────────────────────────────────────────
 
-/// Redact sensitive information (API keys, tokens) from log messages using regex patterns.
-///
-/// The approach avoids raw string regex literals to prevent editor/truncation issues.
-/// Patterns are compiled lazily with OnceLock.
-fn redact_secret(message: &str) -> String {
-    // Fast path: skip regex overhead if no suspicious patterns are present
-    let lower = message.to_ascii_lowercase();
-    if !lower.contains("api_key")
-        && !lower.contains("apikey")
-        && !lower.contains("authorization")
-        && !lower.contains("bearer")
-        && !lower.contains("sk-")
-        && !lower.contains("sk_")
-    {
-        return message.to_string();
-    }
-
-    static PATTERNS: OnceLock<Vec<(Regex, &str)>> = OnceLock::new();
-    let patterns = PATTERNS.get_or_init(|| {
-        vec![
-            // Pattern 1: "api_key":"sk-xxxx..." or 'api_key':'sk-xxxx...' in JSON
-            (
-                Regex::new("(?i)(api[_-]?key|authorization)\\s*[:=]\\s*[\"']?(sk-[a-zA-Z0-9]{20,})[\"']?").unwrap(),
-                "[REDACTED]",
-            ),
-            // Pattern 2: api_key=sk-xxxx in URL query or headers
-            (
-                Regex::new("(?i)(api[_-]?key|authorization)\\s*[:=]\\s*(sk-[a-zA-Z0-9]{20,})").unwrap(),
-                "${1}=[REDACTED]",
-            ),
-            // Pattern 3: Bearer sk-xxxx or bearer sk-xxxx
-            (
-                Regex::new("(?i)(Bearer\\s+)(sk-[a-zA-Z0-9]{20,})").unwrap(),
-                "${1}[REDACTED]",
-            ),
-            // Pattern 4: Generic long API keys (16+ chars) after known labels
-            (
-                Regex::new("(?i)(api[_-]?key|authorization)\\s*[:=]\\s*[\"']?([a-zA-Z0-9_\\-]{16,})[\"']?").unwrap(),
-                "[REDACTED]",
-            ),
-            // Pattern 5: Standalone sk- keys (word boundary)
-            (
-                Regex::new("(?i)\\b(sk-[a-zA-Z0-9]{20,})\\b").unwrap(),
-                "[REDACTED]",
-            ),
-        ]
-    });
-
-    let mut result = message.to_string();
-    for (re, replacement) in patterns {
-        result = re.replace_all(&result, *replacement).to_string();
-    }
-    result
-}
+#[cfg(test)]
+mod tests;

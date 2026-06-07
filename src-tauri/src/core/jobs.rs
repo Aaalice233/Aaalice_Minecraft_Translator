@@ -136,7 +136,6 @@ impl JobManager {
         self.save(&job)?;
 
         logging::append_job(
-            &self.root,
             &job_id,
             format!(
                 "翻译 Job 创建: scan_job_id={scan_job_id}, 待翻译条目={}",

@@ -29,20 +29,18 @@ export function LogsPage({ language }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
+  useEffect(() => { pausedRef.current = paused; }, [paused]);
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewHeight, setViewHeight] = useState(400);
   const followRef = useRef(true); // whether auto-follow is on
   const rafRef = useRef<number | null>(null);
 
-  // Poll for new log entries
+  // Poll for new log entries — use setInterval for automatic cleanup
   useEffect(() => {
-    let active = true;
-    const poll = async () => {
-      if (!active) return;
+    const id = setInterval(async () => {
       try {
         const result = await readLogs();
-        if (!active) return;
         if (result.entries.length > 0 && !pausedRef.current) {
           setEntries((prev) => {
             const next = [...prev, ...result.entries];
@@ -52,10 +50,8 @@ export function LogsPage({ language }: Props) {
       } catch {
         // file may not exist yet
       }
-      setTimeout(poll, POLL_MS);
-    };
-    poll();
-    return () => { active = false; };
+    }, POLL_MS);
+    return () => clearInterval(id);
   }, []);
 
   // Update view height on resize
@@ -76,11 +72,10 @@ export function LogsPage({ language }: Props) {
     const el = containerRef.current;
     if (!el) return;
     // Use rAF to avoid layout thrash
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    rafRef.current = requestAnimationFrame(() => {
+    const id = requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight;
-      rafRef.current = null;
     });
+    return () => cancelAnimationFrame(id);
   }, [entries, paused]);
 
   // Virtual scroll calculations
@@ -104,14 +99,12 @@ export function LogsPage({ language }: Props) {
     followRef.current = true;
   }, []);
 
-  const copyAll = useCallback(async () => {
+  const copyAll = useCallback(() => {
     const text = entries.map((e) => {
       const ts = e.timestamp ? `[${e.timestamp}]` : "";
       return `${ts} ${e.level} ${e.message}`;
     }).join("\n");
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch { /* clipboard not available */ }
+    navigator.clipboard.writeText(text).catch(() => {});
   }, [entries]);
 
   return (
@@ -121,23 +114,20 @@ export function LogsPage({ language }: Props) {
           <h1>{t(language, "logs.title")}</h1>
           <p>{t(language, "logs.subtitle")}</p>
         </div>
-        <div className="page-header-button" style={{ gap: 6 }}>
+        <div className="page-header-button">
           <button
-            className="ghost-button"
-            onClick={() => { setPaused((p) => !p); pausedRef.current = !pausedRef.current; }}
+            className={`icon-button ${paused ? '' : 'active'}`}
+            onClick={() => setPaused((p) => !p)}
             type="button"
-            title={paused ? "继续滚动" : "暂停滚动"}
+            data-tooltip={paused ? "继续滚动" : "暂停滚动"}
           >
-            {paused ? <Play size={14} /> : <Pause size={14} />}
-            {paused ? "继续" : "暂停"}
+            {paused ? <Play size={16} /> : <Pause size={16} />}
           </button>
-          <button className="ghost-button" onClick={copyAll} type="button" data-tooltip="复制全部日志">
-            <Copy size={14} />
-            复制
+          <button className="icon-button" onClick={copyAll} type="button" data-tooltip="复制全部日志">
+            <Copy size={16} />
           </button>
-          <button className="ghost-button danger" onClick={clearLog} type="button" title="清空日志">
-            <Trash2 size={14} />
-            {t(language, "jobs.logPanel.clear")}
+          <button className="icon-button danger" onClick={clearLog} type="button" data-tooltip="清空日志">
+            <Trash2 size={16} />
           </button>
         </div>
       </div>

@@ -409,6 +409,59 @@ p {
   color: var(--danger);
 }
 
+/* ── Page header button toolbar ── */
+.page-header-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Compact icon-only button (32px square) ── */
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.icon-button:hover {
+  background: #f0ede6;
+  border-color: #ccc6b8;
+  color: var(--text-primary);
+}
+
+.icon-button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+/* Active state for pause/resume toggle — green accent when scrolling is live */
+.icon-button.active {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.icon-button.active:hover {
+  background: #d0ecde;
+  border-color: var(--accent-hover);
+}
+
+/* Danger variant for clear button */
+.icon-button.danger:hover {
+  background: var(--danger-bg);
+  border-color: #e8aaa5;
+  color: var(--danger);
+}
+
 .instance-row {
   display: grid;
   grid-template-columns: minmax(360px, 1fr) auto auto;

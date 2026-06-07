@@ -76,6 +76,7 @@ pub struct CopyResult {
 
 /// Generate the resource pack directory structure and optionally the zip.
 pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
+    tracing::info!(entry_count = options.entries.len(), language = %options.target_language, "Generating resource pack");
     let output_dir = PathBuf::from(&options.output_dir);
     // Sanitize build_name before using it in file paths to prevent traversal
     let safe_build_name = sanitize_name(&options.build_name);
@@ -197,6 +198,8 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
     let zip_path = output_dir.join(format!("{}-{}.zip", safe_build_name, options.target_language));
     create_zip(&pack_dir, &zip_path)?;
 
+    let zip_size = std::fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
+    tracing::info!(entry_count = options.entries.len(), mod_count = by_mod.len(), zip_size, "Resource pack generated successfully");
     Ok(PackResult {
         output_dir: options.output_dir.clone(),
         zip_path: zip_path.to_string_lossy().to_string(),
@@ -284,6 +287,7 @@ pub fn copy_to_resourcepacks(
 
     if target.exists() {
         if !overwrite {
+            tracing::warn!(path = %target.display(), "Target resource pack already exists, not overwriting");
             return Err(io::Error::new(
                 io::ErrorKind::AlreadyExists,
                 format!("目标文件已存在: {}", target.display()),

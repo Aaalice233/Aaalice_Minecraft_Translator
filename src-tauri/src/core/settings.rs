@@ -7,7 +7,9 @@ const MAX_SETTINGS_FILE_SIZE: u64 = 1 * 1024 * 1024;
 
 pub fn load_settings(root: &Path) -> io::Result<Settings> {
     let path = settings_path(root);
+    tracing::info!(path = %path.display(), "Loading settings");
     if !path.exists() {
+        tracing::warn!(path = %path.display(), "Settings file not found, using defaults");
         return Ok(Settings::default());
     }
 
@@ -50,6 +52,7 @@ fn validate_settings(settings: &Settings) -> io::Result<()> {
 }
 
 pub fn save_settings(root: &Path, settings: &Settings) -> io::Result<()> {
+    tracing::info!(path = %settings_path(root).display(), "Saving settings");
     validate_settings(settings)?;
     let data_dir = root.join("data");
     fs::create_dir_all(&data_dir)?;

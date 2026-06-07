@@ -346,6 +346,10 @@ fn dictionary_phase(
     flush_dict_batch(&mut entry_progress_buf, &mut log_buf);
 
     let non_llm_count = processed - llm_only_entries.len();
+    logging::append_main(format!(
+        "词典匹配完成: 共 {processed} 条目, 非 LLM {non_llm_count}, 待 LLM 翻译 {}",
+        llm_only_entries.len()
+    )).ok();
 
     for (entry, file_name) in &llm_only_entries {
         let _ = entry_progress_tx.send(EntryProgress {
@@ -461,6 +465,7 @@ fn llm_phase(
     let entry_progress_tx = ctx.entry_progress_tx;
 
     if llm_only_entries.is_empty() {
+        logging::append_main("LLM 翻译阶段: 无待翻译条目，跳过".to_string()).ok();
         return Ok(LlmPhaseResult {
             accumulated_token_usage: TokenUsage::default(),
             llm_count: 0,
@@ -491,6 +496,13 @@ fn llm_phase(
     };
 
     client.validate()?;
+
+    logging::append_main(format!(
+        "LLM 翻译阶段开始: {} 条目, {} 批次, 并发 {initial_concurrency}, 模型 {}",
+        llm_only_entries.len(),
+        total_llm_batches,
+        llm_cfg.model,
+    )).ok();
 
     // ── 元数据索引（按位置对应，避免 HashMap 键碰撞） ────────
     let mut key_meta: Vec<Vec<(&str, &str, &str)>> = Vec::with_capacity(batches.len());
@@ -526,7 +538,7 @@ fn llm_phase(
                     let worker_dict = match dictionary::open(dict_db_path) {
                         Ok(conn) => conn,
                         Err(e) => {
-                            let _ = logging::append_job(&config.root, job_id, format!("worker 打开词典失败: {e}"));
+                            let _ = logging::append_job(job_id, format!("worker 打开词典失败: {e}"));
                             return;
                         }
                     };
@@ -742,7 +754,7 @@ fn llm_phase(
                     } else {
                         "未知 panic".to_string()
                     };
-                    let _ = logging::append_job(&config.root, job_id, format!("LLM worker panic: {msg}"));
+                    let _ = logging::append_job(job_id, format!("LLM worker panic: {msg}"));
                 }
             });
         }
@@ -752,10 +764,16 @@ fn llm_phase(
         return Err("所有 LLM 工作者启动失败，请检查词典数据库可用性".to_string());
     }
 
+    let llm_count = global_llm_count.load(Ordering::SeqCst);
+    let failed_count = global_failed_count.load(Ordering::SeqCst);
+    logging::append_main(format!(
+        "LLM 翻译阶段完成: 成功 {llm_count} 条目, 失败 {failed_count} 条目",
+    )).ok();
+
     Ok(LlmPhaseResult {
         accumulated_token_usage: token_usage_mutex.into_inner().unwrap_or_else(|e| e.into_inner()),
-        llm_count: global_llm_count.load(Ordering::SeqCst),
-        failed_count: global_failed_count.load(Ordering::SeqCst),
+        llm_count,
+        failed_count,
     })
 }
 
@@ -872,7 +890,7 @@ impl Phase for FinalizePhase {
         let completed = non_llm_count + llm_count;
 
         if ctx.cancel.is_cancelled(ctx.job_id) {
-            let _ = logging::append_job(&ctx.config.root, ctx.job_id, "翻译任务在完成前被取消");
+            let _ = logging::append_job(ctx.job_id, "翻译任务在完成前被取消");
             save_job_progress(&ctx.config.root, ctx.job_id, completed, failed_count, jobs::TranslationStatus::Cancelled);
             return Ok(PhaseOutcome::StopAndReturn(PipelineResult {
                 completed, non_llm_count, llm_count,
@@ -883,7 +901,7 @@ impl Phase for FinalizePhase {
         }
 
         if ctx.accumulated_token_usage.total_tokens > 0 {
-            let _ = logging::append_job(&ctx.config.root, ctx.job_id, format!(
+            let _ = logging::append_job(ctx.job_id, format!(
                 "LLM Token 使用: prompt={}, completion={}, total={}",
                 ctx.accumulated_token_usage.prompt_tokens,
                 ctx.accumulated_token_usage.completion_tokens,
@@ -898,7 +916,7 @@ impl Phase for FinalizePhase {
             stage_status: StageStatus::Completed,
         });
 
-        let _ = logging::append_job(&ctx.config.root, ctx.job_id, format!(
+        let _ = logging::append_job(ctx.job_id, format!(
             "翻译完成: {total}/{total} 条目 (非 LLM: {non_llm_count}, LLM: {llm_count})"
         ));
 
@@ -925,7 +943,7 @@ fn save_job_progress(root: &std::path::Path, job_id: &str, completed: usize, fai
         }
         job.status = status;
         if let Err(err) = manager.save(&job) {
-            let _ = logging::append_job(root, job_id, format!("保存 job 状态失败: {err}"));
+            let _ = logging::append_job(job_id, format!("保存 job 状态失败: {err}"));
         }
     }
 }
@@ -1000,10 +1018,10 @@ fn resolve_scan(
                     if summary.source_language == config.source_language
                         && summary.target_language == config.target_language
                     {
-                        let _ = logging::append_main(&config.root, format!("从缓存加载扫描结果 (任务 {sid})"));
+                        let _ = logging::append_main(format!("从缓存加载扫描结果 (任务 {sid})"));
                         return Ok(summary);
                     }
-                    let _ = logging::append_main(&config.root, format!(
+                    let _ = logging::append_main(format!(
                         "缓存扫描语言不匹配 (缓存: {}→{}, 当前: {}→{}), 重新扫描",
                         summary.source_language, summary.target_language,
                         config.source_language, config.target_language,
@@ -1026,7 +1044,6 @@ fn resolve_scan(
     };
 
     let summary = scanner::scan_instance(
-        &config.root,
         config.instance_path.clone(),
         config.source_language.clone(),
         config.target_language.clone(),
@@ -1043,7 +1060,7 @@ fn resolve_scan(
                 let _ = std::fs::create_dir_all(parent);
             }
             if let Err(err) = std::fs::write(&job_path, &json) {
-                let _ = logging::append_main(&config.root, format!("扫描结果写入失败 ({}): {err}", job_path.display()));
+                let _ = logging::append_main(format!("扫描结果写入失败 ({}): {err}", job_path.display()));
             }
         }
     }

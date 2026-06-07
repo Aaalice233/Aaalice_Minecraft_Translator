@@ -16,10 +16,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(commands::LogOffset(std::sync::Mutex::new(0)))
+        .manage(commands::LogOffset(std::sync::Mutex::new((0, 0))))
         .setup(|_app| {
             let root = core::paths::runtime_root()?;
-            core::logging::init_main_log(&root)?;
+            core::logging::init(&root)?;
             let _ = core::paths::clear_scan_cache(&root);
             Ok(())
         })

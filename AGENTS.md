@@ -33,7 +33,7 @@
 - `src/styles/app.css`：全局样式，桌面工具风格 + 6px 圆角控件 + 进度条动画。
 - `src-tauri/`：Tauri 2 + Rust 后端，负责设置持久化、实例扫描、日志、LLM 模型拉取和后续翻译/打包流水线。
 - `src-tauri/src/core/`：后端核心逻辑模块：`settings`（JSON 持久化）、`scanner`（rayon 并行 + 进度事件）、`logging`（文件日志 + 脱敏）、`paths`（运行时根路径）、`models`（数据模型 + Default impl）。
-- `src-tauri/src/commands.rs`：Tauri command 暴露层，含进度事件发射（scan-progress）和 AppHandle 管理。
+- `src-tauri/src/commands/`：Tauri command 暴露层，每个功能模块一个文件。
 - `src-tauri/Cargo.toml`：依赖 `rayon`、`reqwest`（blocking+json）、`serde`、`zip`、`tauri 2`。
 - `tests/`：前端单元测试和 Minecraft fixture；新增行为优先补最小 fixture 测试。
 - `docs/`：产品规格、架构计划、UI 风格和 agent 测试计划。
@@ -95,6 +95,7 @@
   - 改 Rust → Tauri 自动检测变化 → 增量编译 → 重启窗口
   - Rust 增量编译通常 3–10s（首次编译约 1–2min）
   - 开发期不要用 `npm run build` + `cargo build --release` 每次测试，太慢
+- **一键重启热重载**：`dev-reload.ps1` — 清理旧进程（端口 1420 / Tauri 窗口 / cargo / rustc）后启动 `npm run tauri dev`，右键「使用 PowerShell 运行」即用
 - **前端构建验证**：`npm run build`
 - **前端单元测试**：`npm run test:unit`
 - **Rust 后端测试**：`cd src-tauri && cargo test`

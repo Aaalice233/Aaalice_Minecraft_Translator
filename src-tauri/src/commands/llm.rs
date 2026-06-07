@@ -1,11 +1,9 @@
+use tracing::info;
+
 use crate::core::{
     llm::LlmClient,
     models::{LlmModel, LlmModelsResponse},
 };
-
-fn to_message(err: impl std::fmt::Display) -> String {
-    err.to_string()
-}
 
 /// Validate a URL to prevent SSRF: ensure scheme is http/https
 /// and the host is not a private/internal/loopback address.
@@ -95,13 +93,14 @@ fn model_urls(base_url: &str) -> Vec<String> {
 
 #[tauri::command]
 pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsResponse, String> {
+    info!("fetch_llm_models: base_url={}", &base_url);
     // SSRF protection: validate base_url before making any request
     validate_url(&base_url)?;
 
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .map_err(to_message)?;
+        .map_err(|e| e.to_string())?;
     let urls = model_urls(&base_url);
 
     // Validate each generated URL before requesting
@@ -115,7 +114,7 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
             .get(&url)
             .bearer_auth(&api_key)
             .send()
-            .map_err(to_message);
+            .map_err(|e| e.to_string());
 
         let Ok(response) = response else {
             last_error = "模型列表请求失败".to_string();
@@ -127,7 +126,7 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
             continue;
         }
 
-        let body: serde_json::Value = response.json().map_err(to_message)?;
+        let body: serde_json::Value = response.json().map_err(|e| e.to_string())?;
         let models = body
             .get("data")
             .and_then(|value| value.as_array())
@@ -147,12 +146,14 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
             })
             .unwrap_or_default();
 
+        info!("fetch_llm_models: 获取到 {} 个模型", models.len());
         return Ok(LlmModelsResponse {
             models,
             source_url: url,
         });
     }
 
+    info!("fetch_llm_models: 请求失败: {last_error}");
     Err(if last_error.is_empty() {
         "未能拉取模型列表".to_string()
     } else {
@@ -162,6 +163,7 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
 
 #[tauri::command]
 pub fn check_llm_connection(base_url: String, api_key: String, model: String) -> Result<bool, String> {
+    info!("check_llm_connection: model={}", &model);
     let client = LlmClient {
         base_url,
         api_key,

@@ -92,6 +92,7 @@ pub struct DictionaryQuery {
 
 /// Open or create the dictionary database, initializing schema and WAL mode.
 pub fn open(db_path: &Path) -> SqlResult<Connection> {
+    tracing::info!(path = %db_path.display(), "Opening dictionary database");
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).ok();
     }
@@ -103,6 +104,7 @@ pub fn open(db_path: &Path) -> SqlResult<Connection> {
 
 /// Apply schema to an in-memory connection (for tests and temp operations).
 pub fn open_in_memory(conn: &Connection) -> SqlResult<()> {
+    tracing::debug!("初始化内存词典");
     conn.execute_batch(SCHEMA_SQL)
 }
 
@@ -124,6 +126,12 @@ pub fn hash_text(text: &str) -> String {
 
 /// Insert a single dictionary entry. Returns the new row ID.
 pub fn insert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<i64> {
+    tracing::debug!(
+        source_lang = %entry.source_lang,
+        target_lang = %entry.target_lang,
+        source_type = %entry.source_type,
+        "插入词典条目"
+    );
     let source_hash = hash_text(&entry.source_text);
     let target_hash = hash_text(&entry.target_text);
 
@@ -152,6 +160,7 @@ pub fn insert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<i64> {
 /// Upsert: insert or update when the same (source_hash, target_lang) exists.
 /// Returns the row ID and whether a new row was inserted (true) or existing updated (false).
 pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, bool)> {
+    tracing::debug!(source_text = %entry.source_text, source_type = %entry.source_type, "Upserting dictionary entry");
     let source_hash = hash_text(&entry.source_text);
     let target_hash = hash_text(&entry.target_text);
 
@@ -221,6 +230,7 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
 
 /// Search dictionary entries with optional filters.
 pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<DictionaryEntry>> {
+    tracing::debug!(?query, "Searching dictionary entries");
     let mut sql = String::from(
         "SELECT_COLS WHERE 1=1",
     );
@@ -270,6 +280,7 @@ pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<Dicti
     for row in rows {
         results.push(row?);
     }
+    tracing::info!(count = results.len(), "Dictionary search completed");
     Ok(results)
 }
 
@@ -294,11 +305,22 @@ pub fn search_by_hash(
     for row in rows {
         results.push(row?);
     }
+    if results.is_empty() {
+        tracing::debug!(source_hash, target_lang, "词典未命中");
+    } else {
+        tracing::info!(
+            hit_count = results.len(),
+            source_type = %results[0].source_type,
+            target_lang,
+            "词典命中"
+        );
+    }
     Ok(results)
 }
 
 /// Get a single entry by ID.
 pub fn get_by_id(conn: &Connection, id: i64) -> SqlResult<Option<DictionaryEntry>> {
+    tracing::debug!(entry_id = id, "查询词典条目");
     let mut stmt = conn.prepare(
         &format!("{SELECT_COLS} WHERE id = ?1"),
     )?;
@@ -313,6 +335,7 @@ pub fn get_by_id(conn: &Connection, id: i64) -> SqlResult<Option<DictionaryEntry
 
 /// Update the target_text of an entry. Sets source_type to 'manual'.
 pub fn update_translation(conn: &Connection, id: i64, new_target: &str) -> SqlResult<bool> {
+    tracing::info!(entry_id = id, new_target_len = new_target.len(), "更新词典译文");
     let target_hash = hash_text(new_target);
     let affected = conn.execute(
         "UPDATE dictionary_entries
@@ -325,6 +348,7 @@ pub fn update_translation(conn: &Connection, id: i64, new_target: &str) -> SqlRe
 
 /// Delete an entry by ID.
 pub fn delete(conn: &Connection, id: i64) -> SqlResult<bool> {
+    tracing::info!(entry_id = id, "删除词典条目");
     let affected = conn.execute(
         "DELETE FROM dictionary_entries WHERE id = ?1",
         params![id],
@@ -334,9 +358,11 @@ pub fn delete(conn: &Connection, id: i64) -> SqlResult<bool> {
 
 /// Get total count of entries.
 pub fn count(conn: &Connection) -> SqlResult<usize> {
-    conn.query_row("SELECT COUNT(*) FROM dictionary_entries", [], |row| {
+    let count = conn.query_row("SELECT COUNT(*) FROM dictionary_entries", [], |row| {
         row.get::<_, i64>(0).map(|v| v as usize)
-    })
+    })?;
+    tracing::debug!(count, "词典条目计数");
+    Ok(count)
 }
 
 /// Import resource pack entries into the dictionary.
@@ -422,11 +448,13 @@ pub fn export_jsonl(conn: &Connection) -> SqlResult<Vec<String>> {
             lines.push(json);
         }
     }
+    tracing::info!(count = lines.len(), "Exported dictionary entries as JSONL");
     Ok(lines)
 }
 
 /// Import entries from JSON lines. Returns import summary.
 pub fn import_jsonl(conn: &Connection, lines: &[&str]) -> SqlResult<ImportResult> {
+    tracing::info!(count = lines.len(), "Importing dictionary entries from JSONL");
     let mut imported = 0usize;
     let mut skipped = 0usize;
     let mut conflicts = Vec::new();
@@ -460,6 +488,7 @@ pub fn import_jsonl(conn: &Connection, lines: &[&str]) -> SqlResult<ImportResult
 
 /// Get distinct mod_ids in the dictionary.
 pub fn distinct_mod_ids(conn: &Connection) -> SqlResult<Vec<String>> {
+    tracing::debug!("获取词典中的模组列表");
     let mut stmt = conn.prepare(
         "SELECT DISTINCT mod_id FROM dictionary_entries WHERE mod_id IS NOT NULL ORDER BY mod_id",
     )?;
@@ -477,27 +506,7 @@ mod tests {
 
     fn test_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        // Skip WAL (doesn't work in-memory) and create tables directly
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS dictionary_entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                source_text TEXT NOT NULL,
-                target_text TEXT NOT NULL,
-                source_lang TEXT NOT NULL DEFAULT 'en_us',
-                target_lang TEXT NOT NULL DEFAULT 'zh_cn',
-                source_type TEXT NOT NULL DEFAULT 'manual',
-                mod_id TEXT,
-                translation_key TEXT,
-                context TEXT,
-                source_hash TEXT NOT NULL,
-                target_hash TEXT NOT NULL,
-                confidence REAL NOT NULL DEFAULT 1.0,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-            );
-            CREATE INDEX IF NOT EXISTS idx_source_hash ON dictionary_entries(source_hash);",
-        )
-        .unwrap();
+        open_in_memory(&conn).unwrap();
         conn
     }
 

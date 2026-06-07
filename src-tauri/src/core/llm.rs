@@ -57,14 +57,24 @@ impl LlmClient {
     /// Validate that the client has sufficient configuration to make API calls.
     pub fn validate(&self) -> Result<(), String> {
         if self.base_url.is_empty() {
+            tracing::warn!("LLM 配置校验失败: API 地址未配置");
             return Err("API 地址未配置".to_string());
         }
         if self.api_key.is_empty() {
+            tracing::warn!("LLM 配置校验失败: API 密钥未配置");
             return Err("API 密钥未配置".to_string());
         }
         if self.model.is_empty() {
+            tracing::warn!("LLM 配置校验失败: 模型名称未配置");
             return Err("模型名称未配置".to_string());
         }
+        tracing::info!(
+            model = %self.model,
+            base_url = %self.base_url,
+            concurrency = self.concurrency,
+            batch_size = self.batch_size,
+            "LLM 配置校验通过"
+        );
         Ok(())
     }
 
@@ -80,11 +90,20 @@ impl LlmClient {
         on_batch_complete: Option<&(dyn Fn(&[TranslateResult]) + Sync)>,
     ) -> (Vec<TranslateResult>, Option<super::models::TokenUsage>) {
         if entries.is_empty() {
+            tracing::debug!("translate_batch 收到空条目列表，跳过");
             return (Vec::new(), None);
         }
 
         let source_lang = &entries[0].source_lang;
         let target_lang = &entries[0].target_lang;
+        let entry_count = entries.len();
+        tracing::info!(
+            entry_count,
+            source_lang = %source_lang,
+            target_lang = %target_lang,
+            model = %self.model,
+            "LLM batch 开始翻译"
+        );
         let prompt = build_prompt(entries, source_lang, target_lang);
 
         let mut body = serde_json::json!({
@@ -116,6 +135,7 @@ impl LlmClient {
         {
             Ok(c) => c,
             Err(build_err) => {
+                tracing::error!("HTTP client 创建失败: {build_err}");
                 return (
                     entries
                         .iter()
@@ -139,12 +159,29 @@ impl LlmClient {
         for attempt in 0..max_retries {
             if attempt > 0 {
                 let delay = Duration::from_millis(1000u64 * 2u64.pow(attempt.min(5)));
+                tracing::warn!(
+                    attempt,
+                    delay_ms = delay.as_millis(),
+                    max_retries,
+                    "LLM 请求重试"
+                );
                 std::thread::sleep(delay);
             }
 
             match send_request(&client, &url, &self.api_key, &body) {
                 Ok(response_body) => {
                     let token_usage = extract_token_usage(&response_body);
+                    if let Some(ref usage) = token_usage {
+                        tracing::info!(
+                            attempt,
+                            prompt_tokens = usage.prompt_tokens,
+                            completion_tokens = usage.completion_tokens,
+                            total_tokens = usage.total_tokens,
+                            "LLM batch 请求成功"
+                        );
+                    } else {
+                        tracing::info!(attempt, "LLM batch 请求成功（无 token 数据）");
+                    }
                     // 从 API 响应结构中提取 content 字段
                     let content_str = match response_body
                         .get("choices")
@@ -160,11 +197,20 @@ impl LlmClient {
                                 "API 响应结构异常: choices/message/content 路径缺失: {}",
                                 serde_json::to_string(&response_body).unwrap_or_default()
                             );
+                            tracing::error!(attempt, last_error, "LLM 响应结构异常");
                             continue;
                         }
                     };
                     match healing_parse_response(content_str, entries) {
                         Ok(results) => {
+                            let success_count = results.iter().filter(|r| r.success).count();
+                            let fail_count = results.len() - success_count;
+                            tracing::info!(
+                                total = results.len(),
+                                success_count,
+                                fail_count,
+                                "LLM batch 翻译完成"
+                            );
                             if let Some(cb) = on_batch_complete {
                                 cb(&results);
                             }
@@ -172,6 +218,7 @@ impl LlmClient {
                         }
                         Err(e) => {
                             last_error = format!("解析响应失败: {e}");
+                            tracing::warn!(attempt, last_error, "LLM 响应解析失败，准备重试");
                             continue;
                         }
                     }
@@ -181,6 +228,7 @@ impl LlmClient {
                     // Return immediately so the caller can adapt concurrency.
                     // Keep the "RATE_LIMITED" prefix intact for the caller to detect.
                     if e.starts_with("RATE_LIMITED") {
+                        tracing::warn!(attempt, error = %e, "LLM 请求被限流");
                         let results: Vec<TranslateResult> = entries
                             .iter()
                             .map(|entry| TranslateResult {
@@ -197,12 +245,14 @@ impl LlmClient {
                         return (results, None);
                     }
                     last_error = format!("API 请求失败: {e}");
+                    tracing::warn!(attempt, last_error, "LLM API 请求失败，准备重试");
                     continue;
                 }
             }
         }
 
         // All retries exhausted — mark all entries as failed
+        tracing::error!(max_retries, last_error, "LLM batch 所有重试均失败");
         let results: Vec<TranslateResult> = entries
             .iter()
             .map(|e| TranslateResult {

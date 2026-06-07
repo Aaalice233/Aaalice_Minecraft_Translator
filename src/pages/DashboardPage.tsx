@@ -52,7 +52,7 @@ export function DashboardPage({
 }: Props) {
   const { state, dispatch } = useAppState();
   const settings = _settings ?? state.settings!;
-  const scanSummary = _scanSummary !== undefined ? _scanSummary : state.scanSummary;
+  const scanSummary = _scanSummary ?? state.scanSummary;
   const [instancePath, setInstancePath] = useState(settings.instancePath);
   const [isScanning, setIsScanning] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -243,6 +243,7 @@ export function DashboardPage({
     setIsScanning(true);
     setIsCancelling(false);
     dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "idle" } }); // clear completed state on re-scan
+    dispatch({ type: "SET_SCAN_SUMMARY", payload: null }); // clear old scan results immediately
     setScanProgress(null);
     setError("");
     setSortConfig(null);
@@ -335,8 +336,8 @@ export function DashboardPage({
   function inRange(actual: number, filter: unknown): boolean {
     if (typeof filter !== "object" || filter === null) return true;
     const range = filter as { min?: number; max?: number };
-    return (!range.min || actual >= Number(range.min)) &&
-           (!range.max || actual <= Number(range.max));
+    return (!range.min || actual >= range.min) &&
+           (!range.max || actual <= range.max);
   }
 
   function getScanButtonState(): {
@@ -620,9 +621,9 @@ export function DashboardPage({
                                     <input
                                       type="number"
                                       min={0}
-                                      value={(filters[col.key] as any)?.min ?? ""}
+                                      value={(filters[col.key] as { min?: number })?.min ?? ""}
                                       onChange={(e) => {
-                                        const prev = (filters[col.key] as any) || {};
+                                        const prev = (filters[col.key] as { min?: number; max?: number }) ?? {};
                                         handleFilterChange(col.key, { min: e.target.value === "" ? undefined : Number(e.target.value), max: prev.max });
                                       }}
                                       autoFocus
@@ -633,9 +634,9 @@ export function DashboardPage({
                                     <input
                                       type="number"
                                       min={0}
-                                      value={(filters[col.key] as any)?.max ?? ""}
+                                      value={(filters[col.key] as { max?: number })?.max ?? ""}
                                       onChange={(e) => {
-                                        const prev = (filters[col.key] as any) || {};
+                                        const prev = (filters[col.key] as { min?: number; max?: number }) ?? {};
                                         handleFilterChange(col.key, { min: prev.min, max: e.target.value === "" ? undefined : Number(e.target.value) });
                                       }}
                                     />

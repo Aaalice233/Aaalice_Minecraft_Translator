@@ -1,27 +1,28 @@
-fn to_message(err: impl std::fmt::Display) -> String {
-    err.to_string()
-}
+use tracing::info;
 
 #[tauri::command]
 pub fn open_path(path: String) -> Result<(), String> {
-    open::that(path).map_err(to_message)
+    info!("open_path: path={}", path);
+    open::that(path).map_err(|e| e.to_string())
 }
 
 /// Placeholder — returns empty list; actual implementation deferred.
 #[tauri::command]
 pub fn fetch_game_versions() -> Result<Vec<String>, String> {
+    info!("fetch_game_versions");
     Ok(Vec::new())
 }
 
 /// Read a log file from disk, returning the last N lines.
 #[tauri::command]
 pub fn get_log_content(path: String) -> Result<String, String> {
+    info!("get_log_content: path={}", path);
     use std::io::{BufReader, Read, Seek, SeekFrom};
-    let file = std::fs::File::open(&path).map_err(to_message)?;
+    let file = std::fs::File::open(&path).map_err(|e| e.to_string())?;
     let mut reader = BufReader::new(file);
 
     // Efficient tail: seek near end, read chunks backwards
-    let file_len = reader.seek(SeekFrom::End(0)).map_err(to_message)?;
+    let file_len = reader.seek(SeekFrom::End(0)).map_err(|e| e.to_string())?;
     const MAX_TAIL_LINES: usize = 500;
     const CHUNK_SIZE: u64 = 4096;
     let mut buffer = Vec::new();
@@ -33,11 +34,10 @@ pub fn get_log_content(path: String) -> Result<String, String> {
         let chunk_start = pos.saturating_sub(CHUNK_SIZE);
         let chunk_len = (pos - chunk_start) as usize;
         let mut chunk = vec![0u8; chunk_len];
-        reader.seek(SeekFrom::Start(chunk_start)).map_err(to_message)?;
-        reader.read_exact(&mut chunk).map_err(to_message)?;
+        reader.seek(SeekFrom::Start(chunk_start)).map_err(|e| e.to_string())?;
+        reader.read_exact(&mut chunk).map_err(|e| e.to_string())?;
         pos = chunk_start;
 
-        // Count newlines in this chunk (excluding the first line if it's a partial line)
         for &b in chunk.iter().rev() {
             if b == b'\n' && lines_found <= MAX_TAIL_LINES {
                 lines_found += 1;

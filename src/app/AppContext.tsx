@@ -22,7 +22,7 @@ interface AppState {
 
 type AppAction =
   | { type: "SET_SETTINGS"; payload: Settings }
-  | { type: "SET_SCAN_SUMMARY"; payload: ScanSummary }
+  | { type: "SET_SCAN_SUMMARY"; payload: ScanSummary | null }
   | { type: "SET_NAV_STATE"; payload: { key: PageKey; status: PageNavStatus } }
   | { type: "SET_TRANSLATION_STATUS"; payload: { status: TranslationPageStatus; result?: number | null; error?: string } }
   | { type: "SET_TRANSLATION_JOB_ID"; payload: string | null }

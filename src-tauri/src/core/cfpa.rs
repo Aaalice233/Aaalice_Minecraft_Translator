@@ -26,6 +26,7 @@ pub fn fuzzy_search(
     target_lang: &str,
     limit: usize,
 ) -> SqlResult<Vec<CfpaMatch>> {
+    tracing::debug!(text, source_lang, target_lang, limit, "CFPA fuzzy search");
     let mut results = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let limit = limit.min(20);
@@ -91,6 +92,7 @@ pub fn fuzzy_search(
     // 按相似度降序
     results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
     results.truncate(limit);
+    tracing::info!(count = results.len(), "CFPA fuzzy search completed");
     Ok(results)
 }
 
