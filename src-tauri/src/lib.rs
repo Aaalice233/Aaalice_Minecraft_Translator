@@ -52,6 +52,7 @@ pub fn run() {
             commands::load_latest_translation_job,
             commands::list_translation_jobs,
             commands::validate_translation,
+            commands::retry_failed_entries,
             commands::generate_pack_from_job,
         ])
         .run(tauri::generate_context!())

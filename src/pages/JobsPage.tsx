@@ -1,6 +1,6 @@
-import { AlertTriangle, CheckCircle, FileText, Filter, Play, Square, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle, FileText, Filter, Play, RefreshCw, Square, X, XCircle } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cancelTranslation, loadLatestTranslationJob, startTranslation } from "../api/tauri";
+import { cancelTranslation, loadLatestTranslationJob, retryFailedEntries, startTranslation } from "../api/tauri";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
@@ -336,6 +336,33 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
   }
 
+  async function handleRetry() {
+    cancelledRef.current = false;
+    const srcLang = settings.sourceLanguage || scanSummary?.sourceLanguage || "auto";
+    const tgtLang = settings.targetLanguage || scanSummary?.targetLanguage || "zh_cn";
+
+    let retryJobId = state.translationJobId;
+    if (!retryJobId) {
+      try {
+        const job = await loadLatestTranslationJob();
+        if (!job || job.status !== "completed") return;
+        retryJobId = job.jobId;
+      } catch { return; }
+    }
+
+    setStatus("running");
+    try {
+      const result = await retryFailedEntries(retryJobId, srcLang, tgtLang);
+      if (cancelledRef.current) return;
+      setStatus("completed");
+      setTranslationResult(result);
+    } catch (err) {
+      if (cancelledRef.current) return;
+      setTranslationError(toErrorMessage(err));
+      setStatus("failed");
+    }
+  }
+
   async function handleCancel() {
     cancelledRef.current = true; // signal handleStart not to set completed
     try {
@@ -533,6 +560,16 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         <div className="alert success" style={{ marginBottom: 16 }}>
           <CheckCircle size={17} />
           <span>{t(language, "jobs.completed.message", { count: translationResult })}</span>
+          {entryCounts.failed > 0 && (
+            <button
+              className="alert-action-button"
+              onClick={handleRetry}
+              type="button"
+            >
+              <RefreshCw size={15} />
+              {t(language, "jobs.retryFailed")} ({entryCounts.failed})
+            </button>
+          )}
         </div>
       )}
 

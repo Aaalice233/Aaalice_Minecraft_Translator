@@ -196,6 +196,17 @@ export async function cancelTranslation(): Promise<void> {
   return tauriInvoke<void>("cancel_translation");
 }
 
+export async function retryFailedEntries(
+  jobId: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+): Promise<number> {
+  if (!isTauriRuntime()) {
+    throw new Error("浏览器预览模式下不可用");
+  }
+  return tauriInvoke<number>("retry_failed_entries", { jobId, sourceLanguage, targetLanguage });
+}
+
 export async function getTranslationJob(jobId: string): Promise<TranslationJobState | null> {
   if (!isTauriRuntime()) {
     return null;

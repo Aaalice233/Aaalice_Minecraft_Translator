@@ -7,7 +7,7 @@ use tauri::Emitter;
 use crate::core::{
     logging,
     models::{EntryProgress, LlmConfig, PipelineConfig, PipelineProgress, TranslateLogEntry},
-    paths, pipeline, settings,
+    jobs, paths, pipeline, settings,
 };
 
 fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
@@ -182,4 +182,147 @@ pub fn cancel_translation() -> Result<(), String> {
         "翻译任务被用户取消",
     );
     Ok(())
+}
+
+#[tauri::command]
+pub async fn retry_failed_entries(
+    app: tauri::AppHandle,
+    job_id: String,
+    source_language: String,
+    target_language: String,
+) -> Result<usize, String> {
+    let root = paths::runtime_root().map_err(|err| err.to_string())?;
+
+    logging::append_main(format!("重试失败条目开始，任务 ID: {job_id}"))
+        .map_err(|err| err.to_string())?;
+
+    let manager = jobs::JobManager::new(root.clone());
+    let all_results = manager.load_results(&job_id)?;
+    let failed_count = all_results.iter().filter(|r| r.source_type == "failed").count();
+
+    if failed_count == 0 {
+        logging::append_main("重试失败条目: 没有需要重试的条目").ok();
+        return Ok(0);
+    }
+
+    let cancel = pipeline::CancelToken::new();
+    cancel.register_task(&job_id);
+    pipeline::register_translation_task(&job_id);
+
+    let (progress_tx, progress_rx) = mpsc::channel::<PipelineProgress>();
+    let (entry_progress_tx, entry_progress_rx) = mpsc::channel::<EntryProgress>();
+
+    let job_id_p = job_id.clone();
+    let app_progress = app.clone();
+    let cancel_progress = cancel.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        let mut last_progress: Option<PipelineProgress> = None;
+        loop {
+            match progress_rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(p) => {
+                    if cancel_progress.is_cancelled(&job_id_p) { break; }
+                    last_progress = Some(p);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if cancel_progress.is_cancelled(&job_id_p) { break; }
+                    if let Some(ref p) = last_progress {
+                        let _ = app_progress.emit("translate-progress", &p);
+                        last_progress = None;
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    if let Some(ref p) = last_progress {
+                        let _ = app_progress.emit("translate-progress", &p);
+                    }
+                    break;
+                }
+            }
+        }
+    });
+
+    spawn_batched_reader(entry_progress_rx, app.clone(), job_id.clone(), cancel.clone(), "translate-entry-progresses");
+
+    let llm = settings::load_settings(&root).ok().map(|s| LlmConfig {
+        base_url: s.base_url,
+        api_key: s.api_key,
+        model: s.model,
+        temperature: s.temperature,
+        max_tokens: s.max_tokens,
+        concurrency: s.concurrency as usize,
+        batch_size: s.batch_size as usize,
+        timeout_secs: s.timeout_secs as u64,
+        retry_count: s.retry_count as u32,
+        rate_limit_rpm: s.rate_limit_rpm,
+        prefer_user_dict: s.prefer_user_dictionary,
+        system_prompt: if s.system_prompt.is_empty() {
+            crate::core::models::DEFAULT_SYSTEM_PROMPT.to_string()
+        } else {
+            s.system_prompt
+        },
+    }).ok_or("请先配置 LLM 设置")?;
+
+    // 4. Run retry pipeline
+    let retried = pipeline::retry_failed_entries(
+        &root, &job_id, &source_language, &target_language, &llm,
+        &cancel, &progress_tx, &entry_progress_tx,
+    )?;
+
+    let retried_success = retried.iter().filter(|r| r.source_type == "llm").count();
+    let retried_failed = retried.iter().filter(|r| r.source_type == "failed").count();
+
+    // 5. Merge retried results back into the original JSONL
+    let merged: Vec<jobs::TranslationResult> = all_results.into_iter()
+        .map(|r| {
+            if r.source_type == "failed" {
+                // Replace with retried version if available
+                retried.iter()
+                    .find(|nr| nr.key == r.key && nr.mod_name == r.mod_name)
+                    .cloned()
+                    .unwrap_or(r)
+            } else {
+                r
+            }
+        })
+        .collect();
+
+    // Rewrite the entire JSONL
+    let out_path = paths::translate_job_results_path(&root, &job_id);
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("创建目录失败: {e}"))?;
+    }
+    let mut content = String::with_capacity(merged.len() * 150);
+    for r in &merged {
+        content.push_str(&serde_json::to_string(r)
+            .map_err(|e| format!("序列化失败: {e}"))?);
+        content.push('\n');
+    }
+    std::fs::write(&out_path, &content)
+        .map_err(|e| format!("写入翻译结果失败: {e}"))?;
+
+    // 6. Update job state
+    if let Ok(Some(mut job)) = manager.load(&job_id) {
+        let new_completed = merged.iter().filter(|r| r.source_type != "failed").count();
+        let new_failed = merged.iter().filter(|r| r.source_type == "failed").count();
+        job.completed_entries = new_completed;
+        job.failed_entries = new_failed;
+        let _ = manager.save(&job);
+    }
+
+    // Send completion progress
+    let _ = progress_tx.send(PipelineProgress {
+        current: 1, total: 1,
+        phase: crate::core::models::PipelinePhase::Completed,
+        mod_name: String::new(),
+        sub_step: None,
+        stage_status: crate::core::models::StageStatus::Completed,
+    });
+    drop(progress_tx);
+    drop(entry_progress_tx);
+
+    logging::append_main(
+        format!("重试失败条目完成: 成功 {retried_success}, 仍然失败 {retried_failed}"),
+    ).ok();
+
+    Ok(retried_success)
 }

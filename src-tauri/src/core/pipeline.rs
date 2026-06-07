@@ -949,8 +949,8 @@ fn save_job_progress(root: &std::path::Path, job_id: &str, completed: usize, fai
 }
 
 /// Restore shield tokens and validate a translation result.
-/// Returns the restored target text and whether validation passed.
-fn shield_restore_result(
+/// Returns (restored_source, restored_target, valid).
+pub fn shield_restore_result(
     result: &TranslateResult,
     shield_map: &HashMap<String, (String, shield::ShieldResult)>,
 ) -> (String, String, bool) {
@@ -1066,6 +1066,166 @@ fn resolve_scan(
     }
 
     Ok(summary)
+}
+
+/// Retry failed entries from a previous translation job.
+/// Skips scan/extract/dictionary phases, runs only LLM translation on
+/// entries whose `source_type == "failed"`, and returns the new results.
+pub fn retry_failed_entries(
+    root: &std::path::Path,
+    job_id: &str,
+    source_language: &str,
+    target_language: &str,
+    llm_cfg: &LlmConfig,
+    cancel: &CancelToken,
+    progress_tx: &mpsc::Sender<PipelineProgress>,
+    entry_progress_tx: &mpsc::Sender<EntryProgress>,
+) -> Result<Vec<jobs::TranslationResult>, String> {
+    use std::collections::HashMap;
+
+    let manager = jobs::JobManager::new(root.to_path_buf());
+    let all_results = manager.load_results(job_id)?;
+
+    let failed: Vec<&jobs::TranslationResult> = all_results.iter()
+        .filter(|r| r.source_type == "failed")
+        .collect();
+
+    if failed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let total = failed.len();
+    let _ = progress_tx.send(PipelineProgress {
+        current: 0, total,
+        phase: PipelinePhase::Translating,
+        mod_name: String::new(),
+        sub_step: Some("重试失败条目...".to_string()),
+        stage_status: StageStatus::Running,
+    });
+
+    let effective_concurrency = llm_cfg.concurrency.min(total).max(1);
+    let client = LlmClient {
+        base_url: llm_cfg.base_url.clone(),
+        api_key: llm_cfg.api_key.clone(),
+        model: llm_cfg.model.clone(),
+        temperature: llm_cfg.temperature,
+        max_tokens: llm_cfg.max_tokens,
+        concurrency: llm_cfg.concurrency,
+        batch_size: llm_cfg.batch_size,
+        retry_count: llm_cfg.retry_count,
+        timeout_secs: llm_cfg.timeout_secs,
+        system_prompt: llm_cfg.system_prompt.clone(),
+        effective_concurrency: std::sync::atomic::AtomicUsize::new(effective_concurrency),
+        consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
+    };
+
+    client.validate()?;
+
+    let mut retried: Vec<jobs::TranslationResult> = Vec::with_capacity(total);
+    let batch_size = llm_cfg.batch_size.max(1);
+    let total_batches = (total + batch_size - 1) / batch_size;
+    let mut completed_batches = 0usize;
+
+    for chunk in failed.chunks(batch_size) {
+        if cancel.is_cancelled(job_id) {
+            break;
+        }
+
+        let mut shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
+        let entries: Vec<TranslationEntry> = chunk.iter().map(|r| {
+            let sr = shield::protect(&r.source_text);
+            shield_map.insert(r.key.clone(), (r.source_text.clone(), sr.clone()));
+            TranslationEntry {
+                key: r.key.clone(),
+                text: sr.protected,
+                mod_id: r.mod_id.clone(),
+                source_lang: source_language.to_string(),
+                target_lang: target_language.to_string(),
+                references: Vec::new(),
+            }
+        }).collect();
+
+        // Send Translating status for each entry
+        for r in chunk.iter() {
+            let original_text = shield_map.get(&r.key)
+                .map(|(orig, _)| orig.clone())
+                .unwrap_or_else(|| r.source_text.clone());
+            let _ = entry_progress_tx.send(EntryProgress {
+                key: r.key.clone(),
+                mod_name: r.mod_name.clone(),
+                source_text: original_text,
+                target_text: None,
+                status: EntryStatus::Translating,
+                error_message: None,
+            });
+        }
+
+        // Build a (mod_id, mod_name) index keyed by TranslationResult key
+        let meta: HashMap<&str, (&str, &str)> = chunk.iter()
+            .map(|r| (r.key.as_str(), (r.mod_id.as_str(), r.mod_name.as_str())))
+            .collect();
+
+        let on_complete = |results: &[TranslateResult]| {
+            for r in results {
+                let (restored_source, restored_target, valid) = shield_restore_result(r, &shield_map);
+                let target_text = if !r.success {
+                    r.translated_text.clone()
+                } else if valid {
+                    restored_target
+                } else {
+                    restored_target.clone()
+                };
+                let status = if r.success && valid { EntryStatus::Completed }
+                    else if !r.success { EntryStatus::Failed }
+                    else { EntryStatus::Failed };
+                let error_message = if !r.success { r.error.clone() }
+                    else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
+                    else { None };
+                let &(_, fname) = meta.get(r.key.as_str()).unwrap_or(&("", ""));
+                let _ = entry_progress_tx.send(EntryProgress {
+                    key: r.key.clone(),
+                    mod_name: fname.to_string(),
+                    source_text: restored_source,
+                    target_text: Some(target_text),
+                    status,
+                    error_message,
+                });
+            }
+        };
+
+        let (results, _token) = client.translate_batch(&entries, Some(&on_complete));
+
+        for r in results.into_iter() {
+            let (restored_source, restored_target, valid) = shield_restore_result(&r, &shield_map);
+            let (s_text, t_text, s_type) = if r.success {
+                (restored_source, restored_target, if valid { "llm" } else { "failed" }.to_string())
+            } else {
+                (restored_source, r.translated_text, "failed".to_string())
+            };
+            let &(mid, fname) = meta.get(r.key.as_str()).unwrap_or(&("", ""));
+            let entry = jobs::TranslationResult {
+                key: r.key,
+                source_text: s_text,
+                target_text: t_text,
+                mod_id: mid.to_string(),
+                mod_name: fname.to_string(),
+                source_type: s_type,
+            };
+            retried.push(entry);
+        }
+
+        completed_batches += 1;
+        let _ = progress_tx.send(PipelineProgress {
+            current: completed_batches,
+            total: total_batches,
+            phase: PipelinePhase::Translating,
+            mod_name: String::new(),
+            sub_step: Some(format!("{completed_batches}/{total_batches} 批次")),
+            stage_status: StageStatus::Running,
+        });
+    }
+
+    Ok(retried)
 }
 
 // ── Tests ────────────────────────────────────────────────────

@@ -104,6 +104,7 @@ export type TranslationKey =
   | "jobs.canceled"
   | "jobs.canceledStatus"
   | "jobs.failed.message"
+  | "jobs.retryFailed"
   | "jobs.progressFallback"
   | "jobs.logPanel.title"
   | "jobs.logPanel.filterPlaceholder"
@@ -413,6 +414,7 @@ const zhCn: TranslationMap = {
   "jobs.canceled": "翻译已取消",
   "jobs.canceledStatus": "已取消",
   "jobs.failed.message": "翻译失败：{error}",
+  "jobs.retryFailed": "重试失败条目",
   "jobs.progressFallback": "- / -",
   "jobs.logPanel.title": "翻译日志",
   "jobs.logPanel.filterPlaceholder": "按模组名或键名过滤...",
@@ -723,6 +725,7 @@ const enUs: TranslationMap = {
   "jobs.canceled": "Translation canceled",
   "jobs.canceledStatus": "Canceled",
   "jobs.failed.message": "Translation failed: {error}",
+  "jobs.retryFailed": "Retry Failed",
   "jobs.progressFallback": "- / -",
   "jobs.logPanel.title": "Translation Log",
   "jobs.logPanel.filterPlaceholder": "Filter by mod name or key...",

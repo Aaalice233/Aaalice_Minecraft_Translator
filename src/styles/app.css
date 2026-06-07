@@ -671,6 +671,26 @@ select optgroup option {
 
 .alert code {
   margin-left: auto;
+}
+
+.alert-action-button {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #444);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.alert-action-button:hover {
+  background: rgba(255,255,255,0.1);
+}
   color: var(--text-muted);
   font-family: "JetBrains Mono", Consolas, monospace;
   font-size: 12px;
