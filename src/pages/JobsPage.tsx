@@ -180,19 +180,10 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   const postCompletionRescan = useRef(false);
 
   function getEntryStatus(entry: TranslateLogEntry): string {
-    const ep = entryProgressMap.get(entryProgKey(entry.modName, entry.key));
-    if (ep) return ep.status;
-    switch (entry.sourceType) {
-      case "llm":
-      case "existing":
-        return "completed";
-      case "skipped":
-        return "skip";
-      case "dictionary":
-        return "dictionaryHit";
-      default:
-        return entry.sourceType;
-    }
+    return getEntryStatusFromEP(
+      entryProgressMap.get(entryProgKey(entry.modName, entry.key)),
+      entry,
+    );
   }
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
@@ -449,13 +440,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   const entryProgressRef = useRef(entryProgressMap);
   entryProgressRef.current = entryProgressMap;
 
-  const getEntryFromRef = (modName: string, key: string) =>
-    entryProgressRef.current.get(entryProgKey(modName, key));
-
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
-      const ep = getEntryFromRef(entry.modName, entry.key);
-      const tgt = entry.targetText || ep?.targetText || "";
+      const tgt = entry.targetText || entryProgressRef.current.get(entryProgKey(entry.modName, entry.key))?.targetText || "";
       await navigator.clipboard.writeText(
         `${csvQuote(entry.key)},${csvQuote(entry.sourceText)},${csvQuote(tgt)},${csvQuote(entry.modName)}`,
       );
