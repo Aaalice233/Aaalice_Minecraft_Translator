@@ -80,7 +80,6 @@ pub async fn start_translation(
     logging::append_main(format!("翻译任务创建成功，任务 ID: {job_id}"))
         .map_err(|err| err.to_string())?;
 
-    // Channels: progress events + log entries + entry-level progress
     let (progress_tx, progress_rx) = mpsc::channel::<PipelineProgress>();
     let (log_tx, log_rx) = mpsc::channel::<TranslateLogEntry>();
     let (entry_progress_tx, entry_progress_rx) = mpsc::channel::<EntryProgress>();
@@ -124,7 +123,6 @@ pub async fn start_translation(
         }
     });
 
-    // Batched readers for high-frequency events
     spawn_batched_reader(log_rx, app.clone(), job_id.clone(), cancel.clone(), "translate-log-entries");
     spawn_batched_reader(entry_progress_rx, app.clone(), job_id.clone(), cancel.clone(), "translate-entry-progresses");
 
@@ -163,16 +161,11 @@ pub async fn start_translation(
         llm,
     };
 
-    // Run pipeline on blocking thread
     let result = tauri::async_runtime::spawn_blocking(move || {
         pipeline::run_pipeline(config, &job_id, &cancel, progress_tx_work, log_tx_work, entry_progress_tx_work)
     })
     .await
     .map_err(|err| err.to_string())??;
-
-    drop(progress_tx);
-    drop(log_tx);
-    drop(entry_progress_tx);
 
     logging::append_main(
         format!("翻译任务完成: {} 条目", result.completed),
