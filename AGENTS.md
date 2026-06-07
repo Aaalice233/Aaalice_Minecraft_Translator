@@ -35,21 +35,21 @@
 - `src-tauri/src/core/`：后端核心逻辑模块：`settings`（JSON 持久化）、`scanner`（rayon 并行 + 进度事件）、`logging`（文件日志 + 脱敏）、`paths`（运行时根路径）、`models`（数据模型 + Default impl）。
 - `src-tauri/src/commands/`：Tauri command 暴露层，每个功能模块一个文件。
 - `src-tauri/Cargo.toml`：依赖 `rayon`、`reqwest`（blocking+json）、`serde`、`zip`、`tauri 2`。
-- `tests/`：前端单元测试和 Minecraft fixture；新增行为优先补最小 fixture 测试。
+- `tests/`：前端单元测试和 Minecraft fixture；新增测试优先补最小 fixture。
 - `docs/`：产品规格、架构计划、UI 风格和 agent 测试计划。
 - `scripts/`：Windows 打包脚本（package-exe.bat / .ps1）。
 - `data/`：运行期本地数据目录，例如 `settings.json`、`dictionary.sqlite`、`jobs/translate_*_results.jsonl`。
 - `data/jobs/`：翻译任务的 JSONL 结果文件（`translate_<timestamp>_results.jsonl`）和 job 状态文件（`translate_<timestamp>.json`）。
   - JSONL 每行一个 `TranslationResult`：`{ key, sourceText, targetText, modId, modName, sourceType }`。
   - `sourceType` 取值：`"llm"`（LLM 翻译成功）、`"failed"`（LLM 翻译失败或 shield 验证失败）、`"dictionary"`（词典命中）。
-  - 出现问题时优先检查 JSONL 中的 `sourceType` 字段，可以快速区分 LLM 执行成功 vs shield 验证失败。
+  - 出现问题时优先查看 JSONL 中 `sourceType` 区分执行成功与 shield 验证失败。
 - `logs/`：运行期日志目录。
   - `logs/main.log`：主日志文件，格式 `[unix_seconds] LEVEL message`，使用 tracing + tracing_appender 异步写入。
     - 日志在程序启动时重置（"main.log 已重置"行标记启动点）。
     - 包含扫描、词典匹配、LLM 请求、取消等关键事件。
     - 搜索 `LLM batch 翻译完成 total=80 success_count=X fail_count=Y` 快速查看 batch 级成功率。
     - API 密钥等敏感信息会被 redact_secret 模块自动脱敏（`sk-` 前缀、bearer token、16+ 字符长密钥）。
-  - `logs/errors/`、`logs/jobs/`：目录已创建但当前未使用（遗留结构）。
+  - `logs/errors/`、`logs/jobs/`：预留，暂未使用。
 
 ## 关键架构决策
 
@@ -65,7 +65,7 @@
 
 ### 扫描进度事件
 
-`src-tauri/src/core/scanner.rs` 使用 rayon 并行扫描 jars，通过 `&(dyn Fn(ScanProgress) + Sync)` 进度回调将进度传递到 `commands.rs`，再由 `app.emit("scan-progress", payload)` 发射到前端。
+`src-tauri/src/core/scanner.rs` 使用 rayon 并行扫描 jars，通过 `&(dyn Fn(ScanProgress) + Sync)` 进度回调将进度传递到 `commands/` 层，再由 `app.emit("scan-progress", payload)` 发射到前端。
 
 前端 `DashboardPage.tsx` 在 `useEffect` 中通过 `__TAURI_INTERNALS__` 守卫后动态 `import("@tauri-apps/api/event")` 注册 `listen("scan-progress")`，更新进度条组件。
 
@@ -131,7 +131,7 @@
 
 ## 当前约定
 
-- 首期主线：模组语言文件扫描、资源包复用、词典复用、LLM 翻译、资源包打包、日志和自动化测试。
+- 首期主线：模组语言文件扫描、资源包复用、词典复用、LLM 翻译、资源包打包、日志、自动化测试。
 - FTB 任务汉化作为首期可选模块预留。
 - 硬编码汉化只进入二期实验室，不自动应用补丁。
 - 不直接修改原始 mod jar。
