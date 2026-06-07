@@ -1455,18 +1455,7 @@ th.sorted-default .sort-indicator {
   border-bottom: 1px solid #f5f3ee;
 }
 
-.log-panel-body th:nth-child(1),
-.log-panel-body td:nth-child(1) { width: 14%; }
-.log-panel-body th:nth-child(2),
-.log-panel-body td:nth-child(2) { width: 25%; }
-.log-panel-body th:nth-child(3),
-.log-panel-body td:nth-child(3) { width: 25%; }
-.log-panel-body th:nth-child(4),
-.log-panel-body td:nth-child(4) { width: 16%; }
-.log-panel-body th:nth-child(5),
-.log-panel-body td:nth-child(5) { width: 10%; }
-.log-panel-body th:nth-child(6),
-.log-panel-body td:nth-child(6) { width: 10%; }
+
 
 .log-panel-body .copy-log-row {
   cursor: pointer;
