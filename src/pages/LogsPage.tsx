@@ -38,7 +38,6 @@ export function LogsPage({ language }: Props) {
   const [scrollTop, setScrollTop] = useState(0);
   const [viewHeight, setViewHeight] = useState(400);
   const followRef = useRef(true); // whether auto-follow is on
-  const rafRef = useRef<number | null>(null);
 
   // Poll for new log entries — use setInterval for automatic cleanup
   useEffect(() => {

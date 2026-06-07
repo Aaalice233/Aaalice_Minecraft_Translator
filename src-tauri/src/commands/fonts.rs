@@ -12,7 +12,6 @@ pub fn list_fonts() -> Result<Vec<String>, String> {
 
     let mut names: Vec<String> = families
         .iter()
-        .map(|f| f.to_string())
         .filter(|name| {
             // 过滤隐藏字体（以 . 开头）和明显的符号字体
             !name.starts_with('.')
@@ -23,6 +22,7 @@ pub fn list_fonts() -> Result<Vec<String>, String> {
                         | "Segoe UI Symbol" | "Segoe UI Emoji"
                 )
         })
+        .map(|f| f.to_string())
         .collect();
 
     // 按字母排序（不区分大小写）

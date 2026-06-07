@@ -11,8 +11,7 @@
     "package:exe": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-exe.ps1",
     "package:app": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-exe.ps1 -NoBundle",
     "test:unit": "vitest run",
-    "test:rust": "cd src-tauri && cargo test",
-    "test:agent": "npm run test:unit"
+    "test:rust": "cd src-tauri && cargo test"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.5.0",

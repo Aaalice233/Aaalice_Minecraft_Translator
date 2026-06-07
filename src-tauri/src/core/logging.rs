@@ -123,8 +123,6 @@ pub fn new_job_id(prefix: &str) -> String {
     format!("{prefix}_{millis}")
 }
 
-// ── Direct file append (for read_logs file reading & startup) ──────────────
-
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

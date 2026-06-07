@@ -231,11 +231,7 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
 /// Search dictionary entries with optional filters.
 pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<DictionaryEntry>> {
     tracing::debug!(?query, "Searching dictionary entries");
-    let mut sql = String::from(
-        "SELECT_COLS WHERE 1=1",
-    );
-    // Replace the placeholder with the real column list
-    sql = sql.replace("SELECT_COLS", SELECT_COLS);
+    let mut sql = format!("{SELECT_COLS} WHERE 1=1");
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
     if let Some(ref search) = query.search {
