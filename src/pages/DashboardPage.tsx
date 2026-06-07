@@ -371,9 +371,9 @@ export function DashboardPage({
     return cache;
   }, [scanSummary]);
 
-  function getPending(mod: ModScanResult): number {
+  const getPending = useCallback((mod: ModScanResult): number => {
     return pendingCache.get(mod.jarPath) ?? 0;
-  }
+  }, [pendingCache]);
 
   function inRange(actual: number, filter: unknown): boolean {
     if (typeof filter !== "object" || filter === null) return true;
