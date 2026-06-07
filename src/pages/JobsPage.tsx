@@ -128,6 +128,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
   const filterRef = useRef<HTMLDivElement>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const cancelledRef = useRef(false);
+  const postCompletionRescan = useRef(false);
 
   /** Derive entry status from progress map or fall back based on sourceType. */
   function getEntryStatus(entry: TranslateLogEntry): string {
@@ -190,6 +191,11 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
     }
     if (prevScanJobId.current !== currentId) {
       prevScanJobId.current = currentId;
+      // 翻译完成后自动重新扫描会传回新 jobId，此时不清空日志和进度
+      if (postCompletionRescan.current) {
+        postCompletionRescan.current = false;
+        return;
+      }
       setStatus("idle");
       setTranslationResult(null);
       setTranslationError("");
@@ -280,6 +286,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
           (async () => {
             try {
               const { scanInstance } = await import("../api/tauri");
+              postCompletionRescan.current = true;
               onScanSummaryChange(await scanInstance(instPath, srcLang, tgtLang));
             } catch (scanErr) {
               setTranslationError("翻译后自动重新扫描失败: " + toErrorMessage(scanErr));
