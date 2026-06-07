@@ -17,14 +17,13 @@ const MAX_LOG = 50000;
 const LEVELS = ["ALL", "ERROR", "WARN", "INFO", "DEBUG", "RAW"] as const;
 type LevelFilter = (typeof LEVELS)[number];
 
-/** Map log level to CSS class and display label. */
-function levelMeta(level: string): { cls: string; label: string } {
+function levelCls(level: string): string {
   switch (level) {
-    case "ERROR": return { cls: "log-error", label: "ERROR" };
-    case "WARN": return { cls: "log-warn", label: "WARN" };
-    case "INFO": return { cls: "log-info", label: "INFO" };
-    case "DEBUG": return { cls: "log-debug", label: "DEBUG" };
-    default: return { cls: "log-raw", label: level };
+    case "ERROR": return "log-error";
+    case "WARN": return "log-warn";
+    case "INFO": return "log-info";
+    case "DEBUG": return "log-debug";
+    default: return "log-raw";
   }
 }
 
@@ -37,9 +36,8 @@ export function LogsPage({ language }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewHeight, setViewHeight] = useState(400);
-  const followRef = useRef(true); // whether auto-follow is on
+  const followRef = useRef(true);
 
-  // Poll for new log entries — use setInterval for automatic cleanup
   useEffect(() => {
     const id = setInterval(async () => {
       try {
@@ -57,7 +55,6 @@ export function LogsPage({ language }: Props) {
     return () => clearInterval(id);
   }, []);
 
-  // Update view height on resize
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -69,7 +66,6 @@ export function LogsPage({ language }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  // Smooth scroll-to-bottom when new entries arrive (only if following)
   useEffect(() => {
     if (!followRef.current || paused) return;
     const el = containerRef.current;
@@ -81,13 +77,19 @@ export function LogsPage({ language }: Props) {
     return () => cancelAnimationFrame(id);
   }, [entries, paused]);
 
-  // Filter entries by level
   const filteredEntries = useMemo(
     () => levelFilter === "ALL" ? entries : entries.filter((e) => e.level === levelFilter),
     [entries, levelFilter],
   );
 
-  // Virtual scroll calculations
+  const levelCounts = useMemo(() => {
+    const counts: Record<string, number> = { ERROR: 0, WARN: 0, INFO: 0, DEBUG: 0, RAW: 0 };
+    for (const e of entries) {
+      if (counts[e.level] !== undefined) counts[e.level]++;
+    }
+    return counts;
+  }, [entries]);
+
   const totalHeight = filteredEntries.length * ROW_HEIGHT;
   const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
   const endIdx = Math.min(filteredEntries.length, Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN);
@@ -98,9 +100,13 @@ export function LogsPage({ language }: Props) {
     const el = containerRef.current;
     if (!el) return;
     setScrollTop(el.scrollTop);
-    // Determine if user is near bottom
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-    followRef.current = nearBottom;
+    followRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    followRef.current = true;
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, []);
 
   const clearLog = useCallback(() => {
@@ -142,17 +148,22 @@ export function LogsPage({ language }: Props) {
       </div>
 
       <div className="log-filter-bar">
-        {LEVELS.map((lvl) => (
-          <button
-            key={lvl}
-            type="button"
-            className={`log-filter-btn${levelFilter === lvl ? " active" : ""}`}
-            data-level={lvl}
-            onClick={() => { setLevelFilter(lvl); followRef.current = true; if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight; }}
-          >
-            {lvl === "ALL" ? "全部" : lvl}
-          </button>
-        ))}
+        {LEVELS.map((lvl) => {
+          const count = lvl === "ALL" ? entries.length : (levelCounts[lvl] ?? 0);
+          const isEmpty = count === 0 && lvl !== "ALL";
+          return (
+            <button
+              key={lvl}
+              type="button"
+              className={`log-filter-btn${levelFilter === lvl ? " active" : ""}${isEmpty ? " log-filter-btn--empty" : ""}`}
+              data-level={lvl}
+              onClick={() => { setLevelFilter(lvl); scrollToBottom(); }}
+            >
+              <span className="log-filter-lbl">{lvl === "ALL" ? "全部" : lvl}</span>
+              <span className="log-filter-cnt">{count}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="log-viewer-wrap">
@@ -164,28 +175,25 @@ export function LogsPage({ language }: Props) {
         >
           <div style={{ height: totalHeight, position: "relative" }}>
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${offsetY}px)` }}>
-              {visibleEntries.map((entry) => {
-                const { cls, label } = levelMeta(entry.level);
-                return (
-                  <div
-                    key={entry.lineNumber}
-                    className={`log-row ${cls}`}
-                    style={{ height: ROW_HEIGHT }}
-                    data-tooltip={entry.message}
-                  >
-                    <span className="log-lvl-badge">{label}</span>
-                    <span className="log-ts">{entry.timestamp}</span>
-                    <span className="log-msg">{entry.message}</span>
-                  </div>
-                );
-              })}
+              {visibleEntries.map((entry) => (
+                <div
+                  key={entry.lineNumber}
+                  className={`log-row ${levelCls(entry.level)}`}
+                  style={{ height: ROW_HEIGHT }}
+                  data-tooltip={entry.message}
+                >
+                  <span className="log-lvl-badge">{entry.level}</span>
+                  <span className="log-ts">{entry.timestamp}</span>
+                  <span className="log-msg">{entry.message}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
         <div className="log-footer">
           <span>{filteredEntries.length.toLocaleString()} 行{levelFilter !== "ALL" ? ` / ${entries.length.toLocaleString()} 全部` : ""}</span>
           {!followRef.current && (
-            <button className="text-button" onClick={() => { followRef.current = true; containerRef.current && (containerRef.current.scrollTop = containerRef.current.scrollHeight); }} type="button">
+            <button className="text-button" onClick={scrollToBottom} type="button">
               回到底部
             </button>
           )}

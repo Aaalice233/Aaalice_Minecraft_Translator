@@ -1714,6 +1714,9 @@ button.essb-legend-item:hover {
 }
 
 .log-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   padding: 3px 10px;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -1733,6 +1736,18 @@ button.essb-legend-item:hover {
   border-color: transparent;
   pointer-events: none;
 }
+
+.log-filter-cnt {
+  font-size: 10px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.log-filter-btn:hover .log-filter-cnt { opacity: 0.75; }
+.log-filter-btn.active .log-filter-cnt { opacity: 0.85; }
+.log-filter-btn--empty .log-filter-cnt { opacity: 0.3; }
+.log-filter-btn--empty:hover .log-filter-cnt { opacity: 0.5; }
 
 .log-filter-btn[data-level="ALL"].active {
   background: var(--accent);
