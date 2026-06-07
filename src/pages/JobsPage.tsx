@@ -326,7 +326,7 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
 
   const progressPercent =
     translateProgress && translateProgress.total > 0
-      ? Math.round((translateProgress.current / translateProgress.total) * 100)
+      ? Math.min(Math.round((translateProgress.current / translateProgress.total) * 100), 100)
       : 0;
 
   const filteredEntries = useMemo(() => {
