@@ -175,6 +175,7 @@ pub fn check_llm_connection(base_url: String, api_key: String, model: String) ->
         retry_count: 1,
         timeout_secs: 30,
         system_prompt: String::new(),
+        http_client: LlmClient::build_http_client(30),
         effective_concurrency: std::sync::atomic::AtomicUsize::new(1),
         consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
     };

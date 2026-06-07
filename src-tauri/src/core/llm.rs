@@ -47,10 +47,22 @@ pub struct LlmClient {
     pub retry_count: u32,
     pub timeout_secs: u64,
     pub system_prompt: String,
+    /// 复用 HTTP client 连接池（避免每次请求新建 TCP+TLS 连接）
+    pub http_client: reqwest::blocking::Client,
     /// 有效并发数（运行时动态调整，用于限流适应）
     pub effective_concurrency: std::sync::atomic::AtomicUsize,
     /// 连续 429 错误计数（达到阈值后主动降速）
     pub consecutive_429s: std::sync::atomic::AtomicUsize,
+}
+
+impl LlmClient {
+    /// 构建可复用的 HTTP blocking client（一次分配，连接池持久复用）
+    pub fn build_http_client(timeout_secs: u64) -> reqwest::blocking::Client {
+        reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(timeout_secs.max(30)))
+            .build()
+            .expect("reqwest::blocking::Client::build 失败（系统资源不足）")
+    }
 }
 
 impl LlmClient {
@@ -129,30 +141,6 @@ impl LlmClient {
 
         let url = format!("{}/v1/chat/completions", self.base_url.trim_end_matches('/'));
 
-        let client = match reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(self.timeout_secs.max(30)))
-            .build()
-        {
-            Ok(c) => c,
-            Err(build_err) => {
-                tracing::error!("HTTP client 创建失败: {build_err}");
-                return (
-                    entries
-                        .iter()
-                        .map(|entry| TranslateResult {
-                            key: entry.key.clone(),
-                            original_text: entry.text.clone(),
-                            translated_text: entry.text.clone(),
-                            success: false,
-                            error: Some(format!("HTTP client 创建失败: {build_err}")),
-                        })
-                        .collect(),
-                    None,
-                );
-            }
-        };
-
-        // Retry loop
         let mut last_error = String::new();
         let max_retries = self.retry_count.max(1);
 
@@ -168,7 +156,7 @@ impl LlmClient {
                 std::thread::sleep(delay);
             }
 
-            match send_request(&client, &url, &self.api_key, &body) {
+            match send_request(&self.http_client, &url, &self.api_key, &body) {
                 Ok(response_body) => {
                     let token_usage = extract_token_usage(&response_body);
                     if let Some(ref usage) = token_usage {

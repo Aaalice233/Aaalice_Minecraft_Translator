@@ -1405,9 +1405,9 @@ th.sorted-default .sort-indicator {
 .log-panel-body {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #c5bfb0 #f5f3ee;
+  overflow: hidden;
 }
 
 .log-panel-body::-webkit-scrollbar {

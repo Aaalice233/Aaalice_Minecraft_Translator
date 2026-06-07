@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle, FileText, Filter, Play, RefreshCw, Square, X, XCircle } from "lucide-react";
+import { TableVirtuoso } from "react-virtuoso";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelTranslation, loadLatestTranslationJob, retryFailedEntries, startTranslation } from "../api/tauri";
 import { useAppState } from "../app/AppContext";
@@ -168,20 +169,21 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   // Append-only log buffer: ref avoids O(n) spread-on-update, version counter triggers re-render.
   const logRef = useRef<TranslateLogEntry[]>([]);
   const [logVersion, setLogVersion] = useState(0);
-  const [entryProgressMap, setEntryProgressMap] = useState<Map<string, EntryProgress>>(new Map());
+  const entryProgressMapRef = useRef<Map<string, EntryProgress>>(new Map());
+  const [entryProgressVersion, setEntryProgressVersion] = useState(0);
   const [filterTerm, setFilterTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string>>({});
   const [openFilter, setOpenFilter] = useState<string | null>(null);
   const prevScanJobId = useRef<string | undefined>(undefined);
   const filterRef = useRef<HTMLDivElement>(null);
-  const logContainerRef = useRef<HTMLDivElement>(null);
+  const virtuosoRef = useRef<any>(null);
   const cancelledRef = useRef(false);
   const postCompletionRescan = useRef(false);
 
   function getEntryStatus(entry: TranslateLogEntry): string {
     return getEntryStatusFromEP(
-      entryProgressMap.get(entryProgKey(entry.modName, entry.key)),
+      entryProgressMapRef.current.get(entryProgKey(entry.modName, entry.key)),
       entry,
     );
   }
@@ -238,7 +240,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       onCompleteChange?.(false);
       logRef.current = [];
       setLogVersion(0);
-      setEntryProgressMap(new Map());
+      entryProgressMapRef.current = new Map();
+      setEntryProgressVersion((v) => v + 1);
     }
   }, [scanSummary?.jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -267,26 +270,11 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
 
   useTauriEvent<EntryProgress[]>("translate-entry-progresses", (entries) => {
     if (cancelledRef.current) return;
-    setEntryProgressMap((prev) => {
-      const next = new Map(prev);
-      for (const entry of entries) {
-        next.set(`${entry.modName}::${entry.key}`, entry);
-      }
-      return next;
-    });
-  });
-
-  useEffect(() => {
-    if (!isActive) return;
-    const container = logContainerRef.current;
-    if (container) {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 50;
-      if (isNearBottom) {
-        container.scrollTop = container.scrollHeight;
-      }
+    for (const entry of entries) {
+      entryProgressMapRef.current.set(`${entry.modName}::${entry.key}`, entry);
     }
-  }, [logVersion, isActive]);
+    setEntryProgressVersion((v) => v + 1);
+  });
 
   async function handleStart() {
     if (!scanSummary) return;
@@ -301,7 +289,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     setTranslationError("");
     logRef.current = [];
     setLogVersion(0);
-    setEntryProgressMap(new Map());
+    entryProgressMapRef.current = new Map();
+    setEntryProgressVersion((v) => v + 1);
 
     try {
       const result = await startTranslation(
@@ -379,12 +368,12 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       pending: 0, dictionaryHit: 0, skip: 0,
       translating: 0, completed: 0, failed: 0,
     };
-    entryProgressMap.forEach((entry) => {
+    entryProgressMapRef.current.forEach((entry) => {
       const s = entry.status as keyof EntryStatusCounts;
       if (s in c) c[s]++;
     });
     return c;
-  }, [entryProgressMap]);
+  }, [entryProgressVersion]);
 
   const visibleStatuses = (scanSummary?.actualPendingEntries ?? 0) > 0
     ? STATUS_META.filter((s) => entryCounts[s.key] > 0)
@@ -462,10 +451,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
 
     return result;
-  }, [logVersion, filterTerm, filters, sortConfig, entryProgressMap]);
+  }, [logVersion, filterTerm, filters, sortConfig, entryProgressVersion]);
 
-  const entryProgressRef = useRef(entryProgressMap);
-  entryProgressRef.current = entryProgressMap;
+  const entryProgressRef = entryProgressMapRef;
 
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
@@ -720,12 +708,16 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
             onChange={(e) => setFilterTerm(e.target.value)}
           />
         </div>
-        <div className="log-panel-body" ref={logContainerRef}>
+        <div className="log-panel-body">
           {filteredEntries.length === 0 || !isActive ? (
             <div className="log-panel-empty">{t(language, "jobs.logPanel.noEntries")}</div>
           ) : (
-            <table>
-              <thead>
+            <TableVirtuoso
+              ref={virtuosoRef}
+              followOutput
+              style={{ height: "100%" }}
+              totalCount={filteredEntries.length}
+              fixedHeaderContent={() => (
                 <tr>
                   {([
                     { key: "key", label: t(language, "jobs.logPanel.colKey") },
@@ -825,19 +817,20 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                     );
                   })}
                 </tr>
-              </thead>
-              <tbody>
-                {filteredEntries.map((entry, idx) => (
+              )}
+              itemContent={(index) => {
+                const entry = filteredEntries[index];
+                return (
                   <LogRow
-                    key={`${entry.key}-${idx}`}
+                    key={`${entry.key}-${index}`}
                     entry={entry}
                     language={language}
                     copyEntry={copyEntry}
                     entryProgressRef={entryProgressRef}
                   />
-                ))}
-              </tbody>
-            </table>
+                );
+              }}
+            />
           )}
         </div>
       </div>

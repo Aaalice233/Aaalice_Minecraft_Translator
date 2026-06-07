@@ -491,6 +491,7 @@ fn llm_phase(
         retry_count: llm_cfg.retry_count,
         timeout_secs: llm_cfg.timeout_secs,
         system_prompt: llm_cfg.system_prompt.clone(),
+        http_client: LlmClient::build_http_client(llm_cfg.timeout_secs),
         effective_concurrency: std::sync::atomic::AtomicUsize::new(initial_concurrency),
         consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
     };
@@ -1115,6 +1116,7 @@ pub fn retry_failed_entries(
         retry_count: llm_cfg.retry_count,
         timeout_secs: llm_cfg.timeout_secs,
         system_prompt: llm_cfg.system_prompt.clone(),
+        http_client: LlmClient::build_http_client(llm_cfg.timeout_secs),
         effective_concurrency: std::sync::atomic::AtomicUsize::new(effective_concurrency),
         consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
     };
