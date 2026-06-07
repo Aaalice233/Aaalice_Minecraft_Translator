@@ -691,6 +691,8 @@ select optgroup option {
 .alert-action-button:hover {
   background: rgba(255,255,255,0.1);
 }
+
+.alert code {
   color: var(--text-muted);
   font-family: "JetBrains Mono", Consolas, monospace;
   font-size: 12px;

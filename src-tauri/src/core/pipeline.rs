@@ -1168,16 +1168,8 @@ pub fn retry_failed_entries(
         let on_complete = |results: &[TranslateResult]| {
             for r in results {
                 let (restored_source, restored_target, valid) = shield_restore_result(r, &shield_map);
-                let target_text = if !r.success {
-                    r.translated_text.clone()
-                } else if valid {
-                    restored_target
-                } else {
-                    restored_target.clone()
-                };
-                let status = if r.success && valid { EntryStatus::Completed }
-                    else if !r.success { EntryStatus::Failed }
-                    else { EntryStatus::Failed };
+                let target_text = if r.success { restored_target } else { r.translated_text.clone() };
+                let status = if r.success && valid { EntryStatus::Completed } else { EntryStatus::Failed };
                 let error_message = if !r.success { r.error.clone() }
                     else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
                     else { None };
