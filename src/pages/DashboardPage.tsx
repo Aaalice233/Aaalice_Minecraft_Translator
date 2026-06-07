@@ -5,15 +5,15 @@ import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import type { AppLanguage, ModScanResult, ScanProgressEvent, ScanSummary, ScanWarning, Settings } from "../types";
 import type { TranslationKey } from "../i18n/translations";
-import { useAppState } from "../app/AppContext";
 
 interface Props {
   settings?: Settings;
   scanSummary?: ScanSummary | null;
   onSettingsChange?: (settings: Settings) => void;
-  onScanSummaryChange?: (summary: ScanSummary) => void;
+  onScanSummaryChange?: (summary: ScanSummary | null) => void;
   language: AppLanguage;
   onBusyChange?: (busy: boolean) => void;
+  onCompleteChange?: (completed: boolean) => void;
 }
 
 const ModRow = React.memo(({ mod, copiedKey, copyFlash, getPending, language }: {
@@ -84,14 +84,17 @@ function CollapsibleWarnings({ warnings, language }: { warnings: ScanWarning[]; 
   );
 }
 
-export function DashboardPage({
+export const DashboardPage = React.memo(function DashboardPage({
   settings: _settings,
   scanSummary: _scanSummary,
   language,
+  onBusyChange,
+  onCompleteChange,
+  onSettingsChange,
+  onScanSummaryChange,
 }: Props) {
-  const { state, dispatch } = useAppState();
-  const settings = _settings ?? state.settings!;
-  const scanSummary = _scanSummary ?? state.scanSummary;
+  const settings = _settings!;
+  const scanSummary = _scanSummary;
   const [instancePath, setInstancePath] = useState(settings.instancePath);
   const [isScanning, setIsScanning] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
@@ -103,23 +106,23 @@ export function DashboardPage({
   useEffect(() => { isScanningRef.current = isScanning; }, [isScanning]);
 
   useEffect(() => {
-    dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: isScanning ? "busy" : "idle" } });
-  }, [isScanning, dispatch]);
+    onBusyChange?.(isScanning);
+  }, [isScanning, onBusyChange]);
 
   const prevIsScanning = useRef(isScanning);
   useEffect(() => {
     if (prevIsScanning.current && !isScanning && scanSummary && !scanSummary.cancelled && !error) {
-      dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "completed" } });
+      onCompleteChange?.(true);
     }
     prevIsScanning.current = isScanning;
-  }, [isScanning, scanSummary, error, dispatch]);
+  }, [isScanning, scanSummary, error, onCompleteChange]);
 
   // When instance path changes, clear completed state (user is setting up a new scan target)
   useEffect(() => {
     if (instancePath && settings.instancePath && instancePath !== settings.instancePath) {
-      dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "idle" } });
+      onBusyChange?.(false);
     }
-  }, [instancePath, settings.instancePath, dispatch]);
+  }, [instancePath, settings.instancePath, onBusyChange]);
 
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
   const [filters, setFilters] = useState<Record<string, string | { min?: number; max?: number }>>({});
@@ -276,8 +279,8 @@ export function DashboardPage({
   async function handleScan() {
     setIsScanning(true);
     setIsCancelling(false);
-    dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: "idle" } });
-    dispatch({ type: "SET_SCAN_SUMMARY", payload: null });
+    onBusyChange?.(false);
+    onScanSummaryChange?.(null);
     setScanProgress(null);
     setError("");
     setSortConfig(null);
@@ -286,14 +289,14 @@ export function DashboardPage({
     setOpenFilter(null);
     try {
       const nextSettings = { ...settings, instancePath };
-      dispatch({ type: "SET_SETTINGS", payload: nextSettings });
+      onSettingsChange?.(nextSettings);
       await saveSettings(nextSettings);
       const summary = await scanInstance(
         instancePath,
         nextSettings.sourceLanguage,
         nextSettings.targetLanguage,
       );
-      dispatch({ type: "SET_SCAN_SUMMARY", payload: summary });
+      onScanSummaryChange?.(summary);
     } catch (scanError) {
       setError(scanError instanceof Error ? scanError.message : String(scanError));
     } finally {
@@ -730,4 +733,4 @@ export function DashboardPage({
       </div>
     </section>
   );
-}
+});

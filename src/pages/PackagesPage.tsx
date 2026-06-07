@@ -1,5 +1,5 @@
 import { Boxes, Copy, FileArchive, Eye, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { copyPackToInstance, generatePackFromJob, generateTranslationPack, listTranslationJobs } from "../api/tauri";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
@@ -16,10 +16,9 @@ interface Props {
   onBusyChange?: (busy: boolean) => void;
 }
 
-export function PackagesPage({ language, scanSummary: _scanSummary, settings: _settings, onBusyChange: _onBusyChange }: Props) {
+export const PackagesPage = React.memo(function PackagesPage({ language, scanSummary, settings: _settings, onBusyChange }: Props) {
   const { state, dispatch } = useAppState();
-  const scanSummary = _scanSummary !== undefined ? _scanSummary : state.scanSummary;
-  const settings = _settings ?? state.settings!;
+  const settings = _settings!;
   const [packResult, setPackResult] = useState<PackResult | null>(null);
   const [copyResult, setCopyResult] = useState<CopyResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,8 +71,8 @@ export function PackagesPage({ language, scanSummary: _scanSummary, settings: _s
 
   // Sync packaging busy state to sidebar nav
   useEffect(() => {
-    dispatch({ type: "SET_NAV_STATE", payload: { key: "packages", status: loading ? "busy" : "idle" } });
-  }, [loading, dispatch]);
+    onBusyChange?.(loading);
+  }, [loading, onBusyChange]);
 
   const canGenerate = scanSummary && scanSummary.actualPendingEntries > 0 && !loading;
 
@@ -344,4 +343,4 @@ export function PackagesPage({ language, scanSummary: _scanSummary, settings: _s
       )}
     </section>
   );
-}
+});

@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle, FileText, Filter, Play, Square, X, XCircle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelTranslation, loadLatestTranslationJob, startTranslation } from "../api/tauri";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
@@ -71,7 +71,6 @@ function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** Tauri event listener hook that auto-manages lifecycle and cleanup. */
 function useTauriEvent<T>(
   event: string,
   handler: (payload: T) => void,
@@ -108,7 +107,7 @@ interface Props {
 
 type TranslationStatus = "idle" | "running" | "completed" | "canceled" | "failed";
 
-export function JobsPage({ language, isActive = true, scanSummary, onScanSummaryChange, settings, onBusyChange, onCompleteChange }: Props) {
+export const JobsPage = React.memo(function JobsPage({ language, isActive = true, scanSummary, onScanSummaryChange, settings, onBusyChange, onCompleteChange }: Props) {
   const { state, dispatch } = useAppState();
 
   const [translateProgress, setTranslateProgress] = useState<TranslateProgress | null>(null);
@@ -145,7 +144,6 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
         return entry.sourceType;
     }
   }
-
 
   const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
 
@@ -782,4 +780,4 @@ export function JobsPage({ language, isActive = true, scanSummary, onScanSummary
       </div>
     </section>
   );
-}
+});

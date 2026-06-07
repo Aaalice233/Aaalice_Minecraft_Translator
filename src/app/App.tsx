@@ -27,6 +27,7 @@ import { getSettings } from "../api/tauri";
 import { AppProvider, useAppState } from "./AppContext";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
+import type { ScanSummary, Settings } from "../types";
 
 type PageKey =
   | "dashboard"
@@ -101,11 +102,9 @@ function AppShell() {
     return () => document.removeEventListener("mouseover", handler);
   }, []);
 
-  // 页面栈：记录已懒加载过的页面
   const [mountedPages, setMountedPages] = useState<Set<PageKey>>(() => new Set(["dashboard"]));
   const prevPageRef = useRef(activePage);
 
-  // 当 activePage 变化时，标记该页已挂载
   useEffect(() => {
     if (activePage !== prevPageRef.current) {
       prevPageRef.current = activePage;
@@ -118,7 +117,6 @@ function AppShell() {
     }
   }, [activePage]);
 
-  // Stable per-page callbacks — created once, never cause extra re-renders
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const prevWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
@@ -133,7 +131,6 @@ function AppShell() {
     setSidebarCollapsed((prev) => !prev);
   }, [sidebarCollapsed, sidebarWidth]);
 
-  // Draggable sidebar resize
   const dragRef = useRef<{ startX: number; startW: number } | null>(null);
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -153,21 +150,29 @@ function AppShell() {
   }, [sidebarWidth]);
 
   const dbBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: b ? "busy" : "idle" } }), [dispatch]);
+  const dbCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "dashboard", status: c ? "completed" : "idle" } }), [dispatch]);
   const jobsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: b ? "busy" : "idle" } }), [dispatch]);
   const jobsCompleted = useCallback((c: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "jobs", status: c ? "completed" : "idle" } }), [dispatch]);
   const packsBusy = useCallback((b: boolean) => dispatch({ type: "SET_NAV_STATE", payload: { key: "packages", status: b ? "busy" : "idle" } }), [dispatch]);
+  const handleSettingsChange = useCallback(
+    (s: Settings) => dispatch({ type: "SET_SETTINGS", payload: s }),
+    [dispatch],
+  );
+  const handleScanSummaryChange = useCallback(
+    (s: ScanSummary | null) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s }),
+    [dispatch],
+  );
 
-  /** 渲染页面实例（懒加载：仅在首次访问时挂载） */
   const renderPage = useCallback(
     (page: PageKey) => {
       if (!mountedPages.has(page)) return null;
       const isActive = activePage === page;
 
       if (page === "dashboard") {
-        return <DashboardPage settings={settings!} onSettingsChange={(s) => dispatch({ type: "SET_SETTINGS", payload: s })} scanSummary={scanSummary} onScanSummaryChange={(s) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s })} language={language} onBusyChange={dbBusy} />;
+        return <DashboardPage settings={settings!} onSettingsChange={handleSettingsChange} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
       }
       if (page === "settings") {
-        return <SettingsPage settings={settings!} onSettingsChange={(s) => dispatch({ type: "SET_SETTINGS", payload: s })} />;
+        return <SettingsPage settings={settings!} onSettingsChange={handleSettingsChange} />;
       }
       if (page === "logs") {
         return <LogsPage scanSummary={scanSummary} language={language} />;
@@ -176,7 +181,7 @@ function AppShell() {
         return <DictionaryPage language={language} />;
       }
       if (page === "jobs") {
-        return <JobsPage isActive={isActive} language={language} scanSummary={scanSummary} onScanSummaryChange={(s) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s })} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
+        return <JobsPage isActive={isActive} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
       }
       if (page === "validate") {
         return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
@@ -186,10 +191,9 @@ function AppShell() {
       }
       return <PlaceholderPage pageKey={page} language={language} />;
     },
-    [activePage, language, scanSummary, settings, mountedPages, dbBusy, jobsBusy, jobsCompleted, packsBusy],
+    [activePage, language, scanSummary, settings, mountedPages, dbBusy, dbCompleted, jobsBusy, jobsCompleted, packsBusy],
   );
 
-  // 同步已保存的主题和字体到 data-* / style 属性（预览由 SettingsPage 即时设置）
   useEffect(() => {
     if (settings?.uiTheme) {
       document.documentElement.dataset.theme = settings.uiTheme;
@@ -199,7 +203,6 @@ function AppShell() {
     }
   }, [settings?.uiTheme, settings?.uiFont]);
 
-  // 加载完成前显示 loading
   const isLoading = !settings;
 
   return (
