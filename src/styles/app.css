@@ -1669,6 +1669,64 @@ button.essb-legend-item:hover {
 }
 
 /* ── Log Viewer ────────────────────────── */
+.log-filter-bar {
+  display: flex;
+  gap: 4px;
+  padding: 6px 0;
+  flex-shrink: 0;
+}
+
+.log-filter-btn {
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  line-height: 1.4;
+}
+.log-filter-btn:hover {
+  background: var(--bg-muted);
+  border-color: var(--border-input);
+}
+.log-filter-btn.active {
+  border-color: transparent;
+  pointer-events: none;
+}
+
+.log-filter-btn[data-level="ALL"].active {
+  background: var(--accent);
+  color: #fff;
+}
+.log-filter-btn[data-level="ERROR"].active {
+  background: #f38ba8;
+  color: #1e1e2e;
+}
+.log-filter-btn[data-level="ERROR"]:not(.active) { color: #f38ba8; }
+.log-filter-btn[data-level="WARN"].active {
+  background: #fab387;
+  color: #1e1e2e;
+}
+.log-filter-btn[data-level="WARN"]:not(.active) { color: #fab387; }
+.log-filter-btn[data-level="INFO"].active {
+  background: #89b4fa;
+  color: #1e1e2e;
+}
+.log-filter-btn[data-level="INFO"]:not(.active) { color: #89b4fa; }
+.log-filter-btn[data-level="DEBUG"].active {
+  background: #a6e3a1;
+  color: #1e1e2e;
+}
+.log-filter-btn[data-level="DEBUG"]:not(.active) { color: #a6e3a1; }
+.log-filter-btn[data-level="RAW"].active {
+  background: #585b70;
+  color: #cdd6f4;
+}
+.log-filter-btn[data-level="RAW"]:not(.active) { color: #cdd6f4; }
+
 .log-viewer-wrap {
   display: flex;
   flex-direction: column;

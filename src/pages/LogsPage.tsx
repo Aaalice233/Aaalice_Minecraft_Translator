@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Pause, Play, Trash2 } from "lucide-react";
 import { readLogs } from "../api/tauri";
 import { t } from "../i18n/translations";
@@ -13,6 +13,9 @@ const ROW_HEIGHT = 22;
 const OVERSCAN = 20;
 const POLL_MS = 600;
 const MAX_LOG = 50000;
+
+const LEVELS = ["ALL", "ERROR", "WARN", "INFO", "DEBUG", "RAW"] as const;
+type LevelFilter = (typeof LEVELS)[number];
 
 /** Map log level to CSS class and display label. */
 function levelMeta(level: string): { cls: string; label: string } {
@@ -30,6 +33,7 @@ export function LogsPage({ language }: Props) {
   const [paused, setPaused] = useState(false);
   const pausedRef = useRef(false);
   useEffect(() => { pausedRef.current = paused; }, [paused]);
+  const [levelFilter, setLevelFilter] = useState<LevelFilter>("ALL");
   const containerRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewHeight, setViewHeight] = useState(400);
@@ -78,11 +82,17 @@ export function LogsPage({ language }: Props) {
     return () => cancelAnimationFrame(id);
   }, [entries, paused]);
 
+  // Filter entries by level
+  const filteredEntries = useMemo(
+    () => levelFilter === "ALL" ? entries : entries.filter((e) => e.level === levelFilter),
+    [entries, levelFilter],
+  );
+
   // Virtual scroll calculations
-  const totalHeight = entries.length * ROW_HEIGHT;
+  const totalHeight = filteredEntries.length * ROW_HEIGHT;
   const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const endIdx = Math.min(entries.length, Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN);
-  const visibleEntries = entries.slice(startIdx, endIdx);
+  const endIdx = Math.min(filteredEntries.length, Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN);
+  const visibleEntries = filteredEntries.slice(startIdx, endIdx);
   const offsetY = startIdx * ROW_HEIGHT;
 
   const handleScroll = useCallback(() => {
@@ -132,6 +142,20 @@ export function LogsPage({ language }: Props) {
         </div>
       </div>
 
+      <div className="log-filter-bar">
+        {LEVELS.map((lvl) => (
+          <button
+            key={lvl}
+            type="button"
+            className={`log-filter-btn${levelFilter === lvl ? " active" : ""}`}
+            data-level={lvl}
+            onClick={() => { setLevelFilter(lvl); followRef.current = true; if (containerRef.current) containerRef.current.scrollTop = containerRef.current.scrollHeight; }}
+          >
+            {lvl === "ALL" ? "全部" : lvl}
+          </button>
+        ))}
+      </div>
+
       <div className="log-viewer-wrap">
         {paused && <div className="log-paused-banner">日志已暂停</div>}
         <div
@@ -160,7 +184,7 @@ export function LogsPage({ language }: Props) {
           </div>
         </div>
         <div className="log-footer">
-          <span>{entries.length.toLocaleString()} 行</span>
+          <span>{filteredEntries.length.toLocaleString()} 行{levelFilter !== "ALL" ? ` / ${entries.length.toLocaleString()} 全部` : ""}</span>
           {!followRef.current && (
             <button className="text-button" onClick={() => { followRef.current = true; containerRef.current && (containerRef.current.scrollTop = containerRef.current.scrollHeight); }} type="button">
               回到底部
