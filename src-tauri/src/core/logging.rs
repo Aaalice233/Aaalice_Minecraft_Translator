@@ -3,7 +3,7 @@ use std::{
     fs,
     io,
     path::Path,
-    sync::{Once, OnceLock},
+    sync::{atomic::{AtomicBool, Ordering}, Once, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -58,6 +58,9 @@ static LOG_INIT: Once = Once::new();
 /// which would leak the guard and lose tail entries on crash.
 static _LOG_GUARD: OnceLock<tracing_appender::non_blocking::WorkerGuard> = OnceLock::new();
 
+/// Whether HTTP request/response tracing is enabled (set from settings).
+pub static HTTP_LOG_ENABLED: AtomicBool = AtomicBool::new(false);
+
 /// Initialize the tracing-based logging system.
 ///
 /// Creates `<root>/logs/` directory,
@@ -69,12 +72,24 @@ pub fn init(root: &Path) -> io::Result<()> {
     let logs_dir = root.join("logs");
     fs::create_dir_all(&logs_dir)?;
 
+    // Load log preferences from settings.json before init
+    let (debug_mode, reset_log, http_log) = load_log_prefs(root);
+
+    if reset_log {
+        let main_log_path = logs_dir.join("main.log");
+        let _ = fs::write(&main_log_path, "");
+    }
+
+    HTTP_LOG_ENABLED.store(http_log, Ordering::Relaxed);
+
     LOG_INIT.call_once(|| {
         let file_appender = tracing_appender::rolling::never(&logs_dir, "main.log");
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
+        let level = if debug_mode { "debug" } else { "info" };
+
         let subscriber = Registry::default()
-            .with(EnvFilter::new("info"))
+            .with(EnvFilter::new(level))
             .with(
                 fmt::Layer::new()
                     .event_format(LogFormatter)
@@ -83,14 +98,29 @@ pub fn init(root: &Path) -> io::Result<()> {
             );
 
         let _ = tracing::subscriber::set_global_default(subscriber);
-        // Store guard for proper drop-on-exit; if somehow initialized twice
-        // (which LOG_INIT prevents), the second attempt is silently ignored.
         let _ = _LOG_GUARD.set(guard);
     });
 
-    // Always write startup line regardless of which init won the race
     append_main("程序启动 (tracing)").ok();
     Ok(())
+}
+
+/// Read `enableDebugLog`, `resetMainLogOnStart`, `enableHttpLog` from
+/// `<root>/data/settings.json`. Missing file or parse errors return safe defaults.
+fn load_log_prefs(root: &Path) -> (bool, bool, bool) {
+    let settings_path = root.join("data").join("settings.json");
+    let content = match fs::read_to_string(&settings_path) {
+        Ok(c) => c,
+        Err(_) => return (false, true, false),
+    };
+    let v: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(_) => return (false, true, false),
+    };
+    let debug = v.get("enableDebugLog").and_then(|v| v.as_bool()).unwrap_or(false);
+    let reset = v.get("resetMainLogOnStart").and_then(|v| v.as_bool()).unwrap_or(true);
+    let http = v.get("enableHttpLog").and_then(|v| v.as_bool()).unwrap_or(false);
+    (debug, reset, http)
 }
 
 /// Log an INFO message to the main log.

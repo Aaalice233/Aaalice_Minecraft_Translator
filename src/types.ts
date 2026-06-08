@@ -21,17 +21,11 @@ export interface Settings {
   batchSize: number;
   timeoutSecs: number;
   retryCount: number;
-  retryDelaySecs: number;
   rateLimitRpm: number;
-  reuseI18nPacks: boolean;
-  reuseVmPacks: boolean;
   preferUserDictionary: boolean;
-  keepExistingResourceTranslations: boolean;
-  enableFtbQuests: boolean;
   resetMainLogOnStart: boolean;
   enableDebugLog: boolean;
   enableHttpLog: boolean;
-  enableTokenStats: boolean;
   resourcePackNames: string[];
   systemPrompt: string;
   uiFont: string;

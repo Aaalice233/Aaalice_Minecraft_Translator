@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Duration;
 
+use crate::core::logging::HTTP_LOG_ENABLED;
+use std::sync::atomic::Ordering;
+
 // ── Data types ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -378,6 +381,14 @@ fn send_request(
     api_key: &str,
     body: &Value,
 ) -> Result<Value, String> {
+    if HTTP_LOG_ENABLED.load(Ordering::Relaxed) {
+        tracing::debug!(
+            url = %url,
+            body_preview = %serde_json::to_string(body).unwrap_or_default().chars().take(500).collect::<String>(),
+            "LLM HTTP 请求"
+        );
+    }
+
     let response = client
         .post(url)
         .bearer_auth(api_key)
@@ -386,6 +397,14 @@ fn send_request(
         .map_err(|e| format!("HTTP 请求失败: {e}"))?;
 
     let status = response.status();
+    if HTTP_LOG_ENABLED.load(Ordering::Relaxed) {
+        tracing::debug!(
+            url = %url,
+            status = status.as_u16(),
+            "LLM HTTP 响应"
+        );
+    }
+
     if status == 429 {
         let retry_after = response
             .headers()

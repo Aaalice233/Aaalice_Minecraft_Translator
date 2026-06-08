@@ -307,16 +307,6 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 <small>{t(language, "settings.retryCountHint")}</small>
               </label>
               <label className="field">
-                <span>{t(language, "settings.retryDelaySecs")}</span>
-                <input
-                  type="number" min="0.1" max="60" step="0.5"
-                  value={draft.retryDelaySecs}
-                  onChange={(e) => setDraft({...draft, retryDelaySecs: Number(e.target.value)})}
-                  data-tooltip={t(language, "settings.retryDelaySecsHint")}
-                />
-                <small>{t(language, "settings.retryDelaySecsHint")}</small>
-              </label>
-              <label className="field">
                 <span>{t(language, "settings.rateLimitRpm")}</span>
                 <input
                   type="number" min="0" max="100000"
@@ -331,11 +321,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
 
           {activeTab === "reuse" && (
             <div className="settings-form">
-              <Toggle label={t(language, "settings.reuseI18n")} checked={draft.reuseI18nPacks} onChange={(checked) => setDraft({ ...draft, reuseI18nPacks: checked })} />
-              <Toggle label={t(language, "settings.reuseVm")} checked={draft.reuseVmPacks} onChange={(checked) => setDraft({ ...draft, reuseVmPacks: checked })} />
               <Toggle label={t(language, "settings.preferDictionary")} checked={draft.preferUserDictionary} onChange={(checked) => setDraft({ ...draft, preferUserDictionary: checked })} />
-              <Toggle label={t(language, "settings.keepExisting")} checked={draft.keepExistingResourceTranslations} onChange={(checked) => setDraft({ ...draft, keepExistingResourceTranslations: checked })} />
-              <Toggle label={t(language, "settings.enableFtb")} checked={draft.enableFtbQuests} onChange={(checked) => setDraft({ ...draft, enableFtbQuests: checked })} />
               <hr className="settings-separator" />
               <h3 className="section-label">{t(language, "settings.translationPacks")}</h3>
               {(draft.resourcePackNames ?? []).map((name, index) => (
@@ -386,7 +372,6 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
               <Toggle label={t(language, "settings.resetMainLog")} checked={draft.resetMainLogOnStart} onChange={(checked) => setDraft({ ...draft, resetMainLogOnStart: checked })} />
               <Toggle label={t(language, "settings.enableDebug")} checked={draft.enableDebugLog} onChange={(checked) => setDraft({ ...draft, enableDebugLog: checked })} />
               <Toggle label={t(language, "settings.enableHttp")} checked={draft.enableHttpLog} onChange={(checked) => setDraft({ ...draft, enableHttpLog: checked })} />
-              <Toggle label={t(language, "settings.enableTokens")} checked={draft.enableTokenStats} onChange={(checked) => setDraft({ ...draft, enableTokenStats: checked })} />
             </div>
           )}
 

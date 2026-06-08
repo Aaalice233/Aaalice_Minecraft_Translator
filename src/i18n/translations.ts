@@ -204,19 +204,12 @@ export type TranslationKey =
   | "settings.timeoutSecsHint"
   | "settings.retryCount"
   | "settings.retryCountHint"
-  | "settings.retryDelaySecs"
-  | "settings.retryDelaySecsHint"
   | "settings.rateLimitRpm"
   | "settings.rateLimitRpmHint"
-  | "settings.reuseI18n"
-  | "settings.reuseVm"
   | "settings.preferDictionary"
-  | "settings.keepExisting"
-  | "settings.enableFtb"
   | "settings.resetMainLog"
   | "settings.enableDebug"
   | "settings.enableHttp"
-  | "settings.enableTokens"
   | "settings.defaultInstance"
   | "settings.translationPacks"
   | "settings.resourcePackName"
@@ -523,19 +516,12 @@ const zhCn: TranslationMap = {
   "settings.timeoutSecsHint": "单次 API 请求的超时秒数（默认 180）。翻译大批量时可适当增加。",
   "settings.retryCount": "重试次数",
   "settings.retryCountHint": "API 请求失败时的重试次数（默认 5）。限流导致的失败有特殊处理。",
-  "settings.retryDelaySecs": "重试延迟（秒）",
-  "settings.retryDelaySecsHint": "首次重试前的等待秒数（默认 2）。后续重试的等待时间会翻倍（2→4→8 秒）。",
   "settings.rateLimitRpm": "速率限制（RPM）",
   "settings.rateLimitRpmHint": "每分钟最多请求数（默认 3000）。0 表示不限速。超过此值时自动等待。",
-  "settings.reuseI18n": "检测并复用 i18n 目标语言资源包",
-  "settings.reuseVm": "检测并复用 VM 汉化包",
   "settings.preferDictionary": "优先使用用户词典",
-  "settings.keepExisting": "保留已有资源包翻译",
-  "settings.enableFtb": "启用 FTB Quest 翻译入口",
   "settings.resetMainLog": "启动时重置 main.log",
   "settings.enableDebug": "启用调试日志",
   "settings.enableHttp": "启用 HTTP 请求日志",
-  "settings.enableTokens": "启用 Token 使用统计",
   "settings.defaultInstance": "默认实例路径",
   "settings.translationPacks": "汉化资源包",
   "settings.resourcePackName": "资源包文件名",
@@ -706,19 +692,12 @@ const enUs: TranslationMap = {
   "settings.timeoutSecsHint": "Single request timeout in seconds (default 180). Increase for large batches.",
   "settings.retryCount": "Retry count",
   "settings.retryCountHint": "Retry count on failure (default 5). Rate limit failures have special handling.",
-  "settings.retryDelaySecs": "Retry delay (seconds)",
-  "settings.retryDelaySecsHint": "Initial retry delay in seconds (default 2). Subsequent retries double (2→4→8s).",
   "settings.rateLimitRpm": "Rate limit (RPM)",
   "settings.rateLimitRpmHint": "Max requests per minute (default 3000). 0 = unlimited.",
-  "settings.reuseI18n": "Detect and reuse i18n target-language packs",
-  "settings.reuseVm": "Detect and reuse VM translation packs",
   "settings.preferDictionary": "Prefer user dictionary",
-  "settings.keepExisting": "Keep existing resource-pack translations",
-  "settings.enableFtb": "Enable FTB Quest translation entry",
   "settings.resetMainLog": "Reset main.log on startup",
   "settings.enableDebug": "Enable debug log",
   "settings.enableHttp": "Enable HTTP request log",
-  "settings.enableTokens": "Enable token usage stats",
   "settings.defaultInstance": "Default instance path",
   "settings.translationPacks": "Translation packs",
   "settings.resourcePackName": "Pack filename",
@@ -911,17 +890,11 @@ const jaJp: TranslationMap = {
   "settings.concurrency": "同時リクエスト数",
   "settings.timeoutSecs": "タイムアウト（秒）",
   "settings.retryCount": "リトライ回数",
-  "settings.retryDelaySecs": "リトライ間隔（秒）",
   "settings.rateLimitRpm": "レート制限（RPM）",
-  "settings.reuseI18n": "i18n 対象言語リソースパックを検出して再利用",
-  "settings.reuseVm": "VM 翻訳リソースパックを検出して再利用",
   "settings.preferDictionary": "ユーザー辞書を優先",
-  "settings.keepExisting": "既存リソースパック翻訳を保持",
-  "settings.enableFtb": "FTB Quest 翻訳入口を有効化",
   "settings.resetMainLog": "起動時に main.log をリセット",
   "settings.enableDebug": "デバッグログを有効化",
   "settings.enableHttp": "HTTP リクエストログを有効化",
-  "settings.enableTokens": "Token 使用統計を有効化",
   "settings.defaultInstance": "既定のインスタンスパス",
   "settings.translationPacks": "翻訳リソースパック",
   "settings.resourcePackName": "リソースパックファイル名",
@@ -1082,17 +1055,11 @@ const koKr: TranslationMap = {
   "settings.concurrency": "동시 요청 수",
   "settings.timeoutSecs": "타임아웃(초)",
   "settings.retryCount": "재시도 횟수",
-  "settings.retryDelaySecs": "재시도 지연(초)",
   "settings.rateLimitRpm": "속도 제한(RPM)",
-  "settings.reuseI18n": "i18n 대상 언어 리소스 팩 감지 및 재사용",
-  "settings.reuseVm": "VM 번역 리소스 팩 감지 및 재사용",
   "settings.preferDictionary": "사용자 사전 우선",
-  "settings.keepExisting": "기존 리소스 팩 번역 유지",
-  "settings.enableFtb": "FTB Quest 번역 진입점 활성화",
   "settings.resetMainLog": "시작 시 main.log 초기화",
   "settings.enableDebug": "디버그 로그 활성화",
   "settings.enableHttp": "HTTP 요청 로그 활성화",
-  "settings.enableTokens": "Token 사용 통계 활성화",
   "settings.defaultInstance": "기본 인스턴스 경로",
   "settings.translationPacks": "번역 리소스 팩",
   "settings.resourcePackName": "리소스 팩 파일명",
@@ -1341,17 +1308,11 @@ const ruRu: TranslationMap = {
   "settings.batchSize": "Размер пачки",
   "settings.timeoutSecs": "Таймаут (сек)",
   "settings.retryCount": "Кол-во повторов",
-  "settings.retryDelaySecs": "Задержка повтора (сек)",
   "settings.rateLimitRpm": "Лимит запросов (RPM)",
-  "settings.reuseI18n": "Обнаруживать и использовать i18n ресурс-паки",
-  "settings.reuseVm": "Обнаруживать и использовать VM ресурс-паки",
   "settings.preferDictionary": "Предпочитать пользовательский словарь",
-  "settings.keepExisting": "Сохранять существующие переводы в ресурс-паках",
-  "settings.enableFtb": "Включить перевод FTB Quest",
   "settings.resetMainLog": "Сбрасывать main.log при запуске",
   "settings.enableDebug": "Включить отладочный лог",
   "settings.enableHttp": "Включить лог HTTP запросов",
-  "settings.enableTokens": "Включить статистику токенов",
   "settings.defaultInstance": "Путь к экземпляру по умолчанию",
   "settings.translationPacks": "Ресурс-паки перевода",
   "settings.resourcePackName": "Имя файла ресурс-пака",
