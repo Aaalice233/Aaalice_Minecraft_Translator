@@ -248,6 +248,25 @@ export interface TranslationJobState {
   completedAt?: string;
 }
 
+/** Per-module translation result summary (entry count only, no full entries). */
+export interface ModTranslationSummary {
+  modId: string;
+  entryCount: number;
+}
+
+/** Lightweight job summary returned by listTranslationJobs, without the full entries list. */
+export interface TranslationJobListItem {
+  jobId: string;
+  scanJobId: string;
+  status: TranslationStatus;
+  sourceLanguage: string;
+  targetLanguage: string;
+  completedEntries: number;
+  failedEntries: number;
+  createdAt: string;
+  completedAt?: string;
+}
+
 // ── SPLASH / Warmup types ─────────────────────────────────────────
 
 export type WarmupPhase =

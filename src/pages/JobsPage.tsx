@@ -1,7 +1,7 @@
 import { AlertTriangle, BookOpen, Bot, CheckCircle, FileText, Filter, Play, RefreshCw, Square, X, XCircle, Zap } from "lucide-react";
 import { TableVirtuoso } from "react-virtuoso";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { cancelTranslation, loadLatestTranslationJob, retryFailedEntries, startTranslation } from "../api/tauri";
+import { cancelTranslation, loadLatestTranslationJobMeta, retryFailedEntries, startTranslation } from "../api/tauri";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
@@ -210,7 +210,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     if (status !== "idle") return; // Already restored from AppContext
     if (!("__TAURI_INTERNALS__" in window)) return;
     let cancelled = false;
-    loadLatestTranslationJob()
+    loadLatestTranslationJobMeta()
       .then((job) => {
         if (cancelled || !job) return;
         dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
@@ -324,7 +324,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       // Look up jobId and store in AppContext for cross-page access
       if ("__TAURI_INTERNALS__" in window) {
         await Promise.all([
-          loadLatestTranslationJob().then((job) => {
+          loadLatestTranslationJobMeta().then((job) => {
             if (job) dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
           }).catch((err) => console.warn("获取翻译任务 ID 失败:", err)),
           (async () => {
@@ -353,7 +353,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     let retryJobId = state.translationJobId;
     if (!retryJobId) {
       try {
-        const job = await loadLatestTranslationJob();
+        const job = await loadLatestTranslationJobMeta();
         if (!job || job.status !== "completed") return;
         retryJobId = job.jobId;
       } catch { return; }

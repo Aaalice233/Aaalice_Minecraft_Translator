@@ -77,6 +77,29 @@ mod types {
         pub created_at: String,
         pub completed_at: Option<String>,
     }
+
+    /// Lightweight job summary returned by `list_all()`, excluding the full `entries` list.
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    pub struct TranslationJobListItem {
+        pub job_id: String,
+        pub scan_job_id: String,
+        pub status: TranslationStatus,
+        pub source_language: String,
+        pub target_language: String,
+        pub completed_entries: usize,
+        pub failed_entries: usize,
+        pub created_at: String,
+        pub completed_at: Option<String>,
+    }
+
+    /// Per-module translation result summary (entry count only, no full entries).
+    #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    pub struct ModTranslationSummary {
+        pub mod_id: String,
+        pub entry_count: usize,
+    }
 }
 
 // ── JobManager ──────────────────────────────────────────────────────
@@ -203,37 +226,29 @@ impl JobManager {
 
     /// Find the most recent translation job on disk (by mtime).
     pub fn load_latest(&self) -> Result<Option<TranslationJobState>, String> {
-        let entries = self.list_job_files()?;
-        let latest = entries.into_iter().next();
-        match latest {
-            Some(entry) => {
-                let content = std::fs::read_to_string(entry.path())
-                    .map_err(|e| format!("读取 job 文件失败: {e}"))?;
-                serde_json::from_str(&content)
-                    .map(Some)
-                    .map_err(|e| format!("解析 job 文件失败: {e}"))
-            }
-            None => Ok(None),
-        }
+        read_latest_job_file::<TranslationJobState>(self.list_job_files()?, "job")
+    }
+
+    /// Load the most recent translation job metadata (no `entries` list).
+    pub fn load_latest_meta(&self) -> Result<Option<TranslationJobListItem>, String> {
+        read_latest_job_file::<TranslationJobListItem>(self.list_job_files()?, "元数据")
     }
 
     /// List all translation jobs on disk, sorted by mtime descending (newest first).
-    pub fn list_all(&self) -> Result<Vec<TranslationJobState>, String> {
+    /// Returns lightweight `TranslationJobListItem` (no `entries` list).
+    pub fn list_all(&self) -> Result<Vec<TranslationJobListItem>, String> {
         let entries = self.list_job_files()?;
-        let mut jobs: Vec<(std::time::SystemTime, TranslationJobState)> = Vec::new();
+        let mut jobs = Vec::with_capacity(entries.len());
 
         for entry in entries {
-            let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
             let content = std::fs::read_to_string(entry.path())
                 .map_err(|e| format!("读取 job 文件失败: {e}"))?;
-            if let Ok(job) = serde_json::from_str::<TranslationJobState>(&content) {
-                if let Some(time) = modified {
-                    jobs.push((time, job));
-                }
+            if let Ok(job) = serde_json::from_str::<TranslationJobListItem>(&content) {
+                jobs.push(job);
             }
         }
 
-        Ok(jobs.into_iter().map(|(_, job)| job).collect())
+        Ok(jobs)
     }
 
     /// Internal: list translation job files sorted by mtime descending.
@@ -307,6 +322,36 @@ impl JobManager {
         Ok(Vec::new())
     }
 
+    /// Read results for a specific mod (filtered on the Rust side).
+    /// Avoids transmitting full result set over IPC when only one mod is needed.
+    pub fn load_results_by_mod<'a>(&self, job_id: &str, mod_id: &'a str) -> Result<Vec<TranslationResult>, String> {
+        let results = self.load_results(job_id)?;
+        Ok(results.into_iter().filter(|r| r.mod_id == mod_id).collect())
+    }
+
+    /// Lightweight per-mod entry counts (scans JSONL without storing full entries).
+    /// Returns sorted by entry_count descending.
+    pub fn load_mod_summaries(&self, job_id: &str) -> Result<Vec<ModTranslationSummary>, String> {
+        let path = paths::translate_job_results_path(&self.root, job_id);
+        if !path.is_file() {
+            return Ok(Vec::new());
+        }
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("读取翻译结果失败 ({}): {e}", path.display()))?;
+        let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for line in content.lines() {
+            if line.trim().is_empty() { continue; }
+            if let Ok(result) = serde_json::from_str::<TranslationResult>(line) {
+                *counts.entry(result.mod_id).or_insert(0) += 1;
+            }
+        }
+        let mut result: Vec<_> = counts.into_iter()
+            .map(|(mod_id, entry_count)| ModTranslationSummary { mod_id, entry_count })
+            .collect();
+        result.sort_by(|a, b| b.entry_count.cmp(&a.entry_count));
+        Ok(result)
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────
 
     fn load_scan_summary(&self, scan_job_id: &str) -> Result<ScanSummary, String> {
@@ -325,6 +370,23 @@ impl JobManager {
 }
 
 // ── Internal helpers ────────────────────────────────────────────────
+
+/// Read and deserialize the newest file from a pre-sorted list of job file entries.
+fn read_latest_job_file<T: serde::de::DeserializeOwned>(
+    entries: Vec<std::fs::DirEntry>,
+    label: &str,
+) -> Result<Option<T>, String> {
+    match entries.into_iter().next() {
+        Some(entry) => {
+            let content = std::fs::read_to_string(entry.path())
+                .map_err(|e| format!("读取 job 文件失败: {e}"))?;
+            serde_json::from_str(&content)
+                .map(Some)
+                .map_err(|e| format!("解析 {label} 失败: {e}"))
+        }
+        None => Ok(None),
+    }
+}
 
 fn read_job_file(path: &std::path::Path) -> Result<Option<TranslationJobState>, String> {
     let content = std::fs::read_to_string(path)

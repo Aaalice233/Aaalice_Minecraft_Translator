@@ -1,3 +1,4 @@
+import { TableVirtuoso } from "react-virtuoso";
 import {
   CheckCircle,
   ChevronDown,
@@ -9,9 +10,9 @@ import {
   Save,
   Search,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { loadLatestTranslationJob, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
-import type { AppLanguage, TranslationJobState, TranslationResult } from "../types";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { loadLatestTranslationJobMeta, loadTranslationModSummaries, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
+import type { AppLanguage, ModTranslationSummary, TranslationJobListItem, TranslationResult } from "../types";
 
 interface Props {
   language: AppLanguage;
@@ -22,91 +23,102 @@ interface Props {
 
 export function ValidatePage({ language: _language, onConfirm }: Props) {
   // ── State ──
-  const [job, setJob] = useState<TranslationJobState | null>(null);
+  const [job, setJob] = useState<TranslationJobListItem | null>(null);
   const [loading, setLoading] = useState(true);
-  const [entries, setEntries] = useState<TranslationResult[]>([]);
-  const [loadingEntries, setLoadingEntries] = useState(false);
-  const [error, setError] = useState("");
+  const [modSummaries, setModSummaries] = useState<ModTranslationSummary[]>([]);
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
+  // Lazy-loaded per-mod results: modId -> TranslationResult[]
+  const [modResults, setModResults] = useState<Map<string, TranslationResult[]>>(new Map());
+  // Track which mods are currently loading results
+  const [loadingMods, setLoadingMods] = useState<Set<string>>(new Set());
+  const [error, setError] = useState("");
   // Track per-row saving state: "modId\x00key\x00modName" -> saving
   const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
   const [saveMsg, setSaveMsg] = useState<string>("");
 
-  // ── Load job + entries on mount ──
+  // ── Load job meta + mod summaries on mount ──
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    loadLatestTranslationJob()
-      .then((j) => {
+    loadLatestTranslationJobMeta()
+      .then(async (j) => {
         if (cancelled) return;
         setJob(j);
         if (j && j.status === "completed") {
-          loadEntries(j.jobId);
+          // Load lightweight per-mod summaries (no full entries)
+          const summaries = await loadTranslationModSummaries(j.jobId);
+          if (!cancelled) {
+            setModSummaries(summaries);
+          }
         }
       })
-      .catch(() => {})
+      .catch(() => {/* no job yet — that's OK */})
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadEntries(jobId: string) {
-    setLoadingEntries(true);
+  // ── Lazy load results when a mod is expanded ──
+  async function loadModResults(modId: string) {
+    if (modResults.has(modId)) return; // already loaded
+    if (!job?.jobId) return;
+    setLoadingMods((prev) => new Set(prev).add(modId));
     setError("");
     try {
-      const results = await loadTranslationResults(jobId);
-      setEntries(results);
-      // Auto-expand all mods
-      const modIds = new Set(results.map((r) => r.modId));
-      setExpandedMods(modIds);
+      const results = await loadTranslationResults(job.jobId, modId);
+      setModResults((prev) => {
+        const next = new Map(prev);
+        next.set(modId, results);
+        return next;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      setEntries([]);
     } finally {
-      setLoadingEntries(false);
+      setLoadingMods((prev) => {
+        const next = new Set(prev);
+        next.delete(modId);
+        return next;
+      });
     }
   }
-
-  // ── Group entries by modId ──
-  const grouped = useMemo(() => {
-    const map = new Map<string, TranslationResult[]>();
-    for (const entry of entries) {
-      const list = map.get(entry.modId);
-      if (list) {
-        list.push(entry);
-      } else {
-        map.set(entry.modId, [entry]);
-      }
-    }
-    return map;
-  }, [entries]);
 
   // ── Mod expand/collapse ──
   function toggleMod(modId: string) {
     setExpandedMods((prev) => {
       const next = new Set(prev);
-      if (next.has(modId)) next.delete(modId);
-      else next.add(modId);
+      if (next.has(modId)) {
+        next.delete(modId);
+      } else {
+        next.add(modId);
+        // Trigger lazy load (async, non-blocking)
+        loadModResults(modId);
+      }
       return next;
     });
   }
 
   // ── Save a single entry edit back to JSONL ──
-  async function handleSave(entry: TranslationResult, newText: string) {
+  const handleSave = useCallback(async (entry: TranslationResult, newText: string) => {
     const rk = rowKey(entry);
     setSavingRows((prev) => new Set(prev).add(rk));
     setSaveMsg("");
     try {
       await saveTranslationEntry(job!.jobId, entry.key, entry.modName, entry.modId, newText);
-      // Update local state so UI reflects the saved value
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.key === entry.key && e.modName === entry.modName && e.modId === entry.modId
-            ? { ...e, targetText: newText }
-            : e,
-        ),
-      );
+      // Update local state: find and update only the changed entry
+      setModResults((prev) => {
+        const existing = prev.get(entry.modId);
+        if (!existing) return prev;
+        const idx = existing.findIndex(
+          (e) => e.key === entry.key && e.modName === entry.modName && e.modId === entry.modId,
+        );
+        if (idx === -1) return prev;
+        const copy = existing.slice();
+        copy[idx] = { ...existing[idx], targetText: newText };
+        const next = new Map(prev);
+        next.set(entry.modId, copy);
+        return next;
+      });
       setSaveMsg("已保存");
     } catch (err) {
       setSaveMsg(err instanceof Error ? err.message : String(err));
@@ -117,7 +129,7 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
         return next;
       });
     }
-  }
+  }, [job?.jobId]);
 
   // ── Render helpers ──
 
@@ -171,7 +183,7 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
           <p>逐条审核 LLM 翻译结果，确认后可进入打包阶段</p>
         </div>
         <div className="page-header-button" style={{ gap: 6 }}>
-          {entries.length > 0 && (
+          {modSummaries.length > 0 && (
             <button
               className="primary-button"
               onClick={onConfirm}
@@ -201,7 +213,7 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
           </span>
         )}
         <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>
-          {entries.length} 个条目
+          {job.completedEntries} 个条目
         </span>
       </div>
 
@@ -220,16 +232,8 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
         </div>
       )}
 
-      {/* ── Loading entries ── */}
-      {loadingEntries && (
-        <div className="empty-state" style={{ padding: 32 }}>
-          <Loader2 size={24} className="spin" />
-          <p>加载翻译结果...</p>
-        </div>
-      )}
-
-      {/* ── No entries ── */}
-      {!loadingEntries && entries.length === 0 && (
+      {/* ── No mod summaries ── */}
+      {modSummaries.length === 0 && (
         <div className="empty-state" style={{ padding: 32 }}>
           <Search size={28} />
           <p>暂无翻译结果</p>
@@ -237,12 +241,15 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
       )}
 
       {/* ── Review table: mod groups ── */}
-      {!loadingEntries && entries.length > 0 && (
+      {modSummaries.length > 0 && (
         <div className="workspace-layout" style={{ gridTemplateColumns: "1fr", marginTop: 0 }}>
           <main className="workspace-main">
             <div className="validate-issue-list" style={{ gap: 6 }}>
-              {Array.from(grouped.entries()).map(([modId, modEntries]) => {
+              {modSummaries.map(({ modId, entryCount }) => {
                 const isExpanded = expandedMods.has(modId);
+                const isLoading = loadingMods.has(modId);
+                const entries = modResults.get(modId);
+                const hasEntries = entries && entries.length > 0;
                 return (
                   <div key={modId} className="mod-group">
                     <button
@@ -252,47 +259,47 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
                     >
                       {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       <span className="mod-name">{modId}</span>
-                      <span className="mod-count">{modEntries.length} 条</span>
+                      <span className="mod-count">{entryCount} 条</span>
                     </button>
 
-                    {isExpanded && (
-                      <div className="review-table" style={{
-                        overflowX: "auto",
-                        borderTop: "1px solid var(--border)",
-                      }}>
-                        <table style={{
-                          width: "100%",
-                          borderCollapse: "collapse",
-                          fontSize: 12,
-                          lineHeight: 1.5,
-                        }}>
-                          <thead>
-                            <tr style={{
-                              background: "var(--bg-muted)",
-                              borderBottom: "1px solid var(--border)",
-                            }}>
-                              <th style={thStyle}>Key</th>
-                              <th style={thStyle}>原文 (Source)</th>
-                              <th style={thStyle}>译文 (Target)</th>
-                              <th style={{ ...thStyle, width: 80 }}>操作</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {modEntries.map((entry) => {
-                              const rk = rowKey(entry);
-                              const isSaving = savingRows.has(rk);
-                              return (
-                                <ReviewRow
-                                  key={rk}
-                                  entry={entry}
-                                  isSaving={isSaving}
-                                  onSave={handleSave}
-                                />
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                    {isExpanded && !hasEntries && isLoading && (
+                      <div className="empty-state" style={{ padding: 16 }}>
+                        <Loader2 size={20} className="spin" />
+                        <p>加载中...</p>
                       </div>
+                    )}
+
+                    {isExpanded && entries && entries.length > 0 && (
+                      <TableVirtuoso
+                        style={{
+                          height: "min(calc(100vh - 280px), 600px)",
+                          borderTop: "1px solid var(--border)",
+                        }}
+                        totalCount={entries.length}
+                        fixedHeaderContent={() => (
+                          <tr style={{
+                            background: "var(--bg-muted)",
+                            borderBottom: "1px solid var(--border)",
+                          }}>
+                            <th style={{ ...thStyle, width: "25%" }}>Key</th>
+                            <th style={{ ...thStyle, width: "30%" }}>原文 (Source)</th>
+                            <th style={{ ...thStyle, width: "35%" }}>译文 (Target)</th>
+                            <th style={{ ...thStyle, width: 80 }}>操作</th>
+                          </tr>
+                        )}
+                        itemContent={(index) => {
+                          const entry = entries[index];
+                          const rk = rowKey(entry);
+                          const isSaving = savingRows.has(rk);
+                          return (
+                            <ReviewRow
+                              entry={entry}
+                              isSaving={isSaving}
+                              onSave={handleSave}
+                            />
+                          );
+                        }}
+                      />
                     )}
                   </div>
                 );
@@ -321,7 +328,7 @@ const tdStyle: React.CSSProperties = {
   borderBottom: "1px solid var(--border)",
 };
 
-function ReviewRow({
+const ReviewRow = React.memo(function ReviewRow({
   entry,
   isSaving,
   onSave,
@@ -409,4 +416,4 @@ function ReviewRow({
       </td>
     </tr>
   );
-}
+});

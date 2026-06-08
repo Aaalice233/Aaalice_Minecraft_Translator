@@ -1,4 +1,4 @@
-import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, PackEntry, PackResult, ReadLogsResult, ScanSummary, Settings, TranslateProgress, TranslationJobState, TranslationResult, ValidationReport } from "../types";
+import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
 
@@ -78,6 +78,26 @@ export async function scanInstance(
 export async function clearJobsCache(): Promise<void> {
   if (!isTauriRuntime()) return;
   return tauriInvoke<void>("clear_jobs_cache");
+}
+
+export interface CleanupJobsResult {
+  deletedStateFiles: number;
+  deletedResultsFiles: number;
+  deletedDoublePrefixFiles: number;
+  keptJobs: string[];
+  freedBytes: number;
+}
+
+/**
+ * Clean up old job files, keeping the N most recent complete jobs.
+ * Deletes double-prefix legacy files, orphan results, and old state files.
+ * @param keepCount Number of most recent complete jobs to retain (default 5).
+ */
+export async function cleanupOldJobs(keepCount?: number): Promise<CleanupJobsResult> {
+  if (!isTauriRuntime()) {
+    return { deletedStateFiles: 0, deletedResultsFiles: 0, deletedDoublePrefixFiles: 0, keptJobs: [], freedBytes: 0 };
+  }
+  return tauriInvoke<CleanupJobsResult>("cleanup_old_jobs", { keepCount });
 }
 
 export async function cancelScan(): Promise<void> {
@@ -210,11 +230,26 @@ export async function loadLatestTranslationJob(): Promise<TranslationJobState | 
   return tauriInvoke<TranslationJobState | null>("load_latest_translation_job");
 }
 
-export async function loadTranslationResults(jobId: string): Promise<TranslationResult[]> {
+/** Lightweight variant: returns job metadata without the full `entries` list (~350B vs 2MB). */
+export async function loadLatestTranslationJobMeta(): Promise<TranslationJobListItem | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return tauriInvoke<TranslationJobListItem | null>("load_latest_translation_job_meta");
+}
+
+export async function loadTranslationResults(jobId: string, modId?: string): Promise<TranslationResult[]> {
   if (!isTauriRuntime()) {
     return [];
   }
-  return tauriInvoke<TranslationResult[]>("load_translation_results", { jobId });
+  return tauriInvoke<TranslationResult[]>("load_translation_results", { jobId, modId: modId ?? null });
+}
+
+export async function loadTranslationModSummaries(jobId: string): Promise<ModTranslationSummary[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return tauriInvoke<ModTranslationSummary[]>("load_translation_mod_summaries", { jobId });
 }
 
 export async function saveTranslationEntry(
@@ -228,11 +263,11 @@ export async function saveTranslationEntry(
   return tauriInvoke<void>("save_translation_entry", { jobId, key, modName, modId, targetText });
 }
 
-export async function listTranslationJobs(): Promise<TranslationJobState[]> {
+export async function listTranslationJobs(): Promise<TranslationJobListItem[]> {
   if (!isTauriRuntime()) {
     return [];
   }
-  return tauriInvoke<TranslationJobState[]>("list_translation_jobs");
+  return tauriInvoke<TranslationJobListItem[]>("list_translation_jobs");
 }
 
 export async function validateTranslation(jobId: string): Promise<ValidationReport> {

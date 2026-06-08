@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { copyPackToInstance, generatePackFromJob, generateTranslationPack, listTranslationJobs } from "../api/tauri";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
-import type { AppLanguage, CopyResult, PackResult, ScanSummary, TranslationJobState } from "../types";
+import type { AppLanguage, CopyResult, PackResult, ScanSummary, TranslationJobListItem } from "../types";
 
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -26,9 +26,9 @@ export const PackagesPage = React.memo(function PackagesPage({ language, scanSum
   const [error, setError] = useState("");
 
   // Job-based state
-  const [translationJob, setTranslationJob] = useState<TranslationJobState | null>(null);
+  const [translationJob, setTranslationJob] = useState<TranslationJobListItem | null>(null);
   const [loadingJob, setLoadingJob] = useState(true);
-  const [allTranslationJobs, setAllTranslationJobs] = useState<TranslationJobState[]>([]);
+  const [allTranslationJobs, setAllTranslationJobs] = useState<TranslationJobListItem[]>([]);
 
   // On mount, load all translation jobs (P10 — history selection)
   useEffect(() => {

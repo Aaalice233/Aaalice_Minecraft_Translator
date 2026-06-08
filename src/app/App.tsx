@@ -83,8 +83,6 @@ function AppShell() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
   const [exitingPage, setExitingPage] = useState<PageKey | null>(null);
   const { state, dispatch } = useAppState();
-  // Zustand store (runs alongside AppContext during migration)
-  const store = useAppStore();
   const { settings, scanSummary, navStates } = state;
   const language = normalizeAppLanguage(settings?.appLanguage);
 
@@ -164,20 +162,18 @@ function AppShell() {
   }, [warmupComplete]);
 
   // Sync AppContext → Zustand store on state changes
-  const syncedDispatch: typeof dispatch = (action) => {
+  const syncedDispatch = useCallback<typeof dispatch>((action) => {
     dispatch(action);
-    const fn = storeMirror[action.type];
-    if (fn) fn(action);
-  };
-
-  const storeMirror: Record<string, (action: any) => void> = {
-    SET_SETTINGS: (a) => store.setSettings(a.payload),
-    SET_SCAN_SUMMARY: (a) => store.setScanSummary(a.payload),
-    SET_NAV_STATE: (a) => store.setNavState(a.payload.key, a.payload.status),
-    SET_TRANSLATION_STATUS: (a) => store.setTranslationStatus(a.payload.status, a.payload.result, a.payload.error),
-    SET_TRANSLATION_JOB_ID: (a) => store.setTranslationJobId(a.payload),
-    SET_PACKAGES_JOB_ID: (a) => store.setPackagesJobId(a.payload),
-  };
+    const s = useAppStore.getState();
+    switch (action.type) {
+      case "SET_SETTINGS": s.setSettings(action.payload); break;
+      case "SET_SCAN_SUMMARY": s.setScanSummary(action.payload); break;
+      case "SET_NAV_STATE": s.setNavState(action.payload.key, action.payload.status); break;
+      case "SET_TRANSLATION_STATUS": s.setTranslationStatus(action.payload.status, action.payload.result, action.payload.error); break;
+      case "SET_TRANSLATION_JOB_ID": s.setTranslationJobId(action.payload); break;
+      case "SET_PACKAGES_JOB_ID": s.setPackagesJobId(action.payload); break;
+    }
+  }, [dispatch]);
 
   useEffect(() => {
     getSettings()
@@ -203,6 +199,7 @@ function AppShell() {
 
   const [mountedPages, setMountedPages] = useState<Set<PageKey>>(() => new Set(["dashboard"]));
 
+  // 挂载新页面（立即生效）
   useEffect(() => {
     setMountedPages((prev) => {
       if (prev.has(activePage)) return prev;
@@ -212,10 +209,18 @@ function AppShell() {
     });
   }, [activePage]);
 
-  // 退出动画清理：动画结束后移除 exiting 状态
+  // 退出动画完成后卸载旧页面（释放 DOM 和 React 内存）
   useEffect(() => {
     if (!exitingPage) return;
-    const timer = setTimeout(() => setExitingPage(null), 150);
+    const timer = setTimeout(() => {
+      setMountedPages((prev) => {
+        if (!prev.has(exitingPage)) return prev;
+        const next = new Set(prev);
+        next.delete(exitingPage);
+        return next;
+      });
+      setExitingPage(null);
+    }, 150); // 与 CSS transition 持续时间匹配
     return () => clearTimeout(timer);
   }, [exitingPage]);
 
@@ -269,32 +274,28 @@ function AppShell() {
     [syncedDispatch],
   );
 
-  const renderPage = useCallback(
-    (page: PageKey) => {
-      if (!mountedPages.has(page)) return null;
-      const isActive = activePage === page;
+  function renderPage(page: PageKey) {
+    if (!mountedPages.has(page)) return null;
 
-      switch (page) {
-        case "dashboard":
-          return <DashboardPage settings={settings!} onSettingsChange={handleSettingsChange} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
-        case "settings":
-          return <SettingsPage settings={settings!} onSettingsChange={handleSettingsChange} />;
-        case "logs":
-          return <LogsPage scanSummary={scanSummary} language={language} />;
-        case "dictionary":
-          return <DictionaryPage language={language} />;
-        case "jobs":
-          return <JobsPage isActive={isActive} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
-        case "validate":
-          return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
-        case "packages":
-          return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
-        default:
-          return <PlaceholderPage pageKey={page} language={language} />;
-      }
-    },
-    [activePage, language, scanSummary, settings, mountedPages, dbBusy, dbCompleted, jobsBusy, jobsCompleted, packsBusy],
-  );
+    switch (page) {
+      case "dashboard":
+        return <DashboardPage settings={settings!} onSettingsChange={handleSettingsChange} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
+      case "settings":
+        return <SettingsPage settings={settings!} onSettingsChange={handleSettingsChange} />;
+      case "logs":
+        return <LogsPage scanSummary={scanSummary} language={language} />;
+      case "dictionary":
+        return <DictionaryPage language={language} />;
+      case "jobs":
+        return <JobsPage isActive={activePage === page} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
+      case "validate":
+        return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
+      case "packages":
+        return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
+      default:
+        return <PlaceholderPage pageKey={page} language={language} />;
+    }
+  }
 
   useEffect(() => {
     if (settings?.uiTheme) {

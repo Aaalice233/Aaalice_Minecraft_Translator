@@ -47,13 +47,16 @@ pub fn run() {
             // Translation
             commands::start_translation,
             commands::cancel_translation,
+            commands::cleanup_old_jobs,
             commands::clear_jobs_cache,
             commands::get_translation_job,
             commands::load_latest_translation_job,
+            commands::load_latest_translation_job_meta,
             commands::list_translation_jobs,
             commands::validate_translation,
             commands::retry_failed_entries,
             commands::load_translation_results,
+            commands::load_translation_mod_summaries,
             commands::save_translation_entry,
             commands::generate_pack_from_job,
             // Warmup
