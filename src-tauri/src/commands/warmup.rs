@@ -240,6 +240,17 @@ fn phase_llm(settings: &Settings, app: &AppHandle, is_first: bool) -> Result<(),
     Ok(())
 }
 
+/// Emit a final completed event so the frontend can transition out of splash.
+fn emit_completed(app: &AppHandle) {
+    let _ = app.emit("warmup-progress", WarmupProgress {
+        phase: WarmupPhase::Completed,
+        percent: 100,
+        status: StageStatus::Completed,
+        message: Some("预热完成".to_string()),
+        error: None,
+    });
+}
+
 #[tauri::command]
 pub fn run_warmup(app: AppHandle) -> Result<(), String> {
     info!("run_warmup: 开始预热");
@@ -271,6 +282,7 @@ pub fn run_warmup(app: AppHandle) -> Result<(), String> {
 
     if WARMUP_CANCELLED.load(Ordering::SeqCst) {
         info!("预热已取消");
+        emit_completed(&app);
         return Ok(());
     }
 
@@ -288,6 +300,7 @@ pub fn run_warmup(app: AppHandle) -> Result<(), String> {
 
     if WARMUP_CANCELLED.load(Ordering::SeqCst) {
         info!("预热已取消");
+        emit_completed(&app);
         return Ok(());
     }
 
@@ -305,6 +318,7 @@ pub fn run_warmup(app: AppHandle) -> Result<(), String> {
 
     if WARMUP_CANCELLED.load(Ordering::SeqCst) {
         info!("预热已取消");
+        emit_completed(&app);
         return Ok(());
     }
 
@@ -324,13 +338,7 @@ pub fn run_warmup(app: AppHandle) -> Result<(), String> {
     mark_warmup_done(&root);
 
     // Final completed event
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Completed,
-        percent: 100,
-        status: StageStatus::Completed,
-        message: Some("预热完成".to_string()),
-        error: None,
-    });
+    emit_completed(&app);
 
     info!("run_warmup: 预热完成");
     Ok(())

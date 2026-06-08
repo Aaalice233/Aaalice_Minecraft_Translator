@@ -188,6 +188,11 @@ export function SplashScreen({
   const handleForceSkip = useCallback(() => {
     // Cancel background warmup on Rust side
     cancelWarmup().catch(() => {});
+    // Clear any pending warmup-completion transition timer
+    if (transitionTimerRef.current) {
+      clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = null;
+    }
     setShowSplash(false);
     setTimeout(() => {
       onFinish();

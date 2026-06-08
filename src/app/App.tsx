@@ -102,18 +102,16 @@ function AppShell() {
     }
   })();
 
-  // Start warmup on mount
-  useEffect(() => {
-    runWarmup().catch((err) => console.warn("runWarmup 启动失败:", err));
-  }, []);
-
-  // Listen for warmup-progress Tauri events
+  // ── Combined warmup: register listener first, then start warmup ──
+  // This eliminates the race where Rust emits events before the frontend
+  // listener is registered.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     let cancelled = false;
 
     (async () => {
       try {
+        // Step 1: Register event listener BEFORE starting warmup
         const { listen } = await import("@tauri-apps/api/event");
         unlisten = await listen<WarmupProgress>("warmup-progress", (event) => {
           if (cancelled) return;
@@ -138,11 +136,14 @@ function AppShell() {
             setFatalWarmupError(p.error);
           }
         });
+
+        // Step 2: Now safe to start warmup — listener is already registered
+        await runWarmup();
       } catch {
-        // Non-Tauri environment (browser preview) — auto-complete warmup
-        if (!cancelled) {
-          setWarmupComplete(true);
-        }
+        if (cancelled) return;
+        // Non-Tauri environment (browser preview) or early warmup failure
+        // — let the splash screen proceed so the user isn't stuck
+        setWarmupComplete(true);
       }
     })();
 

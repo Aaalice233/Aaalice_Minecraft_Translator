@@ -2821,7 +2821,7 @@ button.essb-legend-item:hover {
 .splash-phase-steps {
   display: flex;
   justify-content: space-between;
-  gap: 4px;
+  gap: 0;
 }
 
 .splash-phase-step {
@@ -2832,7 +2832,7 @@ button.essb-legend-item:hover {
   font-size: 11px;
   color: var(--text-muted);
   transition: color 300ms ease;
-  flex: 1;
+  width: 25%;
 }
 
 .splash-phase-step.active {
