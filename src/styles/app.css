@@ -283,22 +283,32 @@ select {
 /* ── Page Stack (keep-alive) ──────────────────── */
 .page-stack {
   position: relative;
-  display: flex;
-  flex-direction: column;
   flex: 1;
   min-height: 0;
 }
 
 .page-layer {
-  display: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity 150ms ease, transform 150ms ease;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .page-layer.active {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+  z-index: 1;
   overflow-y: auto;
+}
+
+.page-layer.exiting {
+  z-index: 2;
 }
 
 .page {

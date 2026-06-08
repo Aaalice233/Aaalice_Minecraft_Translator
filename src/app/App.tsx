@@ -65,6 +65,11 @@ const navItems: NavItem[] = [
   { key: "logs", labelKey: "nav.logs", icon: Home },
 ];
 
+const ALL_PAGE_KEYS: PageKey[] = [
+  "dashboard", "settings", "logs", "dictionary",
+  "jobs", "validate", "packages", "ftb", "hardcoded",
+];
+
 export function App() {
   return (
     <AppProvider>
@@ -75,6 +80,7 @@ export function App() {
 
 function AppShell() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
+  const [exitingPage, setExitingPage] = useState<PageKey | null>(null);
   const [loadError, setLoadError] = useState("");
   const { state, dispatch } = useAppState();
   // Zustand store (runs alongside AppContext during migration)
@@ -115,7 +121,6 @@ function AppShell() {
       .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
   }, [dispatch]);
 
-  // 智能 tooltip 方向：当元素靠近视口上边缘时自动向下弹出
   useEffect(() => {
     const TOOLTIP_TOP_THRESHOLD = 60;
     const handler = (e: MouseEvent) => {
@@ -133,19 +138,22 @@ function AppShell() {
   }, []);
 
   const [mountedPages, setMountedPages] = useState<Set<PageKey>>(() => new Set(["dashboard"]));
-  const prevPageRef = useRef(activePage);
 
   useEffect(() => {
-    if (activePage !== prevPageRef.current) {
-      prevPageRef.current = activePage;
-      setMountedPages((prev) => {
-        if (prev.has(activePage)) return prev;
-        const next = new Set(prev);
-        next.add(activePage);
-        return next;
-      });
-    }
+    setMountedPages((prev) => {
+      if (prev.has(activePage)) return prev;
+      const next = new Set(prev);
+      next.add(activePage);
+      return next;
+    });
   }, [activePage]);
+
+  // 退出动画清理：动画结束后移除 exiting 状态
+  useEffect(() => {
+    if (!exitingPage) return;
+    const timer = setTimeout(() => setExitingPage(null), 150);
+    return () => clearTimeout(timer);
+  }, [exitingPage]);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
@@ -282,7 +290,10 @@ function AppShell() {
                 className={className}
                 key={item.key}
                 disabled={item.disabled}
-                onClick={() => setActivePage(item.key)}
+                onClick={() => {
+                  setExitingPage(activePage);
+                  setActivePage(item.key);
+                }}
                 type="button"
                 data-tooltip={sidebarCollapsed ? t(language, item.labelKey) : tooltip}
               >
@@ -310,10 +321,10 @@ function AppShell() {
           <div className="empty-state">{loadError || t(language, "app.loadingSettings")}</div>
         ) : (
           <div className="page-stack">
-            {(["dashboard", "settings", "logs", "dictionary", "jobs", "validate", "packages", "ftb", "hardcoded"] as PageKey[]).map((page) => (
+            {ALL_PAGE_KEYS.map((page) => (
               <div
                 key={page}
-                className={`page-layer${activePage === page ? " active" : ""}`}
+                className={`page-layer${activePage === page ? " active" : ""}${exitingPage === page ? " exiting" : ""}`}
               >
                 {renderPage(page)}
               </div>
