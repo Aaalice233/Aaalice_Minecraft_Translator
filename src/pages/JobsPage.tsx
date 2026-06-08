@@ -366,10 +366,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     setTranslateProgress(null);
     setStatus("running");
     try {
-      const result = await retryFailedEntries(retryJobId, srcLang, tgtLang);
+      await retryFailedEntries(retryJobId, srcLang, tgtLang);
       if (cancelledRef.current) return;
       setStatus("completed");
-      setTranslationResult(result);
       const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
       setTranslateElapsedMs(elapsed);
     } catch (err) {
