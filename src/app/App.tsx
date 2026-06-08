@@ -286,28 +286,24 @@ function AppShell() {
       if (!mountedPages.has(page)) return null;
       const isActive = activePage === page;
 
-      if (page === "dashboard") {
-        return <DashboardPage settings={settings!} onSettingsChange={handleSettingsChange} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
+      switch (page) {
+        case "dashboard":
+          return <DashboardPage settings={settings!} onSettingsChange={handleSettingsChange} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
+        case "settings":
+          return <SettingsPage settings={settings!} onSettingsChange={handleSettingsChange} />;
+        case "logs":
+          return <LogsPage scanSummary={scanSummary} language={language} />;
+        case "dictionary":
+          return <DictionaryPage language={language} />;
+        case "jobs":
+          return <JobsPage isActive={isActive} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
+        case "validate":
+          return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
+        case "packages":
+          return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
+        default:
+          return <PlaceholderPage pageKey={page} language={language} />;
       }
-      if (page === "settings") {
-        return <SettingsPage settings={settings!} onSettingsChange={handleSettingsChange} />;
-      }
-      if (page === "logs") {
-        return <LogsPage scanSummary={scanSummary} language={language} />;
-      }
-      if (page === "dictionary") {
-        return <DictionaryPage language={language} />;
-      }
-      if (page === "jobs") {
-        return <JobsPage isActive={isActive} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
-      }
-      if (page === "validate") {
-        return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
-      }
-      if (page === "packages") {
-        return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
-      }
-      return <PlaceholderPage pageKey={page} language={language} />;
     },
     [activePage, language, scanSummary, settings, mountedPages, dbBusy, dbCompleted, jobsBusy, jobsCompleted, packsBusy],
   );
@@ -352,11 +348,13 @@ function AppShell() {
             const isCompleted = navStatus === "completed";
             const isActive = item.key === activePage;
 
-            let className = "nav-item";
-            if (isActive) className += " active";
-            if (isBusy) className += " busy";
-            if (isCompleted) className += " completed";
-            if (item.disabled) className += " disabled";
+            let className = [
+              "nav-item",
+              isActive && "active",
+              isBusy && "busy",
+              isCompleted && "completed",
+              item.disabled && "disabled",
+            ].filter(Boolean).join(" ");
 
             let tooltip: string;
             if (isBusy) {

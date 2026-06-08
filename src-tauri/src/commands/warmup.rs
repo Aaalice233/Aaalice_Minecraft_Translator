@@ -55,7 +55,7 @@ fn phase_settings(root: &PathBuf, app: &AppHandle) -> Result<Settings, String> {
 }
 
 /// Phase 2: Validate local metadata (instance path, mods directory) (25–50%)
-fn phase_local(_root: &PathBuf, settings: &Settings, app: &AppHandle) -> Result<(), String> {
+fn phase_local(settings: &Settings, app: &AppHandle) -> Result<(), String> {
     info!("Warmup Phase 2: 验证本地元数据");
 
     let _ = app.emit("warmup-progress", WarmupProgress {
@@ -251,6 +251,28 @@ fn emit_completed(app: &AppHandle) {
     });
 }
 
+/// Emit a failed-phase progress event.
+fn emit_failed(app: &AppHandle, phase: WarmupPhase, percent: u8, error: String) {
+    let _ = app.emit("warmup-progress", WarmupProgress {
+        phase,
+        percent,
+        status: StageStatus::Failed,
+        message: None,
+        error: Some(error),
+    });
+}
+
+/// Check cancellation flag and emit completed if cancelled.
+fn check_cancelled(app: &AppHandle) -> bool {
+    if WARMUP_CANCELLED.load(Ordering::SeqCst) {
+        info!("预热已取消");
+        emit_completed(app);
+        true
+    } else {
+        false
+    }
+}
+
 #[tauri::command]
 pub fn run_warmup(app: AppHandle) -> Result<(), String> {
     info!("run_warmup: 开始预热");
@@ -268,70 +290,40 @@ pub fn run_warmup(app: AppHandle) -> Result<(), String> {
         Ok(s) => s,
         Err(e) => {
             info!("设置阶段失败 (非阻塞): {e}");
-            let _ = app.emit("warmup-progress", WarmupProgress {
-                phase: WarmupPhase::Settings,
-                percent: 25,
-                status: StageStatus::Failed,
-                message: None,
-                error: Some(e.clone()),
-            });
+            emit_failed(&app, WarmupPhase::Settings, 25, e.clone());
             // Still continue with default settings
             Settings::default()
         }
     };
 
-    if WARMUP_CANCELLED.load(Ordering::SeqCst) {
-        info!("预热已取消");
-        emit_completed(&app);
+    if check_cancelled(&app) {
         return Ok(());
     }
 
     // ── Phase 2: Local metadata ──
-    if let Err(e) = phase_local(&root, &settings, &app) {
+    if let Err(e) = phase_local(&settings, &app) {
         info!("本地元数据阶段失败 (非阻塞): {e}");
-        let _ = app.emit("warmup-progress", WarmupProgress {
-            phase: WarmupPhase::Local,
-            percent: 50,
-            status: StageStatus::Failed,
-            message: None,
-            error: Some(e),
-        });
+        emit_failed(&app, WarmupPhase::Local, 50, e);
     }
 
-    if WARMUP_CANCELLED.load(Ordering::SeqCst) {
-        info!("预热已取消");
-        emit_completed(&app);
+    if check_cancelled(&app) {
         return Ok(());
     }
 
     // ── Phase 3: Dictionary ──
     if let Err(e) = phase_dictionary(&root, &app) {
         info!("词典阶段失败 (非阻塞): {e}");
-        let _ = app.emit("warmup-progress", WarmupProgress {
-            phase: WarmupPhase::Dictionary,
-            percent: 75,
-            status: StageStatus::Failed,
-            message: None,
-            error: Some(e),
-        });
+        emit_failed(&app, WarmupPhase::Dictionary, 75, e);
     }
 
-    if WARMUP_CANCELLED.load(Ordering::SeqCst) {
-        info!("预热已取消");
-        emit_completed(&app);
+    if check_cancelled(&app) {
         return Ok(());
     }
 
     // ── Phase 4: LLM ──
     if let Err(e) = phase_llm(&settings, &app, first) {
         info!("LLM 阶段失败 (非阻塞): {e}");
-        let _ = app.emit("warmup-progress", WarmupProgress {
-            phase: WarmupPhase::Llm,
-            percent: 100,
-            status: StageStatus::Failed,
-            message: None,
-            error: Some(e),
-        });
+        emit_failed(&app, WarmupPhase::Llm, 100, e);
     }
 
     // Mark warmup as done for subsequent launches

@@ -6,7 +6,6 @@ import type { WarmupPhase, WarmupProgress } from "../types";
 
 const SPLASH_MIN_MS = 800;
 const LETTER_REVEAL_MS = 60;
-const SUBTITLE_FADE_IN_MS = 200;
 const BRAND_NAME = "Aaalice";
 const SUBTITLE = "Minecraft Translator";
 const ICON_SIZE = 48;
@@ -168,21 +167,10 @@ export function SplashScreen({
     if (status === "completed") return "\u2713";
     if (status === "failed") return "\u26A0";
     if (phaseKey === curPhase && status === "running") return "\u27F3";
-    // Future phase, not yet reached
     return "";
   };
 
-  const isPhaseActive = (phaseKey: WarmupPhase): boolean => {
-    return phaseKey === curPhase && phaseStatuses[phaseKey] === "running";
-  };
-
-  const isPhaseDone = (phaseKey: WarmupPhase): boolean => {
-    return phaseStatuses[phaseKey] === "completed";
-  };
-
-  const isPhaseFailed = (phaseKey: WarmupPhase): boolean => {
-    return phaseStatuses[phaseKey] === "failed";
-  };
+  const hasAnimationStarted = phase !== "init";
 
   // ── Error fallback button ──
   const handleForceSkip = useCallback(() => {
@@ -201,8 +189,6 @@ export function SplashScreen({
 
   // ── Render ──
   return (
-    <>
-      {/* Splash overlay */}
       <div
         className={`splash-overlay${showSplash ? " visible" : " fading-out"}`}
       >
@@ -221,7 +207,7 @@ export function SplashScreen({
                 style={{
                   opacity: 0,
                   animation:
-                    phase === "brand" || phase === "subtitle" || phase === "progress"
+                    hasAnimationStarted
                       ? `splashLetterReveal 60ms ease-out ${500 + i * LETTER_REVEAL_MS}ms forwards`
                       : undefined,
                 }}
@@ -237,7 +223,7 @@ export function SplashScreen({
             style={{
               opacity: 0,
               animation:
-                phase === "subtitle" || phase === "progress"
+                hasAnimationStarted
                   ? "splashFadeIn 200ms ease-out forwards"
                   : undefined,
               animationDelay: `${500 + BRAND_NAME.length * LETTER_REVEAL_MS + 100}ms`,
@@ -263,11 +249,11 @@ export function SplashScreen({
                 <div
                   key={phaseKey}
                   className={`splash-phase-step${
-                    isPhaseActive(phaseKey)
+                    phaseKey === curPhase && phaseStatuses[phaseKey] === "running"
                       ? " active"
-                      : isPhaseDone(phaseKey)
+                      : phaseStatuses[phaseKey] === "completed"
                         ? " done"
-                        : isPhaseFailed(phaseKey)
+                        : phaseStatuses[phaseKey] === "failed"
                           ? " failed"
                           : ""
                   }`}
@@ -315,7 +301,6 @@ export function SplashScreen({
           )}
         </div>
       </div>
-    </>
   );
 }
 
