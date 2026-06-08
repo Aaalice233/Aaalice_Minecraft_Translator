@@ -274,46 +274,6 @@ pub async fn retry_failed_entries(
         let succ = retried.iter().filter(|r| r.source_type == "llm").count();
         let failed = retried.iter().filter(|r| r.source_type == "failed").count();
 
-        let merged: Vec<jobs::TranslationResult> = all_results.into_iter()
-            .map(|r| {
-                if r.source_type == "failed" {
-                    retried.iter()
-                        .find(|nr| nr.key == r.key && nr.mod_name == r.mod_name)
-                        .cloned()
-                        .unwrap_or(r)
-                } else {
-                    r
-                }
-            })
-            .collect();
-
-        // Rewrite the entire JSONL (atomic: write to tmp then rename)
-        let out_path = paths::translate_job_results_path(&root, &job_id);
-        if let Some(parent) = out_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("创建目录失败: {e}"))?;
-        }
-        let mut content = String::with_capacity(merged.len() * 150);
-        for r in &merged {
-            content.push_str(&serde_json::to_string(r)
-                .map_err(|e| format!("序列化失败: {e}"))?);
-            content.push('\n');
-        }
-        let tmp_path = out_path.with_extension("jsonl.tmp");
-        std::fs::write(&tmp_path, &content)
-            .map_err(|e| format!("写入翻译结果失败: {e}"))?;
-        std::fs::rename(&tmp_path, &out_path)
-            .map_err(|e| format!("重命名翻译结果文件失败: {e}"))?;
-
-        let manager = jobs::JobManager::new(root.clone());
-        if let Ok(Some(mut job)) = manager.load(&job_id) {
-            let new_completed = merged.iter().filter(|r| r.source_type != "failed").count();
-            let new_failed = merged.len() - new_completed;
-            job.completed_entries = new_completed;
-            job.failed_entries = new_failed;
-            let _ = manager.save(&job);
-        }
-
         // Send completion progress
         let _ = progress_tx.send(PipelineProgress {
             current: 1, total: 1,
