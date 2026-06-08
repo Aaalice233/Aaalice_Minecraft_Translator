@@ -4,13 +4,9 @@
 .codex/
 .claude/worktrees/
 .claude/tmp/
-.omc/state/
-.omc/tmp/
-.omc/logs/
-.omc/research/
-.omc/sessions/
-.omc/project-memory.json
+.omc/
 src-tauri/.omc/
+.playwright-mcp/
 
 # Build outputs
 dist/
