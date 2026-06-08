@@ -78,27 +78,31 @@ pub async fn scan_instance(
     let progress_tx_scan = progress_tx.clone();
 
     let app_emit = app.clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || {
+    let scan_progress_handle = tauri::async_runtime::spawn_blocking(move || {
         while let Ok(progress) = progress_rx.recv() {
             if let Err(err) = app_emit.emit("scan-progress", &progress) {
                 tracing::error!("scan-progress emit error: {err}");
             }
         }
     });
-
-    let resource_pack_names = settings::load_settings(&root)
-        .ok()
-        .map(|s| s.resource_pack_names)
-        .unwrap_or_default();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = scan_progress_handle.await {
+            tracing::error!("扫描进度读取器 panic: {:?}", e);
+        }
+    });
 
     let root_for_save = root.clone();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let pack_names = settings::load_settings(&root)
+            .ok()
+            .map(|s| s.resource_pack_names)
+            .unwrap_or_default();
         scanner::scan_instance(
             safe_path,
             source_language,
             target_language,
-            resource_pack_names,
+            pack_names,
             &SCAN_CANCEL,
             &|progress: ScanProgress| {
                 let _ = progress_tx_scan.send(progress);
@@ -111,13 +115,13 @@ pub async fn scan_instance(
     drop(progress_tx);
     let summary = result.map_err(|err| err.to_string())?;
 
-    // Write scan result to disk asynchronously to avoid delaying response
+    // Write scan result to disk asynchronously
     if !summary.cancelled {
-        let root_for_log = root_for_save.clone();
+        let root_for_log = root_for_save;
         let summary_clone = summary.clone();
-        tauri::async_runtime::spawn(async move {
+        let _ = tauri::async_runtime::spawn_blocking(move || {
             if let Ok(json) = serde_json::to_string_pretty(&summary_clone) {
-                let job_path = paths::job_state_path(&root_for_log,  &summary_clone.job_id);
+                let job_path = paths::job_state_path(&root_for_log, &summary_clone.job_id);
                 if let Some(parent) = job_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }

@@ -15,7 +15,7 @@ fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
     app: tauri::AppHandle,
     event_name: &'static str,
 ) {
-    let _ = tauri::async_runtime::spawn_blocking(move || {
+    let handle = tauri::async_runtime::spawn_blocking(move || {
         let mut batch: Vec<T> = Vec::with_capacity(512);
         loop {
             match rx.recv_timeout(Duration::from_millis(200)) {
@@ -45,6 +45,11 @@ fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
             }
         }
     });
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = handle.await {
+            tracing::error!("批量读取器({event_name}) panic: {:?}", e);
+        }
+    });
 }
 
 #[tauri::command]
@@ -60,22 +65,6 @@ pub async fn start_translation(
 
     pipeline::register_translation_task(&job_id);
 
-    // Create job metadata file so loadLatestTranslationJob() can find it for retry
-    if let Some(ref scan_id) = scan_job_id {
-        let mgr = jobs::JobManager::new(root.clone());
-        match mgr.create_from_scan_with_job_id(scan_id, &job_id) {
-            Ok(job) => {
-                let _ = logging::append_main(format!(
-                    "翻译 Job 状态文件已创建: scan_job_id={scan_id}, 条目={}",
-                    job.entries.len()
-                ));
-            }
-            Err(err) => {
-                let _ = logging::append_main(format!("创建翻译 Job 状态文件失败: {err}"));
-            }
-        }
-    }
-
     logging::append_main(format!("翻译任务创建成功，任务 ID: {job_id}"))
         .map_err(|err| err.to_string())?;
 
@@ -83,9 +72,9 @@ pub async fn start_translation(
     let (log_tx, log_rx) = mpsc::channel::<TranslateLogEntry>();
     let (entry_progress_tx, entry_progress_rx) = mpsc::channel::<EntryProgress>();
 
-    // Progress reader (debounced: emit latest value every ~100ms to avoid flooding the frontend)
+    // Progress reader (debounced)
     let app_emit = app.clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || {
+    let progress_handle = tauri::async_runtime::spawn_blocking(move || {
         let mut last_progress: Option<PipelineProgress> = None;
         loop {
             match progress_rx.recv_timeout(Duration::from_millis(100)) {
@@ -109,46 +98,69 @@ pub async fn start_translation(
             }
         }
     });
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = progress_handle.await {
+            tracing::error!("翻译进度读取器 panic: {:?}", e);
+        }
+    });
 
     spawn_batched_reader(log_rx, app.clone(), "translate-log-entries");
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
 
-    let settings_load_result = settings::load_settings(&root);
-    let resource_pack_names = settings_load_result
-        .as_ref()
-        .map(|s| s.resource_pack_names.clone())
-        .unwrap_or_default();
-
-    let llm = settings_load_result.ok().map(|s| LlmConfig {
-        base_url: s.base_url,
-        api_key: s.api_key,
-        model: s.model,
-        temperature: s.temperature,
-        max_tokens: s.max_tokens,
-        concurrency: s.concurrency as usize,
-        batch_size: s.batch_size as usize,
-        timeout_secs: s.timeout_secs as u64,
-        retry_count: s.retry_count as u32,
-        rate_limit_rpm: s.rate_limit_rpm,
-        prefer_user_dict: s.prefer_user_dictionary,
-        system_prompt: if s.system_prompt.is_empty() {
-            crate::core::models::DEFAULT_SYSTEM_PROMPT.to_string()
-        } else {
-            s.system_prompt
-        },
-    });
-
-    let config = PipelineConfig {
-        root: root.clone(),
-        instance_path: path,
-        source_language,
-        target_language,
-        scan_job_id,
-        resource_pack_names,
-        llm,
-    };
-
+    // Run pipeline (all blocking I/O inside spawn_blocking)
     let result = tauri::async_runtime::spawn_blocking(move || {
+        // Create job metadata file so loadLatestTranslationJob() can find it for retry
+        if let Some(ref scan_id) = scan_job_id {
+            let mgr = jobs::JobManager::new(root.clone());
+            match mgr.create_from_scan_with_job_id(scan_id, &job_id) {
+                Ok(job) => {
+                    let _ = logging::append_main(format!(
+                        "翻译 Job 状态文件已创建: scan_job_id={scan_id}, 条目={}",
+                        job.entries.len()
+                    ));
+                }
+                Err(err) => {
+                    let _ = logging::append_main(format!("创建翻译 Job 状态文件失败: {err}"));
+                }
+            }
+        }
+
+        // Load settings inside blocking thread
+        let settings_load_result = settings::load_settings(&root);
+        let resource_pack_names = settings_load_result
+            .as_ref()
+            .map(|s| s.resource_pack_names.clone())
+            .unwrap_or_default();
+
+        let llm = settings_load_result.ok().map(|s| LlmConfig {
+            base_url: s.base_url,
+            api_key: s.api_key,
+            model: s.model,
+            temperature: s.temperature,
+            max_tokens: s.max_tokens,
+            concurrency: s.concurrency as usize,
+            batch_size: s.batch_size as usize,
+            timeout_secs: s.timeout_secs as u64,
+            retry_count: s.retry_count as u32,
+            rate_limit_rpm: s.rate_limit_rpm,
+            prefer_user_dict: s.prefer_user_dictionary,
+            system_prompt: if s.system_prompt.is_empty() {
+                crate::core::models::DEFAULT_SYSTEM_PROMPT.to_string()
+            } else {
+                s.system_prompt
+            },
+        });
+
+        let config = PipelineConfig {
+            root: root.clone(),
+            instance_path: path,
+            source_language,
+            target_language,
+            scan_job_id,
+            resource_pack_names,
+            llm,
+        };
+
         pipeline::run_pipeline(config, &job_id, &*pipeline::GLOBAL_CANCEL, progress_tx, log_tx, entry_progress_tx)
     })
     .await
@@ -183,22 +195,13 @@ pub async fn retry_failed_entries(
     logging::append_main(format!("重试失败条目开始，任务 ID: {job_id}"))
         .map_err(|err| err.to_string())?;
 
-    let manager = jobs::JobManager::new(root.clone());
-    let all_results = manager.load_results(&job_id)?;
-    let failed_count = all_results.iter().filter(|r| r.source_type == "failed").count();
-
-    if failed_count == 0 {
-        logging::append_main("重试失败条目: 没有需要重试的条目").ok();
-        return Ok(0);
-    }
-
     pipeline::register_translation_task(&job_id);
 
     let (progress_tx, progress_rx) = mpsc::channel::<PipelineProgress>();
     let (entry_progress_tx, entry_progress_rx) = mpsc::channel::<EntryProgress>();
 
     let app_progress = app.clone();
-    let _ = tauri::async_runtime::spawn_blocking(move || {
+    let retry_progress_handle = tauri::async_runtime::spawn_blocking(move || {
         let mut last_progress: Option<PipelineProgress> = None;
         loop {
             match progress_rx.recv_timeout(Duration::from_millis(100)) {
@@ -220,34 +223,49 @@ pub async fn retry_failed_entries(
             }
         }
     });
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = retry_progress_handle.await {
+            tracing::error!("重试进度读取器 panic: {:?}", e);
+        }
+    });
 
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
 
-    let settings = settings::load_settings(&root)
-        .map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
-
-    let llm = LlmConfig {
-        base_url: settings.base_url,
-        api_key: settings.api_key,
-        model: settings.model,
-        temperature: settings.temperature,
-        max_tokens: settings.max_tokens,
-        concurrency: settings.concurrency as usize,
-        batch_size: settings.batch_size as usize,
-        timeout_secs: settings.timeout_secs as u64,
-        retry_count: settings.retry_count as u32,
-        rate_limit_rpm: settings.rate_limit_rpm,
-        prefer_user_dict: settings.prefer_user_dictionary,
-        system_prompt: if settings.system_prompt.is_empty() {
-            crate::core::models::DEFAULT_SYSTEM_PROMPT.to_string()
-        } else {
-            settings.system_prompt
-        },
-    };
-
     // Run LLM + post-processing inside spawn_blocking so reqwest::blocking::Client
-    // is created/destroyed on a blocking thread, not inside the Tauri async runtime.
+    // is created/destroyed on a blocking thread, not inside the Tauri async runtime,
+    // and all blocking I/O (load_results, load_settings) is kept inside.
     let retried_success = tauri::async_runtime::spawn_blocking(move || {
+        let manager = jobs::JobManager::new(root.clone());
+        let all_results = manager.load_results(&job_id)?;
+        let failed_count = all_results.iter().filter(|r| r.source_type == "failed").count();
+
+        if failed_count == 0 {
+            logging::append_main("重试失败条目: 没有需要重试的条目").ok();
+            return Ok::<usize, String>(0);
+        }
+
+        let settings = settings::load_settings(&root)
+            .map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
+
+        let llm = LlmConfig {
+            base_url: settings.base_url,
+            api_key: settings.api_key,
+            model: settings.model,
+            temperature: settings.temperature,
+            max_tokens: settings.max_tokens,
+            concurrency: settings.concurrency as usize,
+            batch_size: settings.batch_size as usize,
+            timeout_secs: settings.timeout_secs as u64,
+            retry_count: settings.retry_count as u32,
+            rate_limit_rpm: settings.rate_limit_rpm,
+            prefer_user_dict: settings.prefer_user_dictionary,
+            system_prompt: if settings.system_prompt.is_empty() {
+                crate::core::models::DEFAULT_SYSTEM_PROMPT.to_string()
+            } else {
+                settings.system_prompt
+            },
+        };
+
         let retried = pipeline::retry_failed_entries(
             &root, &job_id, &source_language, &target_language, &llm,
             &*pipeline::GLOBAL_CANCEL, &progress_tx, &entry_progress_tx,
