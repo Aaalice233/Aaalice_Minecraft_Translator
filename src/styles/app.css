@@ -2662,7 +2662,6 @@ button.essb-legend-item:hover {
 }
 
 .compare-text.source {
-  background: var(--bg-muted);
   max-height: 200px;
   overflow-y: auto;
 }
@@ -2718,9 +2717,9 @@ button.essb-legend-item:hover {
 
 /* ── Error/Warning icon colors ── */
 .severity-error { color: var(--danger); }
-.severity-warning { color: #d4a72c; }
+.severity-warning { color: var(--warning); }
 .icon-error { color: var(--danger); }
-.icon-warning { color: #d4a72c; }
+.icon-warning { color: var(--warning); }
 
 .text-muted { color: var(--text-muted); }
 

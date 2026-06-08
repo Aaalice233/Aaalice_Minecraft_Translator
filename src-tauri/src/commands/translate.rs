@@ -111,7 +111,6 @@ pub async fn start_translation(
     spawn_batched_reader(log_rx, app.clone(), "translate-log-entries");
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
 
-
     let result = tauri::async_runtime::spawn_blocking(move || {
         if let Some(ref scan_id) = scan_job_id {
             let mgr = jobs::JobManager::new(root.clone());
@@ -127,7 +126,6 @@ pub async fn start_translation(
                 }
             }
         }
-
 
         let settings_load_result = settings::load_settings(&root);
         let resource_pack_names = settings_load_result
@@ -202,7 +200,6 @@ pub async fn retry_failed_entries(
 
     spawn_progress_reader(progress_rx, app.clone());
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
-
 
     let retried_success = tauri::async_runtime::spawn_blocking(move || {
         let manager = jobs::JobManager::new(root.clone());

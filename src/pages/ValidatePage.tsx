@@ -24,7 +24,7 @@ interface Props {
   onConfirm: () => void;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
+// ── Helpers ──
 
 const SEVERITY_CONFIG = {
   error: { icon: XCircle, className: "severity-error", label: "错误" },
@@ -229,12 +229,20 @@ export function ValidatePage({ language, onConfirm }: Props) {
     setSelectedKeys(new Set());
   }
 
-  // ── Batch retry selected failed entries ──
-
-
-  // ── Edit and save correction ──
-  function handleEditChange(newText: string) {
-    setEditText(newText);
+  // ── Save correction ──
+  function handleSaveCorrection() {
+    if (!report || !selectedIssue) return;
+    const updatedReport = { ...report };
+    for (const list of [updatedReport.placeholderIssues, updatedReport.formatIssues]) {
+      const match = list.find(
+        (i) => i.key === selectedIssue.key && i.modId === selectedIssue.modId,
+      );
+      if (match) {
+        match.targetText = editText;
+        break;
+      }
+    }
+    setReport(updatedReport);
   }
 
   // ── Keyboard shortcuts ──
@@ -687,7 +695,7 @@ export function ValidatePage({ language, onConfirm }: Props) {
                       <textarea
                         className="compare-text target edit-area"
                         value={editText}
-                        onChange={(e) => handleEditChange(e.target.value)}
+                        onChange={(e) => setEditText(e.target.value)}
                         rows={4}
                       />
                     </div>
@@ -708,21 +716,7 @@ export function ValidatePage({ language, onConfirm }: Props) {
                   {report && selectedIssue && (
                     <button
                       className="primary-button"
-                      onClick={() => {
-                        if (report && selectedIssue) {
-                          const updatedReport = { ...report };
-                          for (const list of [updatedReport.placeholderIssues, updatedReport.formatIssues]) {
-                            const match = list.find(
-                              (i) => i.key === selectedIssue.key && i.modId === selectedIssue.modId,
-                            );
-                            if (match) {
-                              match.targetText = editText;
-                              break;
-                            }
-                          }
-                          setReport(updatedReport);
-                        }
-                      }}
+                      onClick={handleSaveCorrection}
                       type="button"
                       disabled={editText === selectedIssue.targetText}
                     >
