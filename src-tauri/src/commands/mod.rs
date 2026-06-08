@@ -13,6 +13,7 @@ pub mod scan;
 pub mod settings;
 pub mod translate;
 pub mod validate;
+pub mod warmup;
 
 pub use dictionary::*;
 pub use fonts::*;
@@ -25,3 +26,4 @@ pub use scan::*;
 pub use settings::*;
 pub use translate::*;
 pub use validate::*;
+pub use warmup::*;

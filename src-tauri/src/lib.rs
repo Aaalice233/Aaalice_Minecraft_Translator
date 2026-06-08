@@ -54,6 +54,9 @@ pub fn run() {
             commands::validate_translation,
             commands::retry_failed_entries,
             commands::generate_pack_from_job,
+            // Warmup
+            commands::run_warmup,
+            commands::cancel_warmup,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run Aaalice MC Translator");

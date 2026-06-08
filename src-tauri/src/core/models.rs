@@ -449,6 +449,35 @@ impl std::fmt::Display for PipelineError {
 
 impl std::error::Error for PipelineError {}
 
+/// 预热阶段标识
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum WarmupPhase {
+    #[serde(rename = "settings")]
+    Settings,
+    #[serde(rename = "local")]
+    Local,
+    #[serde(rename = "dictionary")]
+    Dictionary,
+    #[serde(rename = "llm")]
+    Llm,
+    #[serde(rename = "completed")]
+    Completed,
+}
+
+/// 预热进度事件（通过 Tauri event 推送到前端）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WarmupProgress {
+    pub phase: WarmupPhase,
+    /// 0-100 整体进度
+    pub percent: u8,
+    pub status: StageStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 pub static TOTAL_TOKEN_USAGE_PROMPT: AtomicU64 = AtomicU64::new(0);
 pub static TOTAL_TOKEN_USAGE_COMPLETION: AtomicU64 = AtomicU64::new(0);
 

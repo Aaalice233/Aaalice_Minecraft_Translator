@@ -7,7 +7,7 @@ use crate::core::{
 
 /// Validate a URL to prevent SSRF: ensure scheme is http/https
 /// and the host is not a private/internal/loopback address.
-fn validate_url(url_str: &str) -> Result<(), String> {
+pub(crate) fn validate_url(url_str: &str) -> Result<(), String> {
     let trimmed = url_str.trim();
 
     // Check scheme
@@ -82,7 +82,7 @@ fn validate_url(url_str: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn model_urls(base_url: &str) -> Vec<String> {
+pub(crate) fn model_urls(base_url: &str) -> Vec<String> {
     let trimmed = base_url.trim().trim_end_matches('/');
     if trimmed.ends_with("/v1") {
         vec![format!("{trimmed}/models")]
@@ -91,10 +91,74 @@ fn model_urls(base_url: &str) -> Vec<String> {
     }
 }
 
+/// Parse the common `{ data: [{ id, owned_by }, ...] }` response body.
+fn parse_llm_models(body: serde_json::Value) -> Vec<LlmModel> {
+    body.get("data")
+        .and_then(|value| value.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    let id = item.get("id")?.as_str()?.to_string();
+                    let owned_by = item
+                        .get("owned_by")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    Some(LlmModel { id, owned_by })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Lightweight version used by the warmup pipeline — skips SSRF validation
+/// (the caller is responsible for validating URLs) and uses a shorter timeout.
+pub fn fetch_llm_models_internal(base_url: String, api_key: String) -> Result<LlmModelsResponse, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let urls = model_urls(&base_url);
+    let mut last_error = String::new();
+
+    for url in urls {
+        let response = match client.get(&url).bearer_auth(&api_key).send() {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("模型列表请求失败: {e}");
+                continue;
+            }
+        };
+
+        if !response.status().is_success() {
+            last_error = format!("模型列表请求失败: HTTP {}", response.status());
+            continue;
+        }
+
+        let body: serde_json::Value = match response.json() {
+            Ok(b) => b,
+            Err(e) => {
+                last_error = format!("响应解析失败: {e}");
+                continue;
+            }
+        };
+        let models = parse_llm_models(body);
+
+        info!("fetch_llm_models_internal: 获取到 {} 个模型", models.len());
+        return Ok(LlmModelsResponse {
+            models,
+            source_url: url,
+        });
+    }
+
+    info!("fetch_llm_models_internal: 请求失败: {last_error}");
+    Err(last_error)
+}
+
 #[tauri::command]
 pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsResponse, String> {
     info!("fetch_llm_models: base_url={}", &base_url);
-    // SSRF protection: validate base_url before making any request
     validate_url(&base_url)?;
 
     let client = reqwest::blocking::Client::builder()
@@ -103,7 +167,6 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
         .map_err(|e| e.to_string())?;
     let urls = model_urls(&base_url);
 
-    // Validate each generated URL before requesting
     for url_str in &urls {
         validate_url(url_str)?;
     }
@@ -127,24 +190,7 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
         }
 
         let body: serde_json::Value = response.json().map_err(|e| e.to_string())?;
-        let models = body
-            .get("data")
-            .and_then(|value| value.as_array())
-            .map(|items| {
-                items
-                    .iter()
-                    .filter_map(|item| {
-                        let id = item.get("id")?.as_str()?.to_string();
-                        let owned_by = item
-                            .get("owned_by")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or("")
-                            .to_string();
-                        Some(LlmModel { id, owned_by })
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default();
+        let models = parse_llm_models(body);
 
         info!("fetch_llm_models: 获取到 {} 个模型", models.len());
         return Ok(LlmModelsResponse {

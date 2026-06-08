@@ -264,6 +264,19 @@ export async function generatePackFromJob(
   });
 }
 
+// ── Warmup API ───────────────────────────────────────────────
+
+/** Start the app warmup pipeline. Progress is received via Tauri event 'warmup-progress'. */
+export async function runWarmup(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  return tauriInvoke<void>("run_warmup");
+}
+
+export async function cancelWarmup(): Promise<void> {
+  if (!isTauriRuntime()) return;
+  return tauriInvoke<void>("cancel_warmup");
+}
+
 // ── Font API ────────────────────────────────────────────────
 
 /** 浏览器预览模式下使用的常见系统字体后备列表 */

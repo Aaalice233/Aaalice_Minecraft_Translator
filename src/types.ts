@@ -248,6 +248,26 @@ export interface TranslationJobState {
   completedAt?: string;
 }
 
+// ── SPLASH / Warmup types ─────────────────────────────────────────
+
+export type WarmupPhase =
+  | "settings"
+  | "local"
+  | "dictionary"
+  | "llm"
+  | "completed";
+
+export type StageStatus = "running" | "completed" | "failed";
+
+export interface WarmupProgress {
+  phase: WarmupPhase;
+  /** 0-100 overall progress */
+  percent: number;
+  status: StageStatus;
+  message?: string;
+  error?: string;
+}
+
 // ── P6: Validation types ──────────────────────────────────────────
 
 export interface ValidationIssue {

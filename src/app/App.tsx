@@ -21,14 +21,15 @@ import { JobsPage } from "../pages/JobsPage";
 import { LogsPage } from "../pages/LogsPage";
 import { PackagesPage } from "../pages/PackagesPage";
 import { PlaceholderPage } from "../pages/PlaceholderPage";
+import { SplashScreen } from "../components/SplashScreen";
 import { applyFont, SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
-import { getSettings } from "../api/tauri";
+import { getSettings, runWarmup } from "../api/tauri";
 import { AppProvider, useAppState } from "./AppContext";
 import { useAppStore } from "../stores/appStore";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
-import type { ScanSummary, Settings } from "../types";
+import type { ScanSummary, Settings, WarmupProgress } from "../types";
 
 type PageKey =
   | "dashboard"
@@ -81,12 +82,86 @@ export function App() {
 function AppShell() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
   const [exitingPage, setExitingPage] = useState<PageKey | null>(null);
-  const [loadError, setLoadError] = useState("");
   const { state, dispatch } = useAppState();
   // Zustand store (runs alongside AppContext during migration)
   const store = useAppStore();
   const { settings, scanSummary, navStates } = state;
   const language = normalizeAppLanguage(settings?.appLanguage);
+
+  // ── Splash / Warmup state ──
+  const [splashDone, setSplashDone] = useState(false);
+  const [warmupProgress, setWarmupProgress] = useState<WarmupProgress | null>(null);
+  const [warmupComplete, setWarmupComplete] = useState(false);
+  const [fatalWarmupError, setFatalWarmupError] = useState<string | undefined>();
+  const [isOffline, setIsOffline] = useState(false);
+  const isFirstLaunch = (() => {
+    try {
+      return !localStorage.getItem("aaalice_mc_warmup_done");
+    } catch {
+      return false;
+    }
+  })();
+
+  // Start warmup on mount
+  useEffect(() => {
+    runWarmup().catch((err) => console.warn("runWarmup 启动失败:", err));
+  }, []);
+
+  // Listen for warmup-progress Tauri events
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlisten = await listen<WarmupProgress>("warmup-progress", (event) => {
+          if (cancelled) return;
+          const p = event.payload;
+          setWarmupProgress(p);
+
+          if (p.phase === "completed" && p.status === "completed") {
+            setWarmupComplete(true);
+          }
+
+          // Detect offline mode: LLM phase completed with an error but app can still run
+          if (
+            p.phase === "llm" &&
+            p.status === "completed" &&
+            p.error
+          ) {
+            setIsOffline(true);
+          }
+
+          // Detect fatal configuration error
+          if (p.phase === "settings" && p.status === "failed" && p.error) {
+            setFatalWarmupError(p.error);
+          }
+        });
+      } catch {
+        // Non-Tauri environment (browser preview) — auto-complete warmup
+        if (!cancelled) {
+          setWarmupComplete(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, []);
+
+  // Mark warmup done in local storage after first completed warmup
+  useEffect(() => {
+    if (warmupComplete) {
+      try {
+        localStorage.setItem("aaalice_mc_warmup_done", "1");
+      } catch {
+        // Ignore localStorage errors
+      }
+    }
+  }, [warmupComplete]);
 
   // Sync AppContext → Zustand store on state changes
   // This allows pages to gradually migrate to direct store access.
@@ -118,7 +193,7 @@ function AppShell() {
   useEffect(() => {
     getSettings()
       .then((s) => syncedDispatch({ type: "SET_SETTINGS", payload: s }))
-      .catch((error) => setLoadError(error instanceof Error ? error.message : String(error)));
+      .catch((error) => console.warn("getSettings 失败:", error));
   }, [dispatch]);
 
   useEffect(() => {
@@ -245,10 +320,27 @@ function AppShell() {
     }
   }, [settings?.uiTheme, settings?.uiFont]);
 
-  const isLoading = !settings;
-
   return (
-    <div className="app-shell" lang={localeByAppLanguage[language]} style={{ '--sidebar-width': sidebarWidth + 'px' } as React.CSSProperties}>
+    <div className="app-root">
+      {!splashDone && (
+        <SplashScreen
+          onFinish={() => setSplashDone(true)}
+          fatalError={fatalWarmupError}
+          offline={isOffline}
+          isFirstLaunch={isFirstLaunch}
+          warmupComplete={warmupComplete}
+          progress={warmupProgress}
+        />
+      )}
+      <div
+       className="app-shell"
+       lang={localeByAppLanguage[language]}
+       style={{
+         '--sidebar-width': sidebarWidth + 'px',
+         opacity: splashDone ? 1 : 0,
+         transition: 'opacity 300ms ease-out',
+       } as React.CSSProperties}
+      >
       <aside className={`sidebar${sidebarCollapsed ? ' collapsed' : ''}`}>
         {!sidebarCollapsed && <div className="sidebar-resize-handle" onMouseDown={handleResizeStart} />}
         <nav className="nav-list">
@@ -317,11 +409,9 @@ function AppShell() {
       </aside>
 
       <main className="main">
-        {isLoading ? (
-          <div className="empty-state">{loadError || t(language, "app.loadingSettings")}</div>
-        ) : (
+        {settings ? (
           <div className="page-stack">
-            {ALL_PAGE_KEYS.map((page) => (
+          {ALL_PAGE_KEYS.map((page) => (
               <div
                 key={page}
                 className={`page-layer${activePage === page ? " active" : ""}${exitingPage === page ? " exiting" : ""}`}
@@ -330,8 +420,9 @@ function AppShell() {
               </div>
             ))}
           </div>
-        )}
+        ) : null}
       </main>
+    </div>
     </div>
   );
 }
