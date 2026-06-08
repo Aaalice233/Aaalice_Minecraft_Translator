@@ -19,6 +19,9 @@
   --danger: #b8423a;
   --danger-bg: #fff0ef;
   --danger-hover: #b71c1c;
+  --warning: #b87932;
+  --warning-bg: #fdf2e6;
+  --warning-text: #8c5c24;
   --muted: #b0a99c;
 }
 
@@ -2190,16 +2193,20 @@ button.essb-legend-item:hover {
 }
 
 /* ═══════════════════════════════════════════════════
- * ValidatePage — 三栏式工作台布局
+ * ValidatePage — 二栏工作台布局 (详情面板动态展开)
  * ═══════════════════════════════════════════════════ */
 
 .validate-workspace .workspace-layout {
   display: grid;
-  grid-template-columns: 220px 1fr 300px;
+  grid-template-columns: 220px 1fr;
   gap: 16px;
   flex: 1;
   min-height: 0;
   margin-top: 16px;
+}
+
+.validate-workspace .workspace-layout:has(.workspace-detail) {
+  grid-template-columns: 220px 1fr 320px;
 }
 
 .validate-workspace .workspace-sidebar {
@@ -2219,6 +2226,102 @@ button.essb-legend-item:hover {
   min-height: 0;
   border-left: 1px solid var(--border);
   padding-left: 16px;
+  animation: detailSlideIn 200ms ease-out;
+}
+
+@keyframes detailSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ── Pre-validation ready state ── */
+.validate-ready {
+  display: flex;
+  justify-content: center;
+  padding: 32px 16px;
+}
+
+.validate-ready-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 640px;
+  width: 100%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.validate-ready-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-bg);
+  color: var(--accent);
+  border-radius: 10px;
+}
+
+.validate-ready-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.validate-ready-info h3 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.validate-ready-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.ready-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 2px 8px;
+  background: var(--bg-muted);
+  border-radius: 4px;
+}
+
+.ready-meta-item code {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+
+.ready-meta-item.success {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.validate-ready-desc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.validate-ready-btn {
+  flex-shrink: 0;
+  align-self: center;
 }
 
 /* ── Workspace card ── */
@@ -2248,8 +2351,14 @@ button.essb-legend-item:hover {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  padding: 4px 6px;
+  padding: 5px 8px;
   border-radius: 4px;
+  background: var(--bg-muted);
+  transition: background 0.15s ease;
+}
+
+.validate-stat-row:hover {
+  background: var(--border);
 }
 
 .validate-stat-row .stat-label {
@@ -2259,7 +2368,7 @@ button.essb-legend-item:hover {
 
 .validate-stat-row .stat-value {
   font-weight: 700;
-  font-size: 16px;
+  font-size: 17px;
   font-family: "JetBrains Mono", monospace;
   color: var(--text-primary);
 }
@@ -2278,10 +2387,10 @@ button.essb-legend-item:hover {
   margin-top: 8px;
 }
 
-.validate-bar-chart .bar-segment { transition: width 0.3s ease; }
+.validate-bar-chart .bar-segment { transition: width 0.4s ease; }
 .validate-bar-chart .bar-segment.success { background: var(--accent); }
 .validate-bar-chart .bar-segment.error { background: var(--danger); }
-.validate-bar-chart .bar-segment.warning { background: #d4a72c; }
+.validate-bar-chart .bar-segment.warning { background: var(--accent-hover); }
 
 /* ── Filter chips ── */
 .validate-filter-group {
@@ -2301,6 +2410,7 @@ button.essb-legend-item:hover {
   font-size: 12px;
   cursor: pointer;
   color: var(--text-secondary);
+  transition: all 0.15s ease;
 }
 
 .filter-chip:hover {
@@ -2347,6 +2457,7 @@ button.essb-legend-item:hover {
   font-weight: 600;
   color: var(--text-primary);
   text-align: left;
+  transition: background 0.15s ease;
 }
 
 .mod-group-header:hover {
@@ -2376,8 +2487,8 @@ button.essb-legend-item:hover {
 }
 
 .mod-badge.warning {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .mod-group-issues {
@@ -2435,15 +2546,6 @@ button.essb-legend-item:hover {
 }
 
 /* ── Detail panel ── */
-.detail-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 200px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
 .detail-panel {
   display: flex;
   flex-direction: column;
@@ -2462,13 +2564,6 @@ button.essb-legend-item:hover {
   font-weight: 600;
 }
 
-.detail-section {
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
-}
-
 .detail-section-title {
   font-size: 12px;
   font-weight: 600;
@@ -2478,23 +2573,36 @@ button.essb-legend-item:hover {
   letter-spacing: 0.5px;
 }
 
-.detail-meta-row {
+/* ── Detail meta grid ── */
+.detail-meta-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.detail-meta-item {
   display: flex;
-  gap: 8px;
-  align-items: baseline;
-  padding: 3px 0;
+  flex-direction: column;
+  gap: 2px;
   font-size: 12px;
 }
 
-.detail-label {
+.detail-meta-item .detail-label {
+  font-size: 10px;
+  font-weight: 600;
   color: var(--text-muted);
-  min-width: 52px;
-  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
-.detail-value {
+.detail-meta-item .detail-value {
   font-family: "JetBrains Mono", monospace;
   font-size: 11px;
+  color: var(--text-primary);
 }
 
 .severity-badge {
@@ -2513,15 +2621,22 @@ button.essb-legend-item:hover {
 }
 
 .severity-badge.warning {
-  background: #fef3c7;
-  color: #92400e;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
-/* ── Compare view ── */
+/* ── Compare view (side-by-side) ── */
+.detail-compare-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
 .detail-compare {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 
 .compare-column {

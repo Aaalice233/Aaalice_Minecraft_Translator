@@ -11,6 +11,7 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  ShieldCheck,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -368,29 +369,46 @@ export function ValidatePage({ language, onConfirm }: Props) {
 
       {/* ── Pre-validation state ── */}
       {job && !report && (
-        <>
-          <div className="panel" style={{ padding: "24px 18px", marginBottom: 18 }}>
-            <p style={{ margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
-              <ClipboardList size={18} className="text-muted" />
-              最近翻译任务: <code>{job.jobId}</code> —
-              {job.status === "completed"
-                ? ` ${job.completedEntries} 条已翻译`
-                : ` 状态: ${job.status}`
-              }
-              {job.completedAt && ` (${new Date(job.completedAt).toLocaleString()})`}
-            </p>
+        <div className="validate-ready">
+          <div className="validate-ready-card">
+            <div className="validate-ready-icon">
+              <ShieldCheck size={28} />
+            </div>
+            <div className="validate-ready-info">
+              <h3>准备校验</h3>
+              <div className="validate-ready-meta">
+                <span className="ready-meta-item">
+                  <FileText size={14} />
+                  任务: <code>{job.jobId}</code>
+                </span>
+                {job.status === "completed" && (
+                  <span className="ready-meta-item success">
+                    <CheckCircle size={14} />
+                    {job.completedEntries} 条已翻译
+                  </span>
+                )}
+                {job.completedAt && (
+                  <span className="ready-meta-item">
+                    <ClipboardList size={14} />
+                    {new Date(job.completedAt).toLocaleString()}
+                  </span>
+                )}
+              </div>
+              <p className="validate-ready-desc">
+                检查翻译结果中的占位符完整性和格式正确性，确保资源包可用。
+              </p>
+            </div>
+            <button
+              className="primary-button validate-ready-btn"
+              onClick={handleValidate}
+              disabled={validating}
+              type="button"
+            >
+              {validating ? <Loader2 size={18} className="spin" /> : <Search size={18} />}
+              {validating ? "校验中..." : "开始校验"}
+            </button>
           </div>
-
-          <button
-            className="primary-button"
-            onClick={handleValidate}
-            disabled={validating}
-            type="button"
-          >
-            {validating ? <Loader2 size={18} className="spin" /> : <Search size={18} />}
-            {validating ? "校验中..." : "开始校验"}
-          </button>
-        </>
+        </div>
       )}
 
       {/* ── Report view: three-column workspace ── */}
@@ -614,15 +632,9 @@ export function ValidatePage({ language, onConfirm }: Props) {
             )}
           </main>
 
-          {/* ── Right column: Detail panel ── */}
-          <aside className="workspace-detail">
-            {!selectedIssue && (
-              <div className="detail-empty">
-                <p>选择一个校验条目查看详情</p>
-              </div>
-            )}
-
-            {selectedIssue && (
+          {/* ── Right column: Detail panel (only when an issue is selected) ── */}
+          {selectedIssue && (
+            <aside className="workspace-detail">
               <div className="detail-panel">
                 <div className="detail-header">
                   <h3>条目详情</h3>
@@ -636,34 +648,34 @@ export function ValidatePage({ language, onConfirm }: Props) {
                   </button>
                 </div>
 
-                <div className="detail-section">
-                  <div className="detail-meta-row">
+                <div className="detail-meta-grid">
+                  <div className="detail-meta-item">
                     <span className="detail-label">模组</span>
                     <code className="detail-value">{selectedIssue.modId}</code>
                   </div>
-                  <div className="detail-meta-row">
+                  <div className="detail-meta-item">
                     <span className="detail-label">Key</span>
                     <code className="detail-value" style={{ wordBreak: "break-all" }}>{selectedIssue.key}</code>
                   </div>
-                  <div className="detail-meta-row">
+                  <div className="detail-meta-item">
                     <span className="detail-label">严重性</span>
                     <span className={`severity-badge ${selectedIssue.severity}`}>
                       {severityIcon(selectedIssue.severity)}
                       {selectedIssue.severity === "error" ? "错误" : "警告"}
                     </span>
                   </div>
-                  <div className="detail-meta-row">
-                    <span className="detail-label">问题类型</span>
+                  <div className="detail-meta-item">
+                    <span className="detail-label">问题</span>
                     <span>{issueTypeLabel(selectedIssue.issueType)}</span>
                   </div>
-                  <div className="detail-meta-row">
+                  <div className="detail-meta-item" style={{ gridColumn: "1 / -1" }}>
                     <span className="detail-label">说明</span>
                     <span>{selectedIssue.description}</span>
                   </div>
                 </div>
 
                 {/* Source vs Target comparison */}
-                <div className="detail-section">
+                <div className="detail-compare-card">
                   <h4 className="detail-section-title">原文 vs 译文</h4>
                   <div className="detail-compare">
                     <div className="compare-column">
@@ -686,9 +698,7 @@ export function ValidatePage({ language, onConfirm }: Props) {
                 <div className="detail-actions">
                   <button
                     className="ghost-button"
-                    onClick={() => {
-                      setEditText(selectedIssue.targetText);
-                    }}
+                    onClick={() => setEditText(selectedIssue.targetText)}
                     type="button"
                     title="还原为原始翻译"
                   >
@@ -699,7 +709,6 @@ export function ValidatePage({ language, onConfirm }: Props) {
                     <button
                       className="primary-button"
                       onClick={() => {
-                        // Save correction to local state
                         if (report && selectedIssue) {
                           const updatedReport = { ...report };
                           for (const list of [updatedReport.placeholderIssues, updatedReport.formatIssues]) {
@@ -722,8 +731,8 @@ export function ValidatePage({ language, onConfirm }: Props) {
                   )}
                 </div>
               </div>
-            )}
-          </aside>
+            </aside>
+          )}
         </div>
       )}
     </section>

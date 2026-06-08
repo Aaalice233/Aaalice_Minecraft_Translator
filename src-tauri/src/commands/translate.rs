@@ -244,6 +244,44 @@ pub async fn retry_failed_entries(
         let succ = retried.iter().filter(|r| r.source_type == "llm").count();
         let failed = retried.iter().filter(|r| r.source_type == "failed").count();
 
+        // Merge retried results back into JSONL so validation picks up the changes
+        let merged: Vec<jobs::TranslationResult> = all_results.into_iter()
+            .map(|r| {
+                if r.source_type == "failed" {
+                    retried.iter()
+                        .find(|nr| nr.key == r.key && nr.mod_name == r.mod_name)
+                        .cloned()
+                        .unwrap_or(r)
+                } else {
+                    r
+                }
+            })
+            .collect();
+
+        let out_path = paths::translate_job_results_path(&root, &job_id);
+        if let Some(parent) = out_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let mut content = String::with_capacity(merged.len() * 150);
+        for r in &merged {
+            if let Ok(line) = serde_json::to_string(r) {
+                content.push_str(&line);
+                content.push('\n');
+            }
+        }
+        let tmp_path = out_path.with_extension("jsonl.tmp");
+        if std::fs::write(&tmp_path, &content).is_ok() {
+            let _ = std::fs::rename(&tmp_path, &out_path);
+        }
+
+        if let Ok(Some(mut job)) = manager.load(&job_id) {
+            let new_completed = merged.iter().filter(|r| r.source_type != "failed").count();
+            let new_failed = merged.len() - new_completed;
+            job.completed_entries = new_completed;
+            job.failed_entries = new_failed;
+            let _ = manager.save(&job);
+        }
+
         let _ = progress_tx.send(PipelineProgress {
             current: 1, total: 1,
             phase: crate::core::models::PipelinePhase::Completed,
