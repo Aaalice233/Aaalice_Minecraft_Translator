@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppProvider } from "../src/app/AppContext";
 import { ValidatePage } from "../src/pages/ValidatePage";
@@ -13,38 +13,42 @@ vi.mock("../src/api/tauri", () => ({
     tokenUsage: { promptTokens: 100, completionTokens: 200, totalTokens: 300 },
     createdAt: "2026-01-01T00:00:00Z",
   }),
-  validateTranslation: () => Promise.resolve({
-    totalEntries: 5, passed: 3, failed: 1, missing: 1,
-    placeholderIssues: [
-      { key: "item.test.bad", modId: "badmod", sourceText: "Hello %s", targetText: "你好", issueType: "placeholder_missing", description: "缺少占位符 %s", severity: "error" },
-      { key: "item.test.ok", modId: "goodmod", sourceText: "Hello", targetText: "你好", issueType: "ok", description: "正常", severity: "warning" },
-    ],
-    formatIssues: [],
-  }),
-  retryFailedEntries: () => Promise.resolve(1),
+  loadTranslationResults: () => Promise.resolve([
+    { key: "item.test.a", sourceText: "Hello A", targetText: "你好A", modId: "testmod", modName: "testmod-1.0.jar", sourceType: "llm" },
+    { key: "item.test.b", sourceText: "Hello B", targetText: "你好B", modId: "othermod", modName: "othermod-1.0.jar", sourceType: "llm" },
+    { key: "item.test.c", sourceText: "Hello C", targetText: "你好C", modId: "testmod", modName: "testmod-1.0.jar", sourceType: "llm" },
+  ]),
+  saveTranslationEntry: () => Promise.resolve(),
 }));
 
 afterEach(() => { cleanup(); });
 
 describe("ValidatePage", () => {
-  it("shows start validation button when job exists", async () => {
+  it("shows review workbench heading when job exists", async () => {
     render(<AppProvider><ValidatePage language="zh_cn" onConfirm={() => {}} /></AppProvider>);
-    expect(await screen.findByText("开始校验")).toBeTruthy();
+    expect(await screen.findByText("校对工作台")).toBeTruthy();
   });
 
-  it("displays validation report with stats after clicking validate", async () => {
+  it("displays job info bar with completed entries count", async () => {
     render(<AppProvider><ValidatePage language="zh_cn" onConfirm={() => {}} /></AppProvider>);
-    fireEvent.click(await screen.findByText("开始校验"));
-    expect(await screen.findByText("通过")).toBeTruthy();
-    expect(screen.getByText("JSON")).toBeTruthy();
-    expect(screen.getByText("CSV")).toBeTruthy();
+    expect(await screen.findByText(/5 条已翻译/)).toBeTruthy();
+    expect(await screen.findByText(/test-job-001/)).toBeTruthy();
   });
 
-  it("renders mod accordion group headers in report", async () => {
+  it("renders mod accordion group headers from translation results", async () => {
     render(<AppProvider><ValidatePage language="zh_cn" onConfirm={() => {}} /></AppProvider>);
-    fireEvent.click(await screen.findByText("开始校验"));
-    // Mod group headers render with mod names
-    expect(await screen.findByText("badmod")).toBeTruthy();
-    expect(screen.getByText("goodmod")).toBeTruthy();
+    expect(await screen.findByText("testmod")).toBeTruthy();
+    expect(await screen.findByText("othermod")).toBeTruthy();
+  });
+
+  it("shows entry count per mod group", async () => {
+    render(<AppProvider><ValidatePage language="zh_cn" onConfirm={() => {}} /></AppProvider>);
+    expect(await screen.findByText(/2 条/)).toBeTruthy();
+    expect(await screen.findByText(/1 条/)).toBeTruthy();
+  });
+
+  it("shows confirm pack button when entries exist", async () => {
+    render(<AppProvider><ValidatePage language="zh_cn" onConfirm={() => {}} /></AppProvider>);
+    expect(await screen.findByText("进入打包")).toBeTruthy();
   });
 });

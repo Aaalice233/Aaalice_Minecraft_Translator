@@ -62,7 +62,7 @@ Aaalice_Minecraft_Translator/
 │   │   ├── JobsPage.tsx      # 翻译任务：启动/停止/进度/日志
 │   │   ├── DictionaryPage.tsx# 词典管理：搜索/编辑/导入/导出
 │   │   ├── PackagesPage.tsx  # 资源包生成：预览/打包/部署
-│   │   ├── ValidatePage.tsx  # 翻译校验：占位符/格式检查
+│   │   ├── ValidatePage.tsx  # 校对工作台：逐条审核翻译条目
 │   │   ├── SettingsPage.tsx  # 设置：7 选项卡（语言/API/性能/复用/日志/高级/外观）
 │   │   ├── LogsPage.tsx      # 日志中心
 │   │   └── PlaceholderPage.tsx # FTB / 硬编码占位页
@@ -114,7 +114,7 @@ Aaalice_Minecraft_Translator/
 │           └── mod.rs          # 模块声明
 ├── tests/                   # 前端单元测试（Vitest + jsdom）
 │   ├── app.test.tsx          # App 壳 / Sidebar / SettingsPage 渲染测试
-│   ├── validate.test.tsx     # 校验页面测试
+│   ├── validate.test.tsx     # 校对工作台测试
 │   └── fixtures/             # Minecraft fixture 数据
 ├── dev-reload.ps1           # 一键重启热重载脚本
 ├── index.html               # HTML 入口（lang=zh-CN）

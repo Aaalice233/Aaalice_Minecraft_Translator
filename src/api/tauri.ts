@@ -1,4 +1,4 @@
-import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, PackEntry, PackResult, ReadLogsResult, ScanSummary, Settings, TranslateProgress, TranslationJobState, ValidationReport } from "../types";
+import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, PackEntry, PackResult, ReadLogsResult, ScanSummary, Settings, TranslateProgress, TranslationJobState, TranslationResult, ValidationReport } from "../types";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
 
@@ -208,6 +208,24 @@ export async function loadLatestTranslationJob(): Promise<TranslationJobState | 
     return null;
   }
   return tauriInvoke<TranslationJobState | null>("load_latest_translation_job");
+}
+
+export async function loadTranslationResults(jobId: string): Promise<TranslationResult[]> {
+  if (!isTauriRuntime()) {
+    return [];
+  }
+  return tauriInvoke<TranslationResult[]>("load_translation_results", { jobId });
+}
+
+export async function saveTranslationEntry(
+  jobId: string,
+  key: string,
+  modName: string,
+  modId: string,
+  targetText: string,
+): Promise<void> {
+  if (!isTauriRuntime()) return;
+  return tauriInvoke<void>("save_translation_entry", { jobId, key, modName, modId, targetText });
 }
 
 export async function listTranslationJobs(): Promise<TranslationJobState[]> {

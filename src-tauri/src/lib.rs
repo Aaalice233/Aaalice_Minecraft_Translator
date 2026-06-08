@@ -53,6 +53,8 @@ pub fn run() {
             commands::list_translation_jobs,
             commands::validate_translation,
             commands::retry_failed_entries,
+            commands::load_translation_results,
+            commands::save_translation_entry,
             commands::generate_pack_from_job,
             // Warmup
             commands::run_warmup,

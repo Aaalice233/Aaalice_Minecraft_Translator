@@ -1,149 +1,88 @@
 import {
-  AlertTriangle,
   CheckCircle,
   ChevronDown,
   ChevronRight,
   ClipboardList,
-  Download,
   FileText,
   Loader2,
   PackageCheck,
-  RefreshCw,
-  RotateCcw,
+  Save,
   Search,
-  ShieldCheck,
-  XCircle,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadLatestTranslationJob, retryFailedEntries, validateTranslation } from "../api/tauri";
-import { t, type TranslationKey } from "../i18n/translations";
-import type { AppLanguage, TranslationJobState, ValidationIssue, ValidationReport } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { loadLatestTranslationJob, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
+import type { AppLanguage, TranslationJobState, TranslationResult } from "../types";
 
 interface Props {
   language: AppLanguage;
   onConfirm: () => void;
 }
 
-// ── Helpers ──
-
-const SEVERITY_CONFIG = {
-  error: { icon: XCircle, className: "severity-error", label: "错误" },
-  warning: { icon: AlertTriangle, className: "severity-warning", label: "警告" },
-} as const;
-
-const ISSUE_TYPE_LABELS: Record<string, string> = {
-  missing_result: "缺失结果",
-  empty_result: "空结果",
-  placeholder_missing: "占位符丢失",
-};
-
-const ISSUE_TYPES = ["all", "missing_result", "empty_result", "placeholder_missing"];
-
-function severityIcon(s: string) {
-  const cfg = SEVERITY_CONFIG[s as keyof typeof SEVERITY_CONFIG];
-  if (!cfg) return null;
-  const Icon = cfg.icon;
-  return <Icon size={15} className={cfg.className} />;
-}
-
-function issueTypeLabel(tpe: string): string {
-  return ISSUE_TYPE_LABELS[tpe] || tpe;
-}
-
-/** Group issues by modId. */
-function groupByMod(issues: ValidationIssue[]): Map<string, ValidationIssue[]> {
-  const map = new Map<string, ValidationIssue[]>();
-  for (const issue of issues) {
-    const list = map.get(issue.modId) || [];
-    list.push(issue);
-    map.set(issue.modId, list);
-  }
-  return map;
-}
-
 // ── Component ────────────────────────────────────────────────────
 
-export function ValidatePage({ language, onConfirm }: Props) {
+export function ValidatePage({ language: _language, onConfirm }: Props) {
   // ── State ──
   const [job, setJob] = useState<TranslationJobState | null>(null);
   const [loading, setLoading] = useState(true);
-  const [validating, setValidating] = useState(false);
-  const [report, setReport] = useState<ValidationReport | null>(null);
+  const [entries, setEntries] = useState<TranslationResult[]>([]);
+  const [loadingEntries, setLoadingEntries] = useState(false);
   const [error, setError] = useState("");
-  const [viewMode, setViewMode] = useState<"all" | "error" | "warning">("all");
-  const [issueTypeFilter, setIssueTypeFilter] = useState<string>("all");
-  const [selectedIssue, setSelectedIssue] = useState<ValidationIssue | null>(null);
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
-  const [retrying, setRetrying] = useState(false);
-  const [retryResult, setRetryResult] = useState<string>("");
-  // Editing state for the detail panel
-  const [editText, setEditText] = useState<string>("");
-  // Multi-select: set of "modId\x00key" composite keys
-  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  // Track per-row saving state: "modId\x00key\x00modName" -> saving
+  const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
+  const [saveMsg, setSaveMsg] = useState<string>("");
 
-  // ── Load job on mount ──
+  // ── Load job + entries on mount ──
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     loadLatestTranslationJob()
-      .then((j) => { if (!cancelled) setJob(j); })
+      .then((j) => {
+        if (cancelled) return;
+        setJob(j);
+        if (j && j.status === "completed") {
+          loadEntries(j.jobId);
+        }
+      })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false); });
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
     return () => { cancelled = true; };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Validation ──
-  async function handleValidate() {
-    if (!job) return;
-    setValidating(true);
+  async function loadEntries(jobId: string) {
+    setLoadingEntries(true);
     setError("");
-    setReport(null);
-    setSelectedIssue(null);
-    setRetryResult("");
     try {
-      const result = await validateTranslation(job.jobId);
-      setReport(result);
-      // Auto-expand all mods with errors
-      if (result) {
-        const allIssues = [...result.placeholderIssues, ...result.formatIssues];
-        const errorMods = new Set(allIssues.filter((i) => i.severity === "error" || i.severity === "warning").map((i) => i.modId));
-        setExpandedMods(errorMods);
-      }
+      const results = await loadTranslationResults(jobId);
+      setEntries(results);
+      // Auto-expand all mods
+      const modIds = new Set(results.map((r) => r.modId));
+      setExpandedMods(modIds);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      setEntries([]);
     } finally {
-      setValidating(false);
+      setLoadingEntries(false);
     }
   }
 
-  // ── Filtering ──
-  const filterBySeverity = useCallback(
-    (i: ValidationIssue): boolean => {
-      if (viewMode === "all") return true;
-      return i.severity === viewMode;
-    },
-    [viewMode],
-  );
+  // ── Group entries by modId ──
+  const grouped = useMemo(() => {
+    const map = new Map<string, TranslationResult[]>();
+    for (const entry of entries) {
+      const list = map.get(entry.modId);
+      if (list) {
+        list.push(entry);
+      } else {
+        map.set(entry.modId, [entry]);
+      }
+    }
+    return map;
+  }, [entries]);
 
-  const filterByIssueType = useCallback(
-    (i: ValidationIssue): boolean => {
-      if (issueTypeFilter === "all") return true;
-      return i.issueType === issueTypeFilter;
-    },
-    [issueTypeFilter],
-  );
-
-  const allIssues: ValidationIssue[] = useMemo(
-    () =>
-      report
-        ? [...report.placeholderIssues, ...report.formatIssues].filter(filterBySeverity).filter(filterByIssueType)
-        : [],
-    [report, filterBySeverity, filterByIssueType],
-  );
-
-  const groupedIssues = useMemo(() => groupByMod(allIssues), [allIssues]);
-
-  // ── Expand/collapse mod groups ──
+  // ── Mod expand/collapse ──
   function toggleMod(modId: string) {
     setExpandedMods((prev) => {
       const next = new Set(prev);
@@ -153,140 +92,53 @@ export function ValidatePage({ language, onConfirm }: Props) {
     });
   }
 
-  // ── Selection ──
-  function handleSelectIssue(issue: ValidationIssue) {
-    setSelectedIssue(issue);
-    setEditText(issue.targetText);
-  }
-
-  // ── Retry failed entries ──
-  async function runRetry() {
-    if (!job) return;
-    setRetrying(true);
-    setRetryResult("");
+  // ── Save a single entry edit back to JSONL ──
+  async function handleSave(entry: TranslationResult, newText: string) {
+    const rk = rowKey(entry);
+    setSavingRows((prev) => new Set(prev).add(rk));
+    setSaveMsg("");
     try {
-      const count = await retryFailedEntries(job.jobId, job.sourceLanguage, job.targetLanguage);
-      setRetryResult(`已重试 ${count} 个失败条目`);
-      handleValidate();
-    } catch (err) {
-      setRetryResult(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRetrying(false);
-    }
-  }
-
-  function handleRetry() { runRetry(); }
-  function handleBatchRetry() {
-    runRetry().then(() => clearSelection());
-  }
-
-  // ── Export report ──
-  function handleExportJSON() {
-    if (!report) return;
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `validation-report-${job?.jobId ?? "unknown"}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function handleExportCSV() {
-    if (!report) return;
-    const issues = [...report.placeholderIssues, ...report.formatIssues];
-    const header = "severity,type,modId,key,sourceText,targetText,description";
-    const rows = issues.map(
-      (i) =>
-        `${i.severity},${i.issueType},${i.modId},"${i.key}","${i.sourceText.replace(/"/g, '""')}","${i.targetText.replace(/"/g, '""')}","${i.description}"`,
-    );
-    const csv = [header, ...rows].join("\n");
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `validation-report-${job?.jobId ?? "unknown"}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // ── Multi-select helpers ──
-  function issueKey(i: ValidationIssue): string {
-    return `${i.modId}\x00${i.key}`;
-  }
-
-  function toggleSelect(issue: ValidationIssue) {
-    setSelectedKeys((prev) => {
-      const next = new Set(prev);
-      const k = issueKey(issue);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
-  }
-
-  function clearSelection() {
-    setSelectedKeys(new Set());
-  }
-
-  // ── Save correction ──
-  function handleSaveCorrection() {
-    if (!report || !selectedIssue) return;
-    const updatedReport = { ...report };
-    for (const list of [updatedReport.placeholderIssues, updatedReport.formatIssues]) {
-      const match = list.find(
-        (i) => i.key === selectedIssue.key && i.modId === selectedIssue.modId,
+      await saveTranslationEntry(job!.jobId, entry.key, entry.modName, entry.modId, newText);
+      // Update local state so UI reflects the saved value
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.key === entry.key && e.modName === entry.modName && e.modId === entry.modId
+            ? { ...e, targetText: newText }
+            : e,
+        ),
       );
-      if (match) {
-        match.targetText = editText;
-        break;
-      }
+      setSaveMsg("已保存");
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingRows((prev) => {
+        const next = new Set(prev);
+        next.delete(rk);
+        return next;
+      });
     }
-    setReport(updatedReport);
   }
 
-  // ── Keyboard shortcuts ──
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      // Don't fire if user is editing text
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  // ── Render helpers ──
 
-      switch (e.key) {
-        case "Enter":
-          if (!report && job) handleValidate();
-          break;
-        case "r":
-        case "R":
-          if (report && report.failed > 0) handleRetry();
-          break;
-        case "e":
-        case "E":
-          if (report) handleExportJSON();
-          break;
-        case "Escape":
-          setSelectedIssue(null);
-          break;
-      }
-    }
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [report, job]); // eslint-disable-line react-hooks/exhaustive-deps
+  function rowKey(entry: TranslationResult) {
+    return `${entry.modId}\x00${entry.key}\x00${entry.modName}`;
+  }
 
-  // ── Render: Loading ──
+  // ── Render: Loading (job) ──
   if (loading) {
     return (
       <section className="page validate-page">
         <div className="empty-state">
           <Loader2 size={24} className="spin" />
-          <p>{t(language, "common.loading")}</p>
+          <p>加载中...</p>
         </div>
       </section>
     );
   }
 
   // ── Render: No job ──
-  if (!job && !loading) {
+  if (!job) {
     return (
       <section className="page validate-page validate-workspace">
         <div className="empty-state">
@@ -297,438 +149,264 @@ export function ValidatePage({ language, onConfirm }: Props) {
     );
   }
 
-  // ── Render: Main ──
+  // ── Render: Job found but not completed ──
+  if (job.status !== "completed") {
+    return (
+      <section className="page validate-page validate-workspace">
+        <div className="empty-state">
+          <Loader2 size={32} />
+          <p>翻译任务尚未完成，请等待翻译完成后进入校对。</p>
+        </div>
+      </section>
+    );
+  }
+
+  // ── Render: Main review workbench ──
   return (
     <section className="page validate-page validate-workspace">
       {/* ── Header ── */}
       <div className="page-header">
         <div>
-          <h1>{t(language, "pipeline.validate")}</h1>
-          <p>检查翻译结果中的占位符完整性和格式正确性</p>
+          <h1>校对工作台</h1>
+          <p>逐条审核 LLM 翻译结果，确认后可进入打包阶段</p>
         </div>
         <div className="page-header-button" style={{ gap: 6 }}>
-          {report && (
-            <>
-              <button
-                className="ghost-button"
-                onClick={handleExportJSON}
-                type="button"
-                data-tooltip="导出 JSON 报告"
-              >
-                <Download size={16} />
-                JSON
-              </button>
-              <button
-                className="ghost-button"
-                onClick={handleExportCSV}
-                type="button"
-                data-tooltip="导出 CSV 报告"
-              >
-                <FileText size={16} />
-                CSV
-              </button>
-              {report.failed > 0 && (
-                <button
-                  className="ghost-button"
-                  onClick={handleRetry}
-                  disabled={retrying}
-                  type="button"
-                  data-tooltip="重试所有失败条目"
-                >
-                  {retrying ? <Loader2 size={16} className="spin" /> : <RotateCcw size={16} />}
-                  重试失败
-                </button>
-              )}
-              <button
-                className="primary-button"
-                onClick={onConfirm}
-                type="button"
-                disabled={report.failed > 0 || report.missing > 0}
-                data-tooltip={
-                  report.failed > 0 || report.missing > 0
-                    ? "请先修复校验错误"
-                    : "确认后进入打包"
-                }
-              >
-                <PackageCheck size={18} />
-                {t(language, "packages.generate")}
-              </button>
-            </>
+          {entries.length > 0 && (
+            <button
+              className="primary-button"
+              onClick={onConfirm}
+              type="button"
+            >
+              <PackageCheck size={18} />
+              进入打包
+            </button>
           )}
         </div>
       </div>
 
-      {/* ── Error alert ── */}
+      {/* ── Job info bar ── */}
+      <div className="job-info-bar">
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <FileText size={14} />
+          任务: <code style={{ fontSize: 12 }}>{job.jobId}</code>
+        </span>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <CheckCircle size={14} style={{ color: "var(--accent)" }} />
+          {job.completedEntries} 条已翻译
+        </span>
+        {job.completedAt && (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <ClipboardList size={14} />
+            {new Date(job.completedAt).toLocaleString()}
+          </span>
+        )}
+        <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>
+          {entries.length} 个条目
+        </span>
+      </div>
+
+      {/* ── Error / Info alerts ── */}
       {error && (
         <div className="alert error" style={{ marginBottom: 12 }}>
-          <AlertTriangle size={17} />
           {error}
         </div>
       )}
-
-      {retryResult && (
+      {saveMsg && (
         <div
-          className={`alert ${retryResult.startsWith("已重试") ? "success" : "error"}`}
+          className={`alert ${saveMsg === "已保存" ? "success" : "error"}`}
           style={{ marginBottom: 12 }}
         >
-          {retryResult}
+          {saveMsg}
         </div>
       )}
 
-      {/* ── Pre-validation state ── */}
-      {job && !report && (
-        <div className="validate-ready">
-          <div className="validate-ready-card">
-            <div className="validate-ready-icon">
-              <ShieldCheck size={28} />
-            </div>
-            <div className="validate-ready-info">
-              <h3>准备校验</h3>
-              <div className="validate-ready-meta">
-                <span className="ready-meta-item">
-                  <FileText size={14} />
-                  任务: <code>{job.jobId}</code>
-                </span>
-                {job.status === "completed" && (
-                  <span className="ready-meta-item success">
-                    <CheckCircle size={14} />
-                    {job.completedEntries} 条已翻译
-                  </span>
-                )}
-                {job.completedAt && (
-                  <span className="ready-meta-item">
-                    <ClipboardList size={14} />
-                    {new Date(job.completedAt).toLocaleString()}
-                  </span>
-                )}
-              </div>
-              <p className="validate-ready-desc">
-                检查翻译结果中的占位符完整性和格式正确性，确保资源包可用。
-              </p>
-            </div>
-            <button
-              className="primary-button validate-ready-btn"
-              onClick={handleValidate}
-              disabled={validating}
-              type="button"
-            >
-              {validating ? <Loader2 size={18} className="spin" /> : <Search size={18} />}
-              {validating ? "校验中..." : "开始校验"}
-            </button>
-          </div>
+      {/* ── Loading entries ── */}
+      {loadingEntries && (
+        <div className="empty-state" style={{ padding: 32 }}>
+          <Loader2 size={24} className="spin" />
+          <p>加载翻译结果...</p>
         </div>
       )}
 
-      {/* ── Report view: three-column workspace ── */}
-      {report && (
-        <div className="workspace-layout">
-          {/* ── Left column: Sidebar ── */}
-          <aside className="workspace-sidebar">
-            {/* Quick stats */}
-            <section className="workspace-card">
-              <h3 className="workspace-card-title">校验统计</h3>
-              <div className="validate-stats-vertical">
-                <div className="validate-stat-row">
-                  <span className="stat-label">总条目</span>
-                  <span className="stat-value">{report.totalEntries}</span>
-                </div>
-                <div className="validate-stat-row success">
-                  <CheckCircle size={15} />
-                  <span className="stat-label">通过</span>
-                  <span className="stat-value">{report.passed}</span>
-                </div>
-                <div className="validate-stat-row error">
-                  <XCircle size={15} />
-                  <span className="stat-label">失败</span>
-                  <span className="stat-value">{report.failed}</span>
-                </div>
-                <div className="validate-stat-row warning">
-                  <AlertTriangle size={15} />
-                  <span className="stat-label">缺失</span>
-                  <span className="stat-value">{report.missing}</span>
-                </div>
-              </div>
-              {/* Mini bar chart showing pass/fail ratio */}
-              {report.totalEntries > 0 && (
-                <div className="validate-bar-chart">
-                  {report.passed > 0 && (
-                    <div
-                      className="bar-segment success"
-                      style={{ width: `${(report.passed / report.totalEntries) * 100}%` }}
-                      title={`通过: ${report.passed}`}
-                    />
-                  )}
-                  {report.failed > 0 && (
-                    <div
-                      className="bar-segment error"
-                      style={{ width: `${(report.failed / report.totalEntries) * 100}%` }}
-                      title={`失败: ${report.failed}`}
-                    />
-                  )}
-                  {report.missing > 0 && (
-                    <div
-                      className="bar-segment warning"
-                      style={{ width: `${(report.missing / report.totalEntries) * 100}%` }}
-                      title={`缺失: ${report.missing}`}
-                    />
-                  )}
-                </div>
-              )}
-            </section>
+      {/* ── No entries ── */}
+      {!loadingEntries && entries.length === 0 && (
+        <div className="empty-state" style={{ padding: 32 }}>
+          <Search size={28} />
+          <p>暂无翻译结果</p>
+        </div>
+      )}
 
-            {/* Summary alerts */}
-            {report.failed === 0 && report.missing === 0 && (
-              <div className="alert success compact" style={{ marginTop: 8 }}>
-                <CheckCircle size={15} />
-                <span>全部通过，可以打包</span>
-              </div>
-            )}
-            {report.missing > 0 && (
-              <div className="alert warning compact" style={{ marginTop: 8 }}>
-                <AlertTriangle size={15} />
-                <span>{report.missing} 个条目缺少翻译结果</span>
-              </div>
-            )}
-
-            {/* Filter tabs */}
-            <section className="workspace-card" style={{ marginTop: 12 }}>
-              <h3 className="workspace-card-title">严重性</h3>
-              <div className="validate-filter-group">
-                {(["all", "error", "warning"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    className={`filter-chip ${viewMode === mode ? "active" : ""}`}
-                    onClick={() => setViewMode(mode)}
-                    type="button"
-                  >
-                    {mode === "all" ? "全部" : mode === "error" ? "错误" : "警告"}
-                    <span className="chip-count">
-                      {mode === "all"
-                        ? allIssues.length
-                        : [...report.placeholderIssues, ...report.formatIssues].filter((i) => i.severity === mode)
-                            .length}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="workspace-card">
-              <h3 className="workspace-card-title">问题类型</h3>
-              <div className="validate-filter-group">
-                {ISSUE_TYPES.map((tpe) => (
-                  <button
-                    key={tpe}
-                    className={`filter-chip ${issueTypeFilter === tpe ? "active" : ""}`}
-                    onClick={() => setIssueTypeFilter(tpe)}
-                    type="button"
-                  >
-                    {tpe === "all"
-                      ? "全部"
-                      : issueTypeLabel(tpe)}
-                    <span className="chip-count">
-                      {tpe === "all"
-                        ? [...report.placeholderIssues, ...report.formatIssues].length
-                        : [...report.placeholderIssues, ...report.formatIssues].filter((i) => i.issueType === tpe)
-                            .length}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            {/* Keyboard shortcut hints */}
-            <section className="workspace-card" style={{ marginTop: "auto" }}>
-              <h3 className="workspace-card-title">快捷键</h3>
-              <div className="shortcut-list">
-                <span><kbd>Enter</kbd> 开始校验</span>
-                <span><kbd>R</kbd> 重试失败</span>
-                <span><kbd>E</kbd> 导出 JSON</span>
-                <span><kbd>Esc</kbd> 关闭详情</span>
-              </div>
-            </section>
-          </aside>
-
-          {/* ── Center column: Issue list ── */}
+      {/* ── Review table: mod groups ── */}
+      {!loadingEntries && entries.length > 0 && (
+        <div className="workspace-layout" style={{ gridTemplateColumns: "1fr", marginTop: 0 }}>
           <main className="workspace-main">
-            {allIssues.length === 0 && (
-              <div className="empty-state" style={{ padding: 32 }}>
-                <CheckCircle size={28} />
-                <p>未发现校验问题</p>
-              </div>
-            )}
+            <div className="validate-issue-list" style={{ gap: 6 }}>
+              {Array.from(grouped.entries()).map(([modId, modEntries]) => {
+                const isExpanded = expandedMods.has(modId);
+                return (
+                  <div key={modId} className="mod-group">
+                    <button
+                      className="mod-group-header"
+                      onClick={() => toggleMod(modId)}
+                      type="button"
+                    >
+                      {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      <span className="mod-name">{modId}</span>
+                      <span className="mod-count">{modEntries.length} 条</span>
+                    </button>
 
-            {allIssues.length > 0 && (
-              <div className="validate-issue-list">
-                {/* Batch action toolbar */}
-                {selectedKeys.size > 0 && (
-                  <div className="batch-toolbar">
-                    <span className="batch-count">已选 {selectedKeys.size} 项</span>
-                    <button
-                      className="ghost-button"
-                      onClick={clearSelection}
-                      type="button"
-                    >
-                      取消选择
-                    </button>
-                    <button
-                      className="primary-button"
-                      onClick={handleBatchRetry}
-                      disabled={retrying}
-                      type="button"
-                    >
-                      {retrying ? <Loader2 size={15} className="spin" /> : <RotateCcw size={15} />}
-                      批量重试
-                    </button>
+                    {isExpanded && (
+                      <div className="review-table" style={{
+                        overflowX: "auto",
+                        borderTop: "1px solid var(--border)",
+                      }}>
+                        <table style={{
+                          width: "100%",
+                          borderCollapse: "collapse",
+                          fontSize: 12,
+                          lineHeight: 1.5,
+                        }}>
+                          <thead>
+                            <tr style={{
+                              background: "var(--bg-muted)",
+                              borderBottom: "1px solid var(--border)",
+                            }}>
+                              <th style={thStyle}>Key</th>
+                              <th style={thStyle}>原文 (Source)</th>
+                              <th style={thStyle}>译文 (Target)</th>
+                              <th style={{ ...thStyle, width: 80 }}>操作</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {modEntries.map((entry) => {
+                              const rk = rowKey(entry);
+                              const isSaving = savingRows.has(rk);
+                              return (
+                                <ReviewRow
+                                  key={rk}
+                                  entry={entry}
+                                  isSaving={isSaving}
+                                  onSave={handleSave}
+                                />
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
-                )}
-
-                {Array.from(groupedIssues.entries()).map(([modId, issues]) => {
-                  const isExpanded = expandedMods.has(modId);
-                  const errorCount = issues.filter((i) => i.severity === "error").length;
-                  const warningCount = issues.filter((i) => i.severity === "warning").length;
-                  return (
-                    <div key={modId} className="mod-group">
-                      <button
-                        className="mod-group-header"
-                        onClick={() => toggleMod(modId)}
-                        type="button"
-                      >
-                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                        <span className="mod-name">{modId}</span>
-                        <span className="mod-count">{issues.length} 条</span>
-                        {errorCount > 0 && <span className="mod-badge error">{errorCount} 错误</span>}
-                        {warningCount > 0 && <span className="mod-badge warning">{warningCount} 警告</span>}
-                      </button>
-
-                      {isExpanded && (
-                        <div className="mod-group-issues">
-                          {issues.map((issue, idx) => {
-                            const isSelected = selectedIssue?.key === issue.key && selectedIssue?.modId === issue.modId;
-                            const isChecked = selectedKeys.has(issueKey(issue));
-                            return (
-                              <div
-                                key={`${issue.key}-${idx}`}
-                                className={`issue-row-wrap ${isSelected ? "selected" : ""}`}
-                              >
-                                <label className="issue-checkbox" onClick={(e) => e.stopPropagation()}>
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => toggleSelect(issue)}
-                                  />
-                                </label>
-                                <button
-                                  className="issue-row"
-                                  onClick={() => handleSelectIssue(issue)}
-                                  type="button"
-                                >
-                                  <span className="issue-type-icon">{severityIcon(issue.severity)}</span>
-                                  <span className="issue-badge-type">{issueTypeLabel(issue.issueType)}</span>
-                                  <code className="issue-key truncate">{issue.key}</code>
-                                  <span className="issue-source truncate">{issue.sourceText || "-"}</span>
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                );
+              })}
+            </div>
           </main>
-
-          {/* ── Right column: Detail panel (only when an issue is selected) ── */}
-          {selectedIssue && (
-            <aside className="workspace-detail">
-              <div className="detail-panel">
-                <div className="detail-header">
-                  <h3>条目详情</h3>
-                  <button
-                    className="ghost-button-icon"
-                    onClick={() => setSelectedIssue(null)}
-                    type="button"
-                    title="关闭"
-                  >
-                    <XCircle size={16} />
-                  </button>
-                </div>
-
-                <div className="detail-meta-grid">
-                  <div className="detail-meta-item">
-                    <span className="detail-label">模组</span>
-                    <code className="detail-value">{selectedIssue.modId}</code>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-label">Key</span>
-                    <code className="detail-value" style={{ wordBreak: "break-all" }}>{selectedIssue.key}</code>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-label">严重性</span>
-                    <span className={`severity-badge ${selectedIssue.severity}`}>
-                      {severityIcon(selectedIssue.severity)}
-                      {selectedIssue.severity === "error" ? "错误" : "警告"}
-                    </span>
-                  </div>
-                  <div className="detail-meta-item">
-                    <span className="detail-label">问题</span>
-                    <span>{issueTypeLabel(selectedIssue.issueType)}</span>
-                  </div>
-                  <div className="detail-meta-item" style={{ gridColumn: "1 / -1" }}>
-                    <span className="detail-label">说明</span>
-                    <span>{selectedIssue.description}</span>
-                  </div>
-                </div>
-
-                {/* Source vs Target comparison */}
-                <div className="detail-compare-card">
-                  <h4 className="detail-section-title">原文 vs 译文</h4>
-                  <div className="detail-compare">
-                    <div className="compare-column">
-                      <div className="compare-label">原文 (Source)</div>
-                      <div className="compare-text source">{selectedIssue.sourceText || "-"}</div>
-                    </div>
-                    <div className="compare-column">
-                      <div className="compare-label">译文 (Target)</div>
-                      <textarea
-                        className="compare-text target edit-area"
-                        value={editText}
-                        onChange={(e) => setEditText(e.target.value)}
-                        rows={4}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action buttons */}
-                <div className="detail-actions">
-                  <button
-                    className="ghost-button"
-                    onClick={() => setEditText(selectedIssue.targetText)}
-                    type="button"
-                    title="还原为原始翻译"
-                  >
-                    <RefreshCw size={15} />
-                    还原
-                  </button>
-                  {report && selectedIssue && (
-                    <button
-                      className="primary-button"
-                      onClick={handleSaveCorrection}
-                      type="button"
-                      disabled={editText === selectedIssue.targetText}
-                    >
-                      保存修正
-                    </button>
-                  )}
-                </div>
-              </div>
-            </aside>
-          )}
         </div>
       )}
     </section>
+  );
+}
+
+// ── Row component ────────────────────────────────────────────────
+
+const thStyle: React.CSSProperties = {
+  textAlign: "left",
+  padding: "8px 12px",
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+  color: "var(--text-secondary)",
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: "6px 12px",
+  verticalAlign: "middle",
+  borderBottom: "1px solid var(--border)",
+};
+
+function ReviewRow({
+  entry,
+  isSaving,
+  onSave,
+}: {
+  entry: TranslationResult;
+  isSaving: boolean;
+  onSave: (entry: TranslationResult, newText: string) => void;
+}) {
+  const [editText, setEditText] = useState(entry.targetText);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isDirty = editText !== entry.targetText;
+
+  // Reset local state when entry changes (e.g. after save from another row)
+  useEffect(() => {
+    setEditText(entry.targetText);
+  }, [entry.key, entry.modName, entry.modId, entry.targetText]);
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = "auto";
+      ta.style.height = `${Math.max(ta.scrollHeight, 28)}px`;
+    }
+  }, [editText]);
+
+  return (
+    <tr>
+      <td style={{ ...tdStyle, fontFamily: '"JetBrains Mono", monospace', fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>
+        {entry.key}
+      </td>
+      <td style={{ ...tdStyle, maxWidth: 300, wordBreak: "break-all" }}>
+        <div style={{ maxHeight: 80, overflowY: "auto", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
+          {entry.sourceText || "-"}
+        </div>
+      </td>
+      <td style={{ ...tdStyle, maxWidth: 300 }}>
+        <textarea
+          ref={textareaRef}
+          value={editText}
+          onChange={(e) => setEditText(e.target.value)}
+          style={{
+            width: "100%",
+            minHeight: 28,
+            resize: "vertical",
+            fontFamily: "inherit",
+            fontSize: 12,
+            lineHeight: 1.4,
+            padding: "4px 6px",
+            border: `1px solid ${isDirty ? "var(--accent)" : "var(--border-input)"}`,
+            borderRadius: 4,
+            background: "var(--bg-surface)",
+            color: "var(--text-primary)",
+            outline: "none",
+            boxSizing: "border-box",
+          }}
+          onFocus={(e) => {
+            e.target.style.borderColor = "var(--accent)";
+            e.target.style.boxShadow = "0 0 0 2px var(--accent-bg)";
+          }}
+          onBlur={(e) => {
+            if (!isDirty) {
+              e.target.style.borderColor = "var(--border-input)";
+              e.target.style.boxShadow = "none";
+            }
+          }}
+          rows={1}
+        />
+      </td>
+      <td style={{ ...tdStyle, textAlign: "center" }}>
+        <button
+          className="ghost-button"
+          onClick={() => onSave(entry, editText)}
+          disabled={!isDirty || isSaving}
+          type="button"
+          style={{ padding: "4px 8px", fontSize: 12 }}
+          data-tooltip="保存修改"
+        >
+          {isSaving ? (
+            <Loader2 size={14} className="spin" />
+          ) : (
+            <Save size={14} />
+          )}
+        </button>
+      </td>
+    </tr>
   );
 }
