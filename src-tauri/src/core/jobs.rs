@@ -99,8 +99,16 @@ impl JobManager {
     /// (source-language entries whose key has no target-language counterpart),
     /// and writes the initial job state to disk.
     pub fn create_from_scan(&self, scan_job_id: &str) -> Result<TranslationJobState, String> {
-        let summary = self.load_scan_summary(scan_job_id)?;
         let job_id = logging::new_job_id("translate");
+        self.create_from_scan_with_job_id(scan_job_id, &job_id)
+    }
+
+    /// Same as `create_from_scan` but uses a caller-provided `job_id` instead of
+    /// generating a new one.  This allows `start_translation` to create the job
+    /// metadata file before the pipeline runs, using the same `job_id` that
+    /// was already assigned.
+    pub fn create_from_scan_with_job_id(&self, scan_job_id: &str, job_id: &str) -> Result<TranslationJobState, String> {
+        let summary = self.load_scan_summary(scan_job_id)?;
 
         // Ensure jobs directory exists
         let jobs_dir = paths::jobs_dir(&self.root);
@@ -118,7 +126,7 @@ impl JobManager {
             .collect();
 
         let job = TranslationJobState {
-            job_id: job_id.clone(),
+            job_id: job_id.to_string(),
             scan_job_id: scan_job_id.to_string(),
             status: TranslationStatus::Pending,
             source_language: summary.source_language.clone(),
@@ -136,7 +144,7 @@ impl JobManager {
         self.save(&job)?;
 
         logging::append_job(
-            &job_id,
+            job_id,
             format!(
                 "翻译 Job 创建: scan_job_id={scan_job_id}, 待翻译条目={}",
                 job.entries.len()
@@ -195,29 +203,7 @@ impl JobManager {
 
     /// Find the most recent translation job on disk (by mtime).
     pub fn load_latest(&self) -> Result<Option<TranslationJobState>, String> {
-        let jobs_dir = paths::jobs_dir(&self.root);
-        if !jobs_dir.is_dir() {
-            return Ok(None);
-        }
-
-        let mut entries: Vec<_> = std::fs::read_dir(&jobs_dir)
-            .map_err(|e| format!("读取 jobs 目录失败: {e}"))?
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                let os_name = e.file_name();
-                let name = os_name.to_string_lossy();
-                name.starts_with("translate_") && name.ends_with(".json")
-                    && !name.ends_with(".tmp")
-            })
-            .collect();
-
-        entries.sort_by(|a, b| {
-            b.metadata()
-                .and_then(|m| m.modified())
-                .ok()
-                .cmp(&a.metadata().and_then(|m| m.modified()).ok())
-        });
-
+        let entries = self.list_job_files()?;
         let latest = entries.into_iter().next();
         match latest {
             Some(entry) => {
@@ -233,23 +219,10 @@ impl JobManager {
 
     /// List all translation jobs on disk, sorted by mtime descending (newest first).
     pub fn list_all(&self) -> Result<Vec<TranslationJobState>, String> {
-        let jobs_dir = paths::jobs_dir(&self.root);
-        if !jobs_dir.is_dir() {
-            return Ok(Vec::new());
-        }
-
+        let entries = self.list_job_files()?;
         let mut jobs: Vec<(std::time::SystemTime, TranslationJobState)> = Vec::new();
 
-        for entry in std::fs::read_dir(&jobs_dir)
-            .map_err(|e| format!("读取 jobs 目录失败: {e}"))?
-            .filter_map(|e| e.ok())
-            .filter(|e| {
-                let fname = e.file_name();
-                let name = fname.to_string_lossy();
-                name.starts_with("translate_") && name.ends_with(".json")
-                    && !name.ends_with(".tmp")
-            })
-        {
+        for entry in entries {
             let modified = entry.metadata().ok().and_then(|m| m.modified().ok());
             let content = std::fs::read_to_string(entry.path())
                 .map_err(|e| format!("读取 job 文件失败: {e}"))?;
@@ -260,10 +233,35 @@ impl JobManager {
             }
         }
 
-        // Sort by mtime descending (newest first)
-        jobs.sort_by(|a, b| b.0.cmp(&a.0));
-
         Ok(jobs.into_iter().map(|(_, job)| job).collect())
+    }
+
+    /// Internal: list translation job files sorted by mtime descending.
+    fn list_job_files(&self) -> Result<Vec<std::fs::DirEntry>, String> {
+        let jobs_dir = paths::jobs_dir(&self.root);
+        if !jobs_dir.is_dir() {
+            return Ok(Vec::new());
+        }
+
+        let mut entries: Vec<_> = std::fs::read_dir(&jobs_dir)
+            .map_err(|e| format!("读取 jobs 目录失败: {e}"))?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                let fname = e.file_name();
+                let name = fname.to_string_lossy();
+                name.starts_with("translate_") && name.ends_with(".json")
+                    && !name.ends_with(".tmp")
+            })
+            .collect();
+
+        entries.sort_by(|a, b| {
+            b.metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .cmp(&a.metadata().and_then(|m| m.modified()).ok())
+        });
+
+        Ok(entries)
     }
 
     // ── Results (JSONL) ──────────────────────────────────────────────

@@ -60,6 +60,22 @@ pub async fn start_translation(
 
     pipeline::register_translation_task(&job_id);
 
+    // Create job metadata file so loadLatestTranslationJob() can find it for retry
+    if let Some(ref scan_id) = scan_job_id {
+        let mgr = jobs::JobManager::new(root.clone());
+        match mgr.create_from_scan_with_job_id(scan_id, &job_id) {
+            Ok(job) => {
+                let _ = logging::append_main(format!(
+                    "翻译 Job 状态文件已创建: scan_job_id={scan_id}, 条目={}",
+                    job.entries.len()
+                ));
+            }
+            Err(err) => {
+                let _ = logging::append_main(format!("创建翻译 Job 状态文件失败: {err}"));
+            }
+        }
+    }
+
     logging::append_main(format!("翻译任务创建成功，任务 ID: {job_id}"))
         .map_err(|err| err.to_string())?;
 
@@ -97,13 +113,13 @@ pub async fn start_translation(
     spawn_batched_reader(log_rx, app.clone(), "translate-log-entries");
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
 
-    let s = settings::load_settings(&root).ok();
-    let resource_pack_names = s
+    let settings_load_result = settings::load_settings(&root);
+    let resource_pack_names = settings_load_result
         .as_ref()
         .map(|s| s.resource_pack_names.clone())
         .unwrap_or_default();
 
-    let llm = s.map(|s| LlmConfig {
+    let llm = settings_load_result.ok().map(|s| LlmConfig {
         base_url: s.base_url,
         api_key: s.api_key,
         model: s.model,
@@ -207,24 +223,27 @@ pub async fn retry_failed_entries(
 
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
 
-    let llm = settings::load_settings(&root).ok().map(|s| LlmConfig {
-        base_url: s.base_url,
-        api_key: s.api_key,
-        model: s.model,
-        temperature: s.temperature,
-        max_tokens: s.max_tokens,
-        concurrency: s.concurrency as usize,
-        batch_size: s.batch_size as usize,
-        timeout_secs: s.timeout_secs as u64,
-        retry_count: s.retry_count as u32,
-        rate_limit_rpm: s.rate_limit_rpm,
-        prefer_user_dict: s.prefer_user_dictionary,
-        system_prompt: if s.system_prompt.is_empty() {
+    let settings = settings::load_settings(&root)
+        .map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
+
+    let llm = LlmConfig {
+        base_url: settings.base_url,
+        api_key: settings.api_key,
+        model: settings.model,
+        temperature: settings.temperature,
+        max_tokens: settings.max_tokens,
+        concurrency: settings.concurrency as usize,
+        batch_size: settings.batch_size as usize,
+        timeout_secs: settings.timeout_secs as u64,
+        retry_count: settings.retry_count as u32,
+        rate_limit_rpm: settings.rate_limit_rpm,
+        prefer_user_dict: settings.prefer_user_dictionary,
+        system_prompt: if settings.system_prompt.is_empty() {
             crate::core::models::DEFAULT_SYSTEM_PROMPT.to_string()
         } else {
-            s.system_prompt
+            settings.system_prompt
         },
-    }).ok_or("请先配置 LLM 设置")?;
+    };
 
     let retried = pipeline::retry_failed_entries(
         &root, &job_id, &source_language, &target_language, &llm,

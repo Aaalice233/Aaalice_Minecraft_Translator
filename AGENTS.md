@@ -37,6 +37,9 @@ Aaalice_Minecraft_Translator/
 │   ├── 02-architecture-plan.md
 │   ├── 03-ui-style-guide.md
 │   ├── 04-agent-test-plan.md
+│   ├── 05-pipeline-refactor-prd.md
+│   ├── audit/                # 架构审计记录
+│   ├── superpowers/          # 功能增强设计文档
 │   └── ui-reference/         # UI 参考图（images/ 子目录）
 ├── logs/                     # 运行期日志（.gitignore）
 │   ├── main.log              # 主日志 [unix_seconds] LEVEL message
@@ -63,7 +66,9 @@ Aaalice_Minecraft_Translator/
 │   │   ├── SettingsPage.tsx  # 设置：7 选项卡（语言/API/性能/复用/日志/高级/外观）
 │   │   ├── LogsPage.tsx      # 日志中心
 │   │   └── PlaceholderPage.tsx # FTB / 硬编码占位页
-│   ├── components/           # （暂空，组件内嵌在页面中）
+│   ├── components/
+│   │   ├── SplashScreen.tsx    # 启动屏（品牌动画 + 预热进度）
+│   │   └── CompletionSummary.tsx # 翻译完成摘要
 │   ├── hooks/
 │   │   └── useDebouncedValue.ts # 防抖 hook
 │   ├── stores/
@@ -90,7 +95,8 @@ Aaalice_Minecraft_Translator/
 │       │   ├── validate.rs   # validate_translation
 │       │   ├── logs.rs       # read_logs
 │       │   ├── fonts.rs      # list_fonts
-│       │   └── game.rs       # pick_instance_folder / open_path
+│       │   ├── game.rs       # pick_instance_folder / open_path
+│       │   └── warmup.rs     # run_warmup / cancel_warmup（预热 pipeline）
 │       └── core/             # 后端核心逻辑
 │           ├── models.rs       # 所有数据模型（⚠️ 与 types.ts 同步）
 │           ├── settings.rs     # JSON 持久化 + 校验（temperature/concurrency/batch等范围检查）

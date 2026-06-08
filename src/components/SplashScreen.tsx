@@ -4,7 +4,7 @@ import type { WarmupPhase, WarmupProgress } from "../types";
 
 // ── Constants ──────────────────────────────────────────────────────────
 
-const SPLASH_MIN_MS = 800;
+const SPLASH_MIN_MS = 3000;
 const LETTER_REVEAL_MS = 60;
 const BRAND_NAME = "Aaalice";
 const SUBTITLE = "Minecraft Translator";
@@ -162,13 +162,13 @@ export function SplashScreen({
   const getPhaseLabel = (phaseKey: WarmupPhase): string =>
     PHASE_LABELS[phaseKey] ?? phaseKey;
 
-  const getPhaseIcon = (phaseKey: WarmupPhase): string => {
+  function getPhaseIcon(phaseKey: WarmupPhase): string {
     const status = phaseStatuses[phaseKey];
     if (status === "completed") return "\u2713";
     if (status === "failed") return "\u26A0";
     if (phaseKey === curPhase && status === "running") return "\u27F3";
     return "";
-  };
+  }
 
   const hasAnimationStarted = phase !== "init";
 

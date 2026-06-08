@@ -94,13 +94,12 @@ function AppShell() {
   const [warmupComplete, setWarmupComplete] = useState(false);
   const [fatalWarmupError, setFatalWarmupError] = useState<string | undefined>();
   const [isOffline, setIsOffline] = useState(false);
-  const isFirstLaunch = (() => {
-    try {
-      return !localStorage.getItem("aaalice_mc_warmup_done");
-    } catch {
-      return false;
-    }
-  })();
+  let isFirstLaunch = false;
+  try {
+    isFirstLaunch = !localStorage.getItem("aaalice_mc_warmup_done");
+  } catch {
+    // localStorage inaccessible
+  }
 
   // ── Combined warmup: register listener first, then start warmup ──
   // This eliminates the race where Rust emits events before the frontend
@@ -165,30 +164,19 @@ function AppShell() {
   }, [warmupComplete]);
 
   // Sync AppContext → Zustand store on state changes
-  // This allows pages to gradually migrate to direct store access.
   const syncedDispatch: typeof dispatch = (action) => {
     dispatch(action);
-    // Mirror to Zustand store
-    switch (action.type) {
-      case "SET_SETTINGS":
-        store.setSettings(action.payload);
-        break;
-      case "SET_SCAN_SUMMARY":
-        store.setScanSummary(action.payload);
-        break;
-      case "SET_NAV_STATE":
-        store.setNavState(action.payload.key, action.payload.status);
-        break;
-      case "SET_TRANSLATION_STATUS":
-        store.setTranslationStatus(action.payload.status, action.payload.result, action.payload.error);
-        break;
-      case "SET_TRANSLATION_JOB_ID":
-        store.setTranslationJobId(action.payload);
-        break;
-      case "SET_PACKAGES_JOB_ID":
-        store.setPackagesJobId(action.payload);
-        break;
-    }
+    const fn = storeMirror[action.type];
+    if (fn) fn(action);
+  };
+
+  const storeMirror: Record<string, (action: any) => void> = {
+    SET_SETTINGS: (a) => store.setSettings(a.payload),
+    SET_SCAN_SUMMARY: (a) => store.setScanSummary(a.payload),
+    SET_NAV_STATE: (a) => store.setNavState(a.payload.key, a.payload.status),
+    SET_TRANSLATION_STATUS: (a) => store.setTranslationStatus(a.payload.status, a.payload.result, a.payload.error),
+    SET_TRANSLATION_JOB_ID: (a) => store.setTranslationJobId(a.payload),
+    SET_PACKAGES_JOB_ID: (a) => store.setPackagesJobId(a.payload),
   };
 
   useEffect(() => {
@@ -298,7 +286,7 @@ function AppShell() {
         case "jobs":
           return <JobsPage isActive={isActive} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
         case "validate":
-          return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
+          return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} scanSummary={scanSummary} />;
         case "packages":
           return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
         default:

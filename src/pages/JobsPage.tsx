@@ -187,6 +187,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   const virtuosoRef = useRef<any>(null);
   const cancelledRef = useRef(false);
   const postCompletionRescan = useRef(false);
+  const retryingRef = useRef(false);
+  const savedFailedEntriesRef = useRef(0);
 
   function getEntryStatus(entry: TranslateLogEntry): string {
     return getEntryStatusFromEP(
@@ -219,6 +221,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         if (job.status === "completed" && scanMatches) {
           setStatus("completed");
           setTranslationResult(job.completedEntries);
+          savedFailedEntriesRef.current = job.failedEntries ?? 0;
           onCompleteChange?.(true);
         }
       })
@@ -342,6 +345,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   }
 
   async function handleRetry() {
+    if (retryingRef.current) return;
     cancelledRef.current = false;
     const srcLang = settings.sourceLanguage || scanSummary?.sourceLanguage || "auto";
     const tgtLang = settings.targetLanguage || scanSummary?.targetLanguage || "zh_cn";
@@ -356,6 +360,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
 
     startTimeRef.current = performance.now();
+    retryingRef.current = true;
     setTranslateElapsedMs(null);
     setIsRetrying(true);
     setTranslateProgress(null);
@@ -373,6 +378,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       setTranslationError(toErrorMessage(err));
       setStatus("failed");
     } finally {
+      retryingRef.current = false;
       setIsRetrying(false);
     }
   }
@@ -579,14 +585,14 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               <RefreshCw size={15} className="spinning" />
               {t(language, "jobs.retrying")}
             </span>
-          ) : entryCounts.failed > 0 && (
+          ) : (entryCounts.failed > 0 || savedFailedEntriesRef.current > 0) && (
             <button
               className="alert-action-button"
               onClick={handleRetry}
               type="button"
             >
               <RefreshCw size={15} />
-              {t(language, "jobs.retryFailed")} ({entryCounts.failed})
+              {t(language, "jobs.retryFailed")} ({Math.max(entryCounts.failed, savedFailedEntriesRef.current)})
             </button>
           )}
         </div>
@@ -750,8 +756,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               template: t(language, "summary.llm"),
               count: Math.max(0, (translationResult ?? entryCounts.completed) - entryCounts.dictionaryHit),
             },
-            ...(entryCounts.failed > 0
-              ? [{ icon: <XCircle size={15} />, template: t(language, "summary.failed"), count: entryCounts.failed }]
+            ...(Math.max(entryCounts.failed, savedFailedEntriesRef.current) > 0
+              ? [{ icon: <XCircle size={15} />, template: t(language, "summary.failed"), count: Math.max(entryCounts.failed, savedFailedEntriesRef.current) }]
               : []),
           ]}
         />
