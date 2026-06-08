@@ -218,6 +218,10 @@ export type TranslationKey =
   | "settings.removePack"
   | "settings.packPlaceholder"
   | "settings.packDefaultI18n"
+  | "settings.card.apiParams"
+  | "settings.card.concurrency"
+  | "settings.card.timeouts"
+  | "settings.card.dictionary"
   | "settings.futureAdvanced"
   | "logs.title"
   | "logs.subtitle"
@@ -466,7 +470,11 @@ const zhCn: TranslationMap = {
   "settings.saved": "设置已保存",
   "settings.fetchModels": "拉取模型",
   "settings.modelsFetched": "已从 {url} 拉取 {count} 个模型",
-  "settings.autosaveHint": "自动保存需点击右上角保存按钮",
+  "settings.autosaveHint": "自动保存已启用，改动后自动保存",
+  "settings.card.apiParams": "API 参数",
+  "settings.card.concurrency": "并发设置",
+  "settings.card.timeouts": "超时与重试",
+  "settings.card.dictionary": "词典",
   "settings.provider": "供应商",
   "settings.baseUrl": "API 地址",
   "settings.tab.language": "语言与翻译",
@@ -645,7 +653,11 @@ const enUs: TranslationMap = {
   "settings.saved": "Settings saved",
   "settings.fetchModels": "Fetch models",
   "settings.modelsFetched": "Fetched {count} models from {url}",
-  "settings.autosaveHint": "Click the save button to persist changes",
+  "settings.autosaveHint": "Auto-save enabled — changes are saved automatically",
+  "settings.card.apiParams": "API Parameters",
+  "settings.card.concurrency": "Concurrency",
+  "settings.card.timeouts": "Timeouts & Retries",
+  "settings.card.dictionary": "Dictionary",
   "settings.provider": "Provider",
   "settings.baseUrl": "Base URL",
   "settings.tab.language": "Language & translation",
@@ -847,7 +859,11 @@ const jaJp: TranslationMap = {
   "settings.save": "設定を保存",
   "settings.saved": "設定を保存しました",
   "settings.fetchModels": "モデル取得",
-  "settings.autosaveHint": "変更の保存には右上の保存ボタンが必要です",
+  "settings.autosaveHint": "自動保存 — 変更は自動的に保存されます",
+  "settings.card.apiParams": "API パラメーター",
+  "settings.card.concurrency": "並列設定",
+  "settings.card.timeouts": "タイムアウトとリトライ",
+  "settings.card.dictionary": "辞書",
   "settings.provider": "プロバイダ",
   "settings.baseUrl": "ベース URL",
   "settings.tab.language": "言語と翻訳",
@@ -1012,7 +1028,11 @@ const koKr: TranslationMap = {
   "settings.save": "설정 저장",
   "settings.saved": "설정이 저장됨",
   "settings.fetchModels": "모델 가져오기",
-  "settings.autosaveHint": "변경 사항을 저장하려면 오른쪽 위 저장 버튼을 누르세요",
+  "settings.autosaveHint": "자동 저장 — 변경 사항이 자동으로 저장됩니다",
+  "settings.card.apiParams": "API 매개변수",
+  "settings.card.concurrency": "동시 설정",
+  "settings.card.timeouts": "시간 초과 및 재시도",
+  "settings.card.dictionary": "사전",
   "settings.provider": "공급자",
   "settings.baseUrl": "기본 URL",
   "settings.tab.language": "언어 및 번역",
@@ -1262,7 +1282,11 @@ const ruRu: TranslationMap = {
   "settings.saved": "Настройки сохранены",
   "settings.fetchModels": "Получить модели",
   "settings.modelsFetched": "Получено {count} моделей из {url}",
-  "settings.autosaveHint": "Нажмите кнопку сохранения для изменений",
+  "settings.autosaveHint": "Автосохранение — изменения сохраняются автоматически",
+  "settings.card.apiParams": "Параметры API",
+  "settings.card.concurrency": "Параллельность",
+  "settings.card.timeouts": "Таймауты и повторы",
+  "settings.card.dictionary": "Словарь",
   "settings.provider": "Провайдер",
   "settings.baseUrl": "Базовый URL",
   "settings.tab.language": "Язык и перевод",

@@ -10,8 +10,8 @@ import {
   FileText,
   Languages,
   RefreshCcw,
-  Save,
   Server,
+  X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -68,38 +68,87 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   const [showCustomModel, setShowCustomModel] = useState(false);
   const [fonts, setFonts] = useState<string[]>([]);
   const [isLoadingFonts, setIsLoadingFonts] = useState(false);
+  const [saveIndicator, setSaveIndicator] = useState<"saved" | "saving" | "unsaved">("saved");
   const language = normalizeAppLanguage(draft.appLanguage);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const onSettingsChangeRef = useRef(onSettingsChange);
+  onSettingsChangeRef.current = onSettingsChange;
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const currentTitle = useMemo(
     () => t(language, tabs.find((tab) => tab.key === activeTab)?.labelKey ?? "settings.title"),
     [activeTab, language],
   );
 
-  async function handleSave() {
-    setError("");
-    setMessage("");
-    const normalizedSourceLanguage = normalizeTranslationLanguage(draft.sourceLanguage, true);
-    const normalizedTargetLanguage = normalizeTranslationLanguage(draft.targetLanguage, false);
-    if (!normalizedSourceLanguage) {
-      setError(t(language, "settings.invalidSourceLanguage"));
-      return;
-    }
-    if (!normalizedTargetLanguage) {
-      setError(t(language, "settings.invalidTargetLanguage"));
-      return;
-    }
+  const scheduleSave = useCallback(() => {
+    setSaveIndicator("unsaved");
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(async () => {
+      setSaveIndicator("saving");
+      const d = draftRef.current;
+      const s = settingsRef.current;
 
-    const nextSettings = {
-      ...draft,
-      appLanguage: normalizeAppLanguage(draft.appLanguage),
-      sourceLanguage: normalizedSourceLanguage,
-      targetLanguage: normalizedTargetLanguage,
-    };
-    await saveSettings(nextSettings);
-    setDraft(nextSettings);
-    onSettingsChange(nextSettings);
-    setMessage(t(nextSettings.appLanguage, "settings.saved"));
-  }
+      const normalizedSourceLanguage = normalizeTranslationLanguage(d.sourceLanguage, true);
+      const normalizedTargetLanguage = normalizeTranslationLanguage(d.targetLanguage, false);
+      if (!normalizedSourceLanguage) {
+        setError(t(normalizeAppLanguage(d.appLanguage), "settings.invalidSourceLanguage"));
+        setSaveIndicator("unsaved");
+        return;
+      }
+      if (!normalizedTargetLanguage) {
+        setError(t(normalizeAppLanguage(d.appLanguage), "settings.invalidTargetLanguage"));
+        setSaveIndicator("unsaved");
+        return;
+      }
+
+      const nextSettings: Settings = {
+        ...d,
+        appLanguage: normalizeAppLanguage(d.appLanguage),
+        sourceLanguage: normalizedSourceLanguage,
+        targetLanguage: normalizedTargetLanguage,
+      };
+
+      try {
+        await saveSettings(nextSettings);
+        setDraft(nextSettings);
+        onSettingsChangeRef.current(nextSettings);
+        setError("");
+        setSaveIndicator("saved");
+      } catch (err) {
+        setDraft(s);
+        setError(toErrorMessage(err));
+        setSaveIndicator("unsaved");
+      }
+    }, 600);
+  }, []);
+
+  /** 立即保存 appLanguage（需要即时刷新侧边栏） */
+  const handleAppLanguageChange = useCallback(async (newLanguage: string) => {
+    const normalized = normalizeAppLanguage(newLanguage);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setDraft((prev) => ({ ...prev, appLanguage: normalized }));
+    setMessage("");
+    setError("");
+    try {
+      const updatedSettings = { ...settings, appLanguage: normalized };
+      await saveSettings(updatedSettings);
+      onSettingsChangeRef.current(updatedSettings);
+      setMessage(t(normalized, "settings.saved"));
+      setSaveIndicator("saved");
+    } catch (err) {
+      setError(toErrorMessage(err));
+    }
+  }, [settings]);
 
   async function handleFetchModels() {
     setIsFetchingModels(true);
@@ -110,7 +159,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
       setModels(result.models);
       setShowCustomModel(false);
       if (result.models.length > 0 && !result.models.some((item) => item.id === draft.model)) {
-        setDraft({ ...draft, model: result.models[0].id });
+        setDraft(prev => ({ ...prev, model: result.models[0].id }));
       }
       setMessage(t(language, "settings.modelsFetched", { url: result.sourceUrl, count: result.models.length }));
     } catch (fetchError) {
@@ -138,10 +187,6 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
           <h1>{t(language, "settings.title")}</h1>
           <p>{t(language, "settings.subtitle")}</p>
         </div>
-        <button className="primary-button" onClick={handleSave} type="button" data-tooltip={t(language, "tooltip.saveSettings")}>
-          <Save size={18} />
-          {t(language, "settings.save")}
-        </button>
       </div>
 
       {message && <div className="alert success">{message}</div>}
@@ -169,227 +214,277 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
         <section className="settings-content">
           <div className="panel-title">
             <h2>{currentTitle}</h2>
-            <span>{t(language, "settings.autosaveHint")}</span>
+            <div className="save-indicator">
+              {saveIndicator === "saved" && <span className="save-dot" title={t(language, "settings.saved")} />}
+              <span>{t(language, "settings.autosaveHint")}</span>
+            </div>
           </div>
 
-          {activeTab === "language" && (
-            <div className="settings-form">
-              <label className="field">
-                {t(language, "settings.appLanguage")}
-                <select
-                  value={draft.appLanguage}
-                  onChange={async (event) => {
-                    const newLanguage = normalizeAppLanguage(event.target.value);
-                    setDraft((prev) => ({ ...prev, appLanguage: newLanguage }));
-                    setMessage("");
-                    setError("");
-                    try {
-                      // 立即保存并传播，使侧边栏和所有页面即时刷新
-                      const updatedSettings = { ...settings, appLanguage: newLanguage };
-                      await saveSettings(updatedSettings);
-                      onSettingsChange(updatedSettings);
-                      setMessage(t(newLanguage, "settings.saved"));
-                    } catch (err) {
-                      setError(toErrorMessage(err));
-                    }
-                  }}
-                >
-                  {appLanguages.map((item) => (
-                    <option key={item.code} value={item.code}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <LanguageField
-                helpText={t(language, "settings.sourceHint")}
-                label={t(language, "settings.sourceLanguage")}
-                value={draft.sourceLanguage}
-                onChange={(value) => setDraft({ ...draft, sourceLanguage: value })}
-              />
-              <LanguageField
-                helpText={t(language, "settings.targetHint")}
-                label={t(language, "settings.targetLanguage")}
-                value={draft.targetLanguage}
-                onChange={(value) => setDraft({ ...draft, targetLanguage: value })}
-                excludeAuto
-              />
-            </div>
-          )}
-
-          {activeTab === "appearance" && (
-            <div className="settings-form">
-              <label className="field">
-                {t(language, "settings.uiTheme")}
-                <select
-                  value={draft.uiTheme}
-                  onChange={(event) => {
-                    const newTheme = event.target.value;
-                    setDraft((prev) => ({ ...prev, uiTheme: newTheme }));
-                    document.documentElement.dataset.theme = newTheme;
-                  }}
-                >
-                  {(["default", "ocean", "aurora", "gold"] as const).map((key) => (
-                    <option key={key} value={key}>{t(language, `settings.uiThemeOption.${key}` as TranslationKey)}</option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                {t(language, "settings.uiFont")}
-                {isLoadingFonts && <small className="field-hint">{t(language, "settings.loadingFonts")}</small>}
-                <select
-                  value={draft.uiFont}
-                  onChange={(event) => {
-                    const newFont = event.target.value;
-                    setDraft((prev) => ({ ...prev, uiFont: newFont }));
-                    applyFont(newFont);
-                  }}
-                >
-                  <optgroup label={t(language, "settings.uiFontPresets")}>
-                    {FONT_PRESETS.map((key) => (
-                      <option key={key} value={key}>{t(language, `settings.uiFontOption.${key}` as TranslationKey)}</option>
-                    ))}
-                  </optgroup>
-                  {fonts.length > 0 && (
-                    <optgroup label={t(language, "settings.uiFontSystem", { count: fonts.length })}>
-                      {fonts.map((font) => (
-                        <option key={font} value={font}>{font}</option>
+          <div key={activeTab} className="tab-fade-in">
+            {activeTab === "language" && (
+              <div className="settings-card">
+                <h3 className="settings-card-header">{t(language, "settings.tab.language")}</h3>
+                <div className="settings-card-body">
+                  <label className="field">
+                    {t(language, "settings.appLanguage")}
+                    <select
+                      value={draft.appLanguage}
+                      onChange={(event) => handleAppLanguageChange(event.target.value)}
+                    >
+                      {appLanguages.map((item) => (
+                        <option key={item.code} value={item.code}>
+                          {item.label}
+                        </option>
                       ))}
-                    </optgroup>
-                  )}
-                </select>
-              </label>
-            </div>
-          )}
+                    </select>
+                  </label>
+                  <LanguageField
+                    helpText={t(language, "settings.sourceHint")}
+                    label={t(language, "settings.sourceLanguage")}
+                    value={draft.sourceLanguage}
+                    onChange={(value) => {
+                      setDraft(prev => ({ ...prev, sourceLanguage: value }));
+                      scheduleSave();
+                    }}
+                  />
+                  <LanguageField
+                    helpText={t(language, "settings.targetHint")}
+                    label={t(language, "settings.targetLanguage")}
+                    value={draft.targetLanguage}
+                    onChange={(value) => {
+                      setDraft(prev => ({ ...prev, targetLanguage: value }));
+                      scheduleSave();
+                    }}
+                    excludeAuto
+                  />
+                </div>
+              </div>
+            )}
 
-          {activeTab === "api" && <ApiSettingsTab language={language} draft={draft} setDraft={setDraft} models={models} isFetchingModels={isFetchingModels} handleFetchModels={handleFetchModels} showCustomModel={showCustomModel} setShowCustomModel={setShowCustomModel} />}
-
-          {activeTab === "performance" && (
-            <div className="settings-form two-column">
-              <label className="field">
-                <span>{t(language, "settings.concurrency")}</span>
-                <input
-                  type="number" min="1" max="100"
-                  value={draft.concurrency}
-                  onChange={(e) => setDraft({...draft, concurrency: Number(e.target.value)})}
-                  data-tooltip={t(language, "settings.concurrencyHint")}
-                />
-                <small>{t(language, "settings.concurrencyHint")}</small>
-              </label>
-              <label className="field">
-                <span>{t(language, "settings.batchSize")}</span>
-                <input
-                  type="number" min="1" max="500"
-                  value={draft.batchSize}
-                  onChange={(e) => setDraft({...draft, batchSize: Number(e.target.value)})}
-                  data-tooltip={t(language, "settings.batchSizeHint")}
-                />
-                <small>{t(language, "settings.batchSizeHint")}</small>
-              </label>
-              <label className="field">
-                <span>{t(language, "settings.timeoutSecs")}</span>
-                <input
-                  type="number" min="10" max="600"
-                  value={draft.timeoutSecs}
-                  onChange={(e) => setDraft({...draft, timeoutSecs: Number(e.target.value)})}
-                  data-tooltip={t(language, "settings.timeoutSecsHint")}
-                />
-                <small>{t(language, "settings.timeoutSecsHint")}</small>
-              </label>
-              <label className="field">
-                <span>{t(language, "settings.retryCount")}</span>
-                <input
-                  type="number" min="0" max="20"
-                  value={draft.retryCount}
-                  onChange={(e) => setDraft({...draft, retryCount: Number(e.target.value)})}
-                  data-tooltip={t(language, "settings.retryCountHint")}
-                />
-                <small>{t(language, "settings.retryCountHint")}</small>
-              </label>
-              <label className="field">
-                <span>{t(language, "settings.rateLimitRpm")}</span>
-                <input
-                  type="number" min="0" max="100000"
-                  value={draft.rateLimitRpm}
-                  onChange={(e) => setDraft({...draft, rateLimitRpm: Number(e.target.value)})}
-                  data-tooltip={t(language, "settings.rateLimitRpmHint")}
-                />
-                <small>{t(language, "settings.rateLimitRpmHint")}</small>
-              </label>
-            </div>
-          )}
-
-          {activeTab === "reuse" && (
-            <div className="settings-form">
-              <Toggle label={t(language, "settings.preferDictionary")} checked={draft.preferUserDictionary} onChange={(checked) => setDraft({ ...draft, preferUserDictionary: checked })} />
-              <hr className="settings-separator" />
-              <h3 className="section-label">{t(language, "settings.translationPacks")}</h3>
-              {(draft.resourcePackNames ?? []).map((name, index) => (
-                <div key={index} className="resource-pack-row">
-                  <label className="field pack-row-input">
-                    {t(language, "settings.resourcePackName")} #{index + 1}
-                    <input
-                      value={name}
+            {activeTab === "appearance" && (
+              <div className="settings-card">
+                <h3 className="settings-card-header">{t(language, "settings.tab.appearance")}</h3>
+                <div className="settings-card-body">
+                  <label className="field">
+                    {t(language, "settings.uiTheme")}
+                    <select
+                      value={draft.uiTheme}
                       onChange={(event) => {
-                        const next = [...(draft.resourcePackNames ?? [])];
-                        next[index] = event.target.value;
-                        setDraft({ ...draft, resourcePackNames: next });
+                        const newTheme = event.target.value;
+                        setDraft(prev => ({ ...prev, uiTheme: newTheme }));
+                        document.documentElement.dataset.theme = newTheme;
+                        scheduleSave();
+                      }}
+                    >
+                      {(["default", "ocean", "aurora", "gold"] as const).map((key) => (
+                        <option key={key} value={key}>{t(language, `settings.uiThemeOption.${key}` as TranslationKey)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="field">
+                    {t(language, "settings.uiFont")}
+                    {isLoadingFonts && <small className="field-hint">{t(language, "settings.loadingFonts")}</small>}
+                    <select
+                      value={draft.uiFont}
+                      onChange={(event) => {
+                        const newFont = event.target.value;
+                        setDraft(prev => ({ ...prev, uiFont: newFont }));
+                        applyFont(newFont);
+                        scheduleSave();
+                      }}
+                    >
+                      <optgroup label={t(language, "settings.uiFontPresets")}>
+                        {FONT_PRESETS.map((key) => (
+                          <option key={key} value={key}>{t(language, `settings.uiFontOption.${key}` as TranslationKey)}</option>
+                        ))}
+                      </optgroup>
+                      {fonts.length > 0 && (
+                        <optgroup label={t(language, "settings.uiFontSystem", { count: fonts.length })}>
+                          {fonts.map((font) => (
+                            <option key={font} value={font}>{font}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "api" && <ApiSettingsTab language={language} draft={draft} setDraft={setDraft} models={models} isFetchingModels={isFetchingModels} handleFetchModels={handleFetchModels} showCustomModel={showCustomModel} setShowCustomModel={setShowCustomModel} scheduleSave={scheduleSave} />}
+
+            {activeTab === "performance" && (
+              <>
+                <div className="settings-card">
+                  <h3 className="settings-card-header">{t(language, "settings.card.concurrency")}</h3>
+                  <div className="settings-card-body two-column">
+                    <label className="field">
+                      <span>{t(language, "settings.concurrency")}</span>
+                      <input
+                        type="number" min="1" max="100"
+                        value={draft.concurrency}
+                        onChange={(e) => {
+                          setDraft(prev => ({ ...prev, concurrency: Number(e.target.value) }));
+                          scheduleSave();
+                        }}
+                      />
+                      <small>{t(language, "settings.concurrencyHint")}</small>
+                    </label>
+                    <label className="field">
+                      <span>{t(language, "settings.batchSize")}</span>
+                      <input
+                        type="number" min="1" max="500"
+                        value={draft.batchSize}
+                        onChange={(e) => {
+                          setDraft(prev => ({ ...prev, batchSize: Number(e.target.value) }));
+                          scheduleSave();
+                        }}
+                      />
+                      <small>{t(language, "settings.batchSizeHint")}</small>
+                    </label>
+                  </div>
+                </div>
+                <div className="settings-card">
+                  <h3 className="settings-card-header">{t(language, "settings.card.timeouts")}</h3>
+                  <div className="settings-card-body two-column">
+                    <label className="field">
+                      <span>{t(language, "settings.timeoutSecs")}</span>
+                      <input
+                        type="number" min="10" max="600"
+                        value={draft.timeoutSecs}
+                        onChange={(e) => {
+                          setDraft(prev => ({ ...prev, timeoutSecs: Number(e.target.value) }));
+                          scheduleSave();
+                        }}
+                      />
+                      <small>{t(language, "settings.timeoutSecsHint")}</small>
+                    </label>
+                    <label className="field">
+                      <span>{t(language, "settings.retryCount")}</span>
+                      <input
+                        type="number" min="0" max="20"
+                        value={draft.retryCount}
+                        onChange={(e) => {
+                          setDraft(prev => ({ ...prev, retryCount: Number(e.target.value) }));
+                          scheduleSave();
+                        }}
+                      />
+                      <small>{t(language, "settings.retryCountHint")}</small>
+                    </label>
+                    <label className="field" style={{ gridColumn: "1 / -1" }}>
+                      <span>{t(language, "settings.rateLimitRpm")}</span>
+                      <input
+                        type="number" min="0" max="100000"
+                        value={draft.rateLimitRpm}
+                        onChange={(e) => {
+                          setDraft(prev => ({ ...prev, rateLimitRpm: Number(e.target.value) }));
+                          scheduleSave();
+                        }}
+                      />
+                      <small>{t(language, "settings.rateLimitRpmHint")}</small>
+                    </label>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeTab === "reuse" && (
+              <>
+                <div className="settings-card">
+                  <h3 className="settings-card-header">{t(language, "settings.card.dictionary")}</h3>
+                  <div className="settings-card-body">
+                    <Toggle
+                      label={t(language, "settings.preferDictionary")}
+                      checked={draft.preferUserDictionary}
+                      onChange={(checked) => {
+                        setDraft(prev => ({ ...prev, preferUserDictionary: checked }));
+                        scheduleSave();
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="settings-card">
+                  <h3 className="settings-card-header">{t(language, "settings.translationPacks")}</h3>
+                  <div className="settings-card-body">
+                    <ChipInput
+                      values={draft.resourcePackNames ?? []}
+                      onChange={(newValues) => {
+                        setDraft(prev => ({ ...prev, resourcePackNames: newValues }));
+                        scheduleSave();
                       }}
                       placeholder={t(language, "settings.packPlaceholder")}
+                      addLabel={t(language, "settings.addPack")}
                     />
-                  </label>
-                  <button
-                    className="ghost-button danger pack-remove-btn"
-                    onClick={() => {
-                      const next = draft.resourcePackNames.filter((_, i) => i !== index);
-                      setDraft({ ...draft, resourcePackNames: next });
-                    }}
-                    type="button"
-                  >
-                    {t(language, "settings.removePack")}
-                  </button>
+                    <small style={{ color: "#6b665d", fontSize: 12 }}>
+                      {t(language, "settings.resourcePackHint")}
+                    </small>
+                  </div>
                 </div>
-              ))}
-              <button
-                className="ghost-button"
-                onClick={() => {
-                  const next = [...(draft.resourcePackNames ?? []), ""];
-                  setDraft({ ...draft, resourcePackNames: next });
-                }}
-                type="button"
-                style={{ marginTop: 8 }}
-              >
-                + {t(language, "settings.addPack")}
-              </button>
-              <small style={{ display: 'block', marginTop: 6, color: '#6b665d', fontSize: 12 }}>
-                {t(language, "settings.resourcePackHint")}
-              </small>
-            </div>
-          )}
+              </>
+            )}
 
-          {activeTab === "logs" && (
-            <div className="settings-form">
-              <Toggle label={t(language, "settings.resetMainLog")} checked={draft.resetMainLogOnStart} onChange={(checked) => setDraft({ ...draft, resetMainLogOnStart: checked })} />
-              <Toggle label={t(language, "settings.enableDebug")} checked={draft.enableDebugLog} onChange={(checked) => setDraft({ ...draft, enableDebugLog: checked })} />
-              <Toggle label={t(language, "settings.enableHttp")} checked={draft.enableHttpLog} onChange={(checked) => setDraft({ ...draft, enableHttpLog: checked })} />
-            </div>
-          )}
+            {activeTab === "logs" && (
+              <div className="settings-card">
+                <h3 className="settings-card-header">{t(language, "settings.tab.logs")}</h3>
+                <div className="settings-card-body">
+                  <Toggle
+                    label={t(language, "settings.resetMainLog")}
+                    checked={draft.resetMainLogOnStart}
+                    onChange={(checked) => {
+                      setDraft(prev => ({ ...prev, resetMainLogOnStart: checked }));
+                      scheduleSave();
+                    }}
+                  />
+                  <Toggle
+                    label={t(language, "settings.enableDebug")}
+                    checked={draft.enableDebugLog}
+                    onChange={(checked) => {
+                      setDraft(prev => ({ ...prev, enableDebugLog: checked }));
+                      scheduleSave();
+                    }}
+                  />
+                  <Toggle
+                    label={t(language, "settings.enableHttp")}
+                    checked={draft.enableHttpLog}
+                    onChange={(checked) => {
+                      setDraft(prev => ({ ...prev, enableHttpLog: checked }));
+                      scheduleSave();
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
-          {activeTab === "advanced" && (
-            <div className="settings-form">
-              <Field
-                label={t(language, "settings.defaultInstance")}
-                value={draft.instancePath}
-                onChange={(value) => setDraft({ ...draft, instancePath: value })}
-              />
-              <div className="empty-state compact">{t(language, "settings.futureAdvanced")}</div>
-            </div>
-          )}
+            {activeTab === "advanced" && (
+              <>
+                <div className="settings-card">
+                  <h3 className="settings-card-header">{t(language, "settings.defaultInstance")}</h3>
+                  <div className="settings-card-body">
+                    <Field
+                      label={t(language, "settings.defaultInstance")}
+                      value={draft.instancePath}
+                      onChange={(value) => {
+                        setDraft(prev => ({ ...prev, instancePath: value }));
+                        scheduleSave();
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-card-body">
+                    <div className="empty-state compact">{t(language, "settings.futureAdvanced")}</div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </section>
       </div>
     </section>
   );
 }
+
+// ── Field ─────────────────────────────────────
 
 interface FieldProps {
   label: string;
@@ -407,6 +502,8 @@ function Field({ label, value, type = "text", onChange }: FieldProps) {
   );
 }
 
+// ── Toggle (CSS sliding switch) ───────────────
+
 interface ToggleProps {
   label: string;
   checked: boolean;
@@ -417,10 +514,85 @@ function Toggle({ label, checked, onChange }: ToggleProps) {
   return (
     <label className="toggle-row">
       <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+      <span
+        className={`toggle-track${checked ? " active" : ""}`}
+        onClick={() => onChange(!checked)}
+        role="switch"
+        aria-checked={checked}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onChange(!checked);
+          }
+        }}
+      >
+        <span className="toggle-thumb" />
+      </span>
     </label>
   );
 }
+
+// ── Chip Input ────────────────────────────────
+
+interface ChipInputProps {
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+  addLabel: string;
+}
+
+function ChipInput({ values, onChange, placeholder, addLabel }: ChipInputProps) {
+  const [inputValue, setInputValue] = useState("");
+
+  const addChip = () => {
+    const trimmed = inputValue.trim();
+    if (trimmed && !values.includes(trimmed)) {
+      onChange([...values, trimmed]);
+      setInputValue("");
+    }
+  };
+
+  return (
+    <div className="chip-input">
+      {values.length > 0 && (
+        <div className="chip-list">
+          {values.map((v, i) => (
+            <span key={i} className="chip">
+              <span className="chip-label" title={v}>{v}</span>
+              <button
+                className="chip-remove"
+                onClick={() => onChange(values.filter((_, idx) => idx !== i))}
+                type="button"
+                aria-label="Remove"
+              >
+                <X size={12} />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="chip-add-row">
+        <input
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addChip();
+            }
+          }}
+          placeholder={placeholder}
+        />
+        <button className="ghost-button" onClick={addChip} type="button" style={{ flexShrink: 0 }}>
+          {addLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Language Field ─────────────────────────────
 
 interface LanguageFieldProps {
   label: string;
@@ -457,6 +629,8 @@ function LanguageField({
   );
 }
 
+// ── Helpers ───────────────────────────────────
+
 function normalizeTranslationLanguage(value: string, allowAuto: boolean): string | null {
   const normalized = value.trim().toLowerCase();
   if (normalized === "auto") return allowAuto ? normalized : null;
@@ -467,6 +641,8 @@ function normalizeTranslationLanguage(value: string, allowAuto: boolean): string
 function toErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
+
+// ── API Settings Tab ──────────────────────────
 
 const PROVIDER_PRESETS: Record<string, { baseUrl: string; model: string }> = {
   deepseek: { baseUrl: "https://api.deepseek.com", model: "deepseek-chat" },
@@ -487,6 +663,7 @@ interface ApiSettingsTabProps {
   handleFetchModels: () => Promise<void>;
   showCustomModel: boolean;
   setShowCustomModel: React.Dispatch<React.SetStateAction<boolean>>;
+  scheduleSave: () => void;
 }
 
 const PROVIDER_ICONS: Record<string, React.ReactNode> = {
@@ -494,11 +671,10 @@ const PROVIDER_ICONS: Record<string, React.ReactNode> = {
   openai: <Cloud size={16} />,
 };
 
-function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, handleFetchModels, showCustomModel, setShowCustomModel }: ApiSettingsTabProps) {
+function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, handleFetchModels, showCustomModel, setShowCustomModel, scheduleSave }: ApiSettingsTabProps) {
   const [providerOpen, setProviderOpen] = useState(false);
   const providerRef = useRef<HTMLDivElement>(null);
 
-  // Click outside to close provider dropdown
   useEffect(() => {
     if (!providerOpen) return;
     const handler = (e: MouseEvent) => {
@@ -523,151 +699,193 @@ function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, h
       setDraft((prev) => ({ ...prev, provider }));
     }
     setProviderOpen(false);
-  }, [setDraft]);
+    scheduleSave();
+  }, [setDraft, scheduleSave]);
 
   return (
-    <div className="settings-form two-column">
-      {/* Provider selector — full width */}
-      <label className="field" style={{ gridColumn: "1 / -1" }}>
-        <span>{t(language, "settings.provider")}</span>
-        <div className="provider-select-wrap" ref={providerRef}>
-          <button
-            className="provider-select-btn"
-            type="button"
-            onClick={() => setProviderOpen((p) => !p)}
-          >
-            <span className="provider-select-label">
-              {PROVIDER_ICONS[draft.provider]}
-              {PROVIDER_OPTIONS.find((o) => o.value === draft.provider)?.label}
-            </span>
-            <ChevronDown size={14} className={`provider-chevron ${providerOpen ? "open" : ""}`} />
-          </button>
-          {providerOpen && (
-            <div className="provider-dropdown">
-              {PROVIDER_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  className={`provider-option${draft.provider === opt.value ? " selected" : ""}`}
-                  type="button"
-                  onClick={() => selectProvider(opt.value)}
-                >
-                  {PROVIDER_ICONS[opt.value]}
-                  <span>{opt.label}</span>
-                  {draft.provider === opt.value && <Check size={14} className="provider-check" />}
-                </button>
-              ))}
+    <>
+      <div className="settings-card">
+        <h3 className="settings-card-header">
+          <Server size={14} className="card-header-icon" />
+          {t(language, "settings.provider")}
+        </h3>
+        <div className="settings-card-body two-column">
+          <label className="field" style={{ gridColumn: "1 / -1" }}>
+            <span>{t(language, "settings.provider")}</span>
+            <div className="provider-select-wrap" ref={providerRef}>
+              <button
+                className="provider-select-btn"
+                type="button"
+                onClick={() => setProviderOpen((p) => !p)}
+              >
+                <span className="provider-select-label">
+                  {PROVIDER_ICONS[draft.provider]}
+                  {PROVIDER_OPTIONS.find((o) => o.value === draft.provider)?.label || draft.provider}
+                </span>
+                <ChevronDown size={14} className={`provider-chevron ${providerOpen ? "open" : ""}`} />
+              </button>
+              {providerOpen && (
+                <div className="provider-dropdown">
+                  {PROVIDER_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      className={`provider-option${draft.provider === opt.value ? " selected" : ""}`}
+                      type="button"
+                      onClick={() => selectProvider(opt.value)}
+                    >
+                      {PROVIDER_ICONS[opt.value]}
+                      <span>{opt.label}</span>
+                      {draft.provider === opt.value && <Check size={14} className="provider-check" />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
+          </label>
+          <Field
+            label={t(language, "settings.baseUrl")}
+            value={draft.baseUrl}
+            onChange={(value) => {
+              setDraft((prev) => ({ ...prev, baseUrl: value }));
+              scheduleSave();
+            }}
+          />
+          <Field
+            label={t(language, "settings.apiKey")}
+            type="password"
+            value={draft.apiKey}
+            onChange={(value) => {
+              setDraft((prev) => ({ ...prev, apiKey: value }));
+              scheduleSave();
+            }}
+          />
         </div>
-      </label>
-
-      <Field
-        label={t(language, "settings.baseUrl")}
-        value={draft.baseUrl}
-        onChange={(value) => setDraft((prev) => ({ ...prev, baseUrl: value }))}
-      />
-      <Field
-        label={t(language, "settings.apiKey")}
-        type="password"
-        value={draft.apiKey}
-        onChange={(value) => setDraft((prev) => ({ ...prev, apiKey: value }))}
-      />
-
-      <label className="field" style={{ gridColumn: "1 / -1" }}>
-        {t(language, "settings.modelLabel")}
-        <div className="inline-control">
-          {showCustomModel || models.length === 0 ? (
+      </div>
+      <div className="settings-card">
+        <h3 className="settings-card-header">
+          <Bot size={14} className="card-header-icon" />
+          {t(language, "settings.modelLabel")}
+        </h3>
+        <div className="settings-card-body">
+          <label className="field">
+            {t(language, "settings.modelLabel")}
+            <div className="inline-control">
+              {showCustomModel || models.length === 0 ? (
+                <input
+                  value={draft.model}
+                  onChange={(event) => {
+                    setDraft((prev) => ({ ...prev, model: event.target.value }));
+                    scheduleSave();
+                  }}
+                  placeholder={
+                    models.length === 0
+                      ? draft.model
+                      : t(language, "settings.modelPlaceholder")
+                  }
+                />
+              ) : (
+                <select
+                  value={models.some((item) => item.id === draft.model) ? draft.model : ""}
+                  onChange={(event) => {
+                    setDraft((prev) => ({ ...prev, model: event.target.value }));
+                    scheduleSave();
+                  }}
+                >
+                  <option value="" disabled>
+                    {t(language, "settings.selectModel")}
+                  </option>
+                  {models.map((model) => (
+                    <option key={model.id} value={model.id}>
+                      {model.id}
+                      {model.ownedBy ? ` (${model.ownedBy})` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                className="ghost-button"
+                disabled={isFetchingModels || !draft.baseUrl || !draft.apiKey}
+                onClick={handleFetchModels}
+                type="button"
+                data-tooltip={t(language, "tooltip.fetchModels")}
+              >
+                <RefreshCcw size={17} />
+                {t(language, "settings.fetchModels")}
+              </button>
+            </div>
+            {!showCustomModel && models.length > 0 && (
+              <button
+                className="text-button"
+                onClick={() => setShowCustomModel(true)}
+                type="button"
+              >
+                {t(language, "settings.customModel")}
+              </button>
+            )}
+            {showCustomModel && (
+              <button
+                className="text-button"
+                onClick={() => setShowCustomModel(false)}
+                type="button"
+              >
+                {t(language, "settings.pickFromList")}
+              </button>
+            )}
+          </label>
+        </div>
+      </div>
+      <div className="settings-card">
+        <h3 className="settings-card-header">
+          <Cpu size={14} className="card-header-icon" />
+          {t(language, "settings.card.apiParams")}
+        </h3>
+        <div className="settings-card-body two-column">
+          <label className="field">
+            <span>{t(language, "settings.temperature")}</span>
             <input
-              value={draft.model}
-              onChange={(event) => setDraft((prev) => ({ ...prev, model: event.target.value }))}
-              placeholder={
-                models.length === 0
-                  ? draft.model
-                  : t(language, "settings.modelPlaceholder")
-              }
+              type="number"
+              min="0"
+              max="2"
+              step="0.1"
+              value={draft.temperature}
+              onChange={(event) => {
+                setDraft((prev) => ({ ...prev, temperature: Number(event.target.value) }));
+                scheduleSave();
+              }}
             />
-          ) : (
-            <select
-              value={models.some((item) => item.id === draft.model) ? draft.model : ""}
-              onChange={(event) => setDraft((prev) => ({ ...prev, model: event.target.value }))}
-            >
-              <option value="" disabled>
-                {t(language, "settings.selectModel")}
-              </option>
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.id}
-                  {model.ownedBy ? ` (${model.ownedBy})` : ""}
-                </option>
-              ))}
-            </select>
-          )}
-          <button
-            className="ghost-button"
-            disabled={isFetchingModels || !draft.baseUrl || !draft.apiKey}
-            onClick={handleFetchModels}
-            type="button"
-            data-tooltip={t(language, "tooltip.fetchModels")}
-          >
-            <RefreshCcw size={17} />
-            {t(language, "settings.fetchModels")}
-          </button>
+            <small>{t(language, "settings.temperatureHint")}</small>
+          </label>
+          <label className="field">
+            <span>{t(language, "settings.maxTokens")}</span>
+            <input
+              type="number"
+              min="0"
+              max={999999}
+              step="1"
+              value={draft.maxTokens === 0 ? "" : draft.maxTokens}
+              placeholder={t(language, "settings.maxTokensPlaceholder")}
+              onChange={(event) => {
+                setDraft((prev) => ({ ...prev, maxTokens: event.target.value === "" ? 0 : Number(event.target.value) }));
+                scheduleSave();
+              }}
+            />
+            <small>{t(language, "settings.maxTokensHint")}</small>
+          </label>
+          <label className="field" style={{ gridColumn: "1 / -1" }}>
+            <span>{t(language, "settings.systemPrompt")}</span>
+            <textarea
+              rows={6}
+              value={draft.systemPrompt}
+              onChange={(e) => {
+                setDraft((prev) => ({ ...prev, systemPrompt: e.target.value }));
+                scheduleSave();
+              }}
+              style={{ fontFamily: "monospace", fontSize: 13, lineHeight: 1.5, width: "100%" }}
+            />
+            <small>{t(language, "settings.systemPromptHint")}</small>
+          </label>
         </div>
-        {!showCustomModel && models.length > 0 && (
-          <button
-            className="text-button"
-            onClick={() => setShowCustomModel(true)}
-            type="button"
-          >
-            {t(language, "settings.customModel")}
-          </button>
-        )}
-        {showCustomModel && (
-          <button
-            className="text-button"
-            onClick={() => setShowCustomModel(false)}
-            type="button"
-          >
-            {t(language, "settings.pickFromList")}
-          </button>
-        )}
-      </label>
-
-      <label className="field">
-        <span>{t(language, "settings.temperature")}</span>
-        <input
-          type="number"
-          min="0"
-          max="2"
-          step="0.1"
-          value={draft.temperature}
-          onChange={(event) => setDraft((prev) => ({ ...prev, temperature: Number(event.target.value) }))}
-        />
-        <small>{t(language, "settings.temperatureHint")}</small>
-      </label>
-      <label className="field">
-        <span>{t(language, "settings.maxTokens")}</span>
-        <input
-          type="number"
-          min="0"
-          max={999999}
-          step="1"
-          value={draft.maxTokens === 0 ? "" : draft.maxTokens}
-          placeholder={t(language, "settings.maxTokensPlaceholder")}
-          onChange={(event) => setDraft((prev) => ({ ...prev, maxTokens: event.target.value === "" ? 0 : Number(event.target.value) }))}
-        />
-        <small>{t(language, "settings.maxTokensHint")}</small>
-      </label>
-      <label className="field" style={{ gridColumn: "1 / -1" }}>
-        <span>{t(language, "settings.systemPrompt")}</span>
-        <textarea
-          rows={6}
-          value={draft.systemPrompt}
-          onChange={(e) => setDraft((prev) => ({...prev, systemPrompt: e.target.value}))}
-          style={{ fontFamily: "monospace", fontSize: 13, lineHeight: 1.5, width: "100%" }}
-        />
-        <small>{t(language, "settings.systemPromptHint")}</small>
-      </label>
-    </div>
+      </div>
+    </>
   );
 }

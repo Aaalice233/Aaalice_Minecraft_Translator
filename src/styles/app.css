@@ -924,7 +924,14 @@ select optgroup option {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.panel-title h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .panel-title span {
@@ -1307,25 +1314,7 @@ th.sorted-default .sort-indicator {
 }
 
 /* ── Resource pack array editor ──────────────────── */
-.resource-pack-row {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-}
 
-.resource-pack-row + .resource-pack-row {
-  margin-top: 8px;
-}
-
-.pack-row-input {
-  flex: 1;
-  min-width: 0;
-}
-
-.pack-remove-btn {
-  flex-shrink: 0;
-  min-width: 80px;
-}
 
 .settings-shell {
   display: grid;
@@ -1374,15 +1363,6 @@ th.sorted-default .sort-indicator {
   padding: 18px;
 }
 
-.settings-form {
-  display: grid;
-  gap: 16px;
-  max-width: 760px;
-}
-
-.settings-form.two-column {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
 
 .inline-control {
   display: grid;
@@ -1411,19 +1391,10 @@ th.sorted-default .sort-indicator {
   gap: 14px;
   min-height: 36px;
   color: var(--text-secondary);
+  cursor: pointer;
 }
 
-.toggle-row input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--accent);
-}
 
-.settings-separator {
-  border: 0;
-  border-top: 1px solid #e3ddd1;
-  margin: 6px 0;
-}
 
 .section-label {
   font-size: 14px;
@@ -1453,13 +1424,206 @@ th.sorted-default .sort-indicator {
   min-height: 92px;
 }
 
+/* ── Settings Card ──────────────────────────── */
+.settings-card {
+  background: #fff;
+  border: 1px solid #ede8dc;
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.settings-card + .settings-card {
+  margin-top: 10px;
+}
+
+.settings-card-header {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ede8dc;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-card-header .card-header-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.settings-card-body {
+  display: grid;
+  gap: 14px;
+}
+
+.settings-card-body.two-column {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .settings-card-body.two-column {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Custom Toggle Switch ────────────────────── */
+.toggle-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  background: #ded8cc;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
+}
+
+.toggle-track.active {
+  background: var(--accent);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+}
+
+.toggle-track.active .toggle-thumb {
+  transform: translateX(16px);
+}
+
+/* ── Chip Input ──────────────────────────────── */
+.chip-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 13px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 600;
+  max-width: 240px;
+}
+
+.chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--accent-text);
+  cursor: pointer;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+
+.chip-remove:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.chip-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chip-add-row input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  font-size: 13px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.chip-add-row input:focus {
+  border-color: var(--accent);
+}
+
+.chip-add-row input::placeholder {
+  color: var(--text-muted);
+}
+
+/* ── Auto-save Indicator ─────────────────────── */
+.save-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.save-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: saveDotPulse 2s ease-in-out infinite;
+}
+
+@keyframes saveDotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Tab Fade-in Animation ───────────────────── */
+.tab-fade-in {
+  animation: tabFadeIn 150ms ease-out;
+}
+
+@keyframes tabFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ── Number inputs: tabular-nums ─────────────── */
+.settings-card-body input[type="number"] {
+  font-variant-numeric: tabular-nums;
+}
+
 @media (max-width: 1180px) {
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .settings-shell,
-  .settings-form.two-column {
+  .settings-shell {
     grid-template-columns: 1fr;
   }
 
