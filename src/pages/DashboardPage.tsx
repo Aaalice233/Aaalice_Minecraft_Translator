@@ -1,8 +1,10 @@
-import { AlertTriangle, Filter, FolderOpen, Loader2, RefreshCcw, ScanLine, Square, X } from "lucide-react";
+import { AlertTriangle, Filter, FolderOpen, Loader2, Package, RefreshCcw, ScanLine, Square, X, Zap } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
+import { useAppStore } from "../stores/appStore";
+import { CompletionSummary } from "../components/CompletionSummary";
 import type { AppLanguage, ModScanResult, ScanProgressEvent, ScanSummary, ScanWarning, Settings } from "../types";
 import type { TranslationKey } from "../i18n/translations";
 
@@ -102,6 +104,9 @@ export const DashboardPage = React.memo(function DashboardPage({
   const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [error, setError] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+  const setScanElapsedMs = useAppStore((s) => s.setScanElapsedMs);
+  const scanElapsedMs = useAppStore((s) => s.scanElapsedMs);
 
   useEffect(() => { isScanningRef.current = isScanning; }, [isScanning]);
 
@@ -121,6 +126,7 @@ export const DashboardPage = React.memo(function DashboardPage({
   useEffect(() => {
     if (instancePath && settings.instancePath && instancePath !== settings.instancePath) {
       onBusyChange?.(false);
+      setScanElapsedMs(null);
     }
   }, [instancePath, settings.instancePath, onBusyChange]);
 
@@ -267,16 +273,20 @@ export const DashboardPage = React.memo(function DashboardPage({
         if (isScanningRef.current) {
           setIsScanning(false);
           setIsCancelling(false);
+          setScanElapsedMs(null);
         }
       }, 3000);
     } catch (err) {
       console.error("取消扫描失败:", err);
       setError("取消扫描失败: " + (err instanceof Error ? err.message : String(err)));
+      setScanElapsedMs(null);
       setIsCancelling(false);
     }
   }
 
   async function handleScan() {
+    startTimeRef.current = performance.now();
+    setScanElapsedMs(null);
     setIsScanning(true);
     setIsCancelling(false);
     onBusyChange?.(false);
@@ -297,11 +307,19 @@ export const DashboardPage = React.memo(function DashboardPage({
         nextSettings.targetLanguage,
       );
       onScanSummaryChange?.(summary);
+      if (!summary.cancelled) {
+        const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
+        setScanElapsedMs(elapsed);
+      } else {
+        setScanElapsedMs(null);
+      }
     } catch (scanError) {
+      setScanElapsedMs(null);
       setError(scanError instanceof Error ? scanError.message : String(scanError));
     } finally {
       setIsScanning(false);
       setIsCancelling(false);
+      startTimeRef.current = null;
     }
   }
 
@@ -475,6 +493,7 @@ export const DashboardPage = React.memo(function DashboardPage({
         </button>
       </div>
 
+      {/* During scan: show progress bar */}
       {isScanning && scanProgress && (
         <div className="scan-progress">
           <div className="scan-progress-header">
@@ -496,6 +515,26 @@ export const DashboardPage = React.memo(function DashboardPage({
             </small>
           )}
         </div>
+      )}
+
+      {/* After scan completes successfully: show completion summary */}
+      {!isScanning && scanSummary && !scanSummary.cancelled && !error && scanElapsedMs !== null && (
+        <CompletionSummary
+          title={t(language, "summary.scanCompleted")}
+          elapsedMs={scanElapsedMs}
+          primaryMetrics={[
+            {
+              icon: <Package size={18} />,
+              template: t(language, "summary.mods"),
+              count: scanSummary.mods.length,
+            },
+            {
+              icon: <Zap size={18} />,
+              template: t(language, "summary.modsSpeed"),
+              count: scanElapsedMs > 0 ? Math.round((scanSummary.mods.length / (scanElapsedMs / 1000)) * 10) / 10 : 0,
+            },
+          ]}
+        />
       )}
 
       {error && (

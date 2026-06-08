@@ -1,9 +1,11 @@
-import { AlertTriangle, CheckCircle, FileText, Filter, Play, RefreshCw, Square, X, XCircle } from "lucide-react";
+import { AlertTriangle, BookOpen, Bot, CheckCircle, FileText, Filter, Play, RefreshCw, Square, X, XCircle, Zap } from "lucide-react";
 import { TableVirtuoso } from "react-virtuoso";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cancelTranslation, loadLatestTranslationJob, retryFailedEntries, startTranslation } from "../api/tauri";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
+import { useAppStore } from "../stores/appStore";
+import { CompletionSummary } from "../components/CompletionSummary";
 import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
 
 function csvQuote(val: string): string {
@@ -172,6 +174,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   const [logVersion, setLogVersion] = useState(0);
   const entryProgressMapRef = useRef<Map<string, EntryProgress>>(new Map());
   const [entryProgressVersion, setEntryProgressVersion] = useState(0);
+  const startTimeRef = useRef<number | null>(null);
+  const setTranslateElapsedMs = useAppStore((s) => s.setTranslateElapsedMs);
+  const translateElapsedMs = useAppStore((s) => s.translateElapsedMs);
   const [isRetrying, setIsRetrying] = useState(false);
   const [filterTerm, setFilterTerm] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
@@ -290,6 +295,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     const srcLang = settings.sourceLanguage || scanSummary.sourceLanguage;
     const tgtLang = settings.targetLanguage || scanSummary.targetLanguage;
 
+    startTimeRef.current = performance.now();
+    setTranslateElapsedMs(null);
     setStatus("running");
     setTranslateProgress(null);
     setTranslationResult(null);
@@ -308,6 +315,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       setTranslationResult(result);
       setStatus("completed");
       onCompleteChange?.(true);
+      const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
+      setTranslateElapsedMs(elapsed);
 
       // Look up jobId and store in AppContext for cross-page access
       if ("__TAURI_INTERNALS__" in window) {
@@ -346,6 +355,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       } catch { return; }
     }
 
+    startTimeRef.current = performance.now();
+    setTranslateElapsedMs(null);
     setIsRetrying(true);
     setTranslateProgress(null);
     setStatus("running");
@@ -354,8 +365,11 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       if (cancelledRef.current) return;
       setStatus("completed");
       setTranslationResult(result);
+      const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
+      setTranslateElapsedMs(elapsed);
     } catch (err) {
       if (cancelledRef.current) return;
+      setTranslateElapsedMs(null);
       setTranslationError(toErrorMessage(err));
       setStatus("failed");
     } finally {
@@ -365,6 +379,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
 
   async function handleCancel() {
     cancelledRef.current = true; // signal handleStart not to set completed
+    setTranslateElapsedMs(null);
     try {
       await cancelTranslation();
       setStatus("canceled");
@@ -606,7 +621,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         </div>
       )}
 
-      {(isRunning || status === "completed" || status === "canceled") && (
+      {/* During translation or cancelled: show progress card */}
+      {(isRunning || status === "canceled") && (
         <div className="scan-progress">
           <div className="scan-progress-header">
             <strong className="scan-progress-mod" style={{ maxWidth: 300, flex: 1, margin: 0 }}>
@@ -624,7 +640,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
             )}
           </div>
 
-          {(isRunning || status === "completed") && scanSummary && scanSummary.actualPendingEntries > 0 ? (
+          {isRunning && scanSummary && scanSummary.actualPendingEntries > 0 ? (
             <>
               <div className="essb-container">
                 <div className="essb-track" style={{ height: 20 }}>
@@ -684,7 +700,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                     width: translateProgress && translateProgress.total > 0
                       ? `${progressPercent}%`
                       : "0%",
-                    background: status === "completed" ? "#1f8a5b" : status === "canceled" ? "#b0a99c" : undefined,
+                    background: status === "canceled" ? "#b0a99c" : undefined,
                   }}
                 />
               </div>
@@ -696,17 +712,49 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
             </>
           )}
 
-          {status === "completed" && (
-            <small className="scan-progress-status">
-              ✔ {t(language, "jobs.title")} — {translationResult ?? 0} {t(language, "jobs.totalEntries")}
-            </small>
-          )}
           {status === "canceled" && (
             <small className="scan-progress-status status-canceled">
               {t(language, "jobs.canceledStatus")}
             </small>
           )}
         </div>
+      )}
+
+      {/* After translation completes: show completion summary */}
+      {!isRunning && status === "completed" && translateElapsedMs !== null && (
+        <CompletionSummary
+          title={t(language, "summary.translateCompleted")}
+          elapsedMs={translateElapsedMs}
+          primaryMetrics={[
+            {
+              icon: <FileText size={18} />,
+              template: t(language, "summary.entries"),
+              count: translationResult ?? entryCounts.completed,
+            },
+            {
+              icon: <Zap size={18} />,
+              template: t(language, "summary.entriesSpeed"),
+              count: translateElapsedMs > 0
+                ? Math.round(((translationResult ?? entryCounts.completed) / (translateElapsedMs / 1000)) * 10) / 10
+                : 0,
+            },
+          ]}
+          secondaryMetrics={[
+            {
+              icon: <BookOpen size={15} />,
+              template: t(language, "summary.dictionary"),
+              count: entryCounts.dictionaryHit,
+            },
+            {
+              icon: <Bot size={15} />,
+              template: t(language, "summary.llm"),
+              count: Math.max(0, (translationResult ?? entryCounts.completed) - entryCounts.dictionaryHit),
+            },
+            ...(entryCounts.failed > 0
+              ? [{ icon: <XCircle size={15} />, template: t(language, "summary.failed"), count: entryCounts.failed }]
+              : []),
+          ]}
+        />
       )}
 
       <div className="log-panel" style={{ marginTop: isRunning || status !== "idle" ? 16 : 0 }}>

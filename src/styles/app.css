@@ -670,6 +670,103 @@ select optgroup option {
   font-weight: 500;
 }
 
+/* ── Completion Summary Card ──────────────── */
+
+.cs-card {
+  margin-bottom: 10px;
+  padding: 14px 16px;
+  border: 1px solid #ded8cc;
+  border-radius: 6px;
+  background: var(--bg-surface);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+}
+
+.cs-card--visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cs-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.cs-elapsed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+}
+
+.cs-elapsed-icon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.cs-elapsed-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.cs-divider {
+  margin: 10px 0;
+  border: 0;
+  border-top: 1px solid #ede8dc;
+}
+
+.cs-metrics-row {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.cs-metrics-row--primary {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.cs-metrics-row--secondary {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.cs-metric {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.cs-metric-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+}
+
+.cs-metric-icon--sm {
+  width: 18px;
+  height: 18px;
+}
+
+.cs-metric-text--sm {
+  color: var(--text-muted);
+}
+
 .alert {
   display: flex;
   align-items: center;

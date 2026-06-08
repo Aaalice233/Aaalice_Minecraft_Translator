@@ -2,22 +2,10 @@
  * Application-wide state store (Zustand).
  *
  * ⚠️ TYPE SYNC: Data types shared between frontend (types.ts) and backend
- * (models.rs) must be kept in sync. When adding a new field to a Rust model
- * that's serialized to the frontend, add the corresponding field in types.ts.
- * See comments in types.ts and src-tauri/src/core/models.rs.
- *
- *
- * Replaces the previous AppContext + useReducer pattern with a single
- * Zustand store for better performance (no unnecessary re-renders via
- * Context), simpler selectors, and easier integration with async flows.
- *
- * Migration strategy (incremental):
- * 1. Create this store with the same shape as AppContext state
- * 2. Wire it into App.tsx alongside the old AppContext
- * 3. Migrate pages one-by-one to use the store directly
- * 4. Remove AppContext once all consumers are migrated
+ * (models.rs) must be kept in sync. See comments in types.ts and models.rs.
  */
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
 import type { PageNavStatus, ScanSummary, Settings } from "../types";
 
 export type PageKey =
@@ -41,6 +29,10 @@ interface AppState {
   // — Packages page selected job (P10) —
   packagesJobId: string | null;
 
+  // — Elapsed time for completion summaries —
+  scanElapsedMs: number | null;
+  translateElapsedMs: number | null;
+
   // — Actions —
   setSettings: (s: Settings) => void;
   setScanSummary: (s: ScanSummary | null) => void;
@@ -48,41 +40,57 @@ interface AppState {
   setTranslationStatus: (status: TranslationPageStatus, result?: number | null, error?: string) => void;
   setTranslationJobId: (id: string | null) => void;
   setPackagesJobId: (id: string | null) => void;
+  setScanElapsedMs: (ms: number | null) => void;
+  setTranslateElapsedMs: (ms: number | null) => void;
 }
 
-export const useAppStore = create<AppState>()((set) => ({
-  // Initial state
-  settings: null,
-  scanSummary: null,
-  navStates: {},
-  translationJobId: null,
-  translationStatus: "idle",
-  translationResult: null,
-  translationError: "",
-  packagesJobId: null,
+export const useAppStore = create<AppState>()(
+  persist(
+    (set) => ({
+      // Initial state
+      settings: null,
+      scanSummary: null,
+      navStates: {},
+      translationJobId: null,
+      translationStatus: "idle",
+      translationResult: null,
+      translationError: "",
+      packagesJobId: null,
+      scanElapsedMs: null,
+      translateElapsedMs: null,
 
-  // Actions
-  setSettings: (s) => set({ settings: s }),
+      // Actions
+      setSettings: (s) => set({ settings: s }),
+      setScanSummary: (s) => set({ scanSummary: s }),
 
-  setScanSummary: (s) => set({ scanSummary: s }),
+      setNavState: (key, status) =>
+        set((state) => {
+          // Skip redundant updates
+          if (state.navStates[key] === status) return state;
+          // Once completed, don't revert to idle
+          if (status === "idle" && state.navStates[key] === "completed") return state;
+          return { navStates: { ...state.navStates, [key]: status } };
+        }),
 
-  setNavState: (key, status) =>
-    set((state) => {
-      // Skip redundant updates
-      if (state.navStates[key] === status) return state;
-      // Once completed, don't revert to idle
-      if (status === "idle" && state.navStates[key] === "completed") return state;
-      return { navStates: { ...state.navStates, [key]: status } };
+      setTranslationStatus: (status, result, error) =>
+        set((state) => ({
+          translationStatus: status,
+          translationResult: result !== undefined ? result : state.translationResult,
+          translationError: error !== undefined ? error : state.translationError,
+        })),
+
+      setTranslationJobId: (id) => set({ translationJobId: id }),
+      setPackagesJobId: (id) => set({ packagesJobId: id }),
+      setScanElapsedMs: (ms) => set({ scanElapsedMs: ms }),
+      setTranslateElapsedMs: (ms) => set({ translateElapsedMs: ms }),
     }),
-
-  setTranslationStatus: (status, result, error) =>
-    set((state) => ({
-      translationStatus: status,
-      translationResult: result !== undefined ? result : state.translationResult,
-      translationError: error !== undefined ? error : state.translationError,
-    })),
-
-  setTranslationJobId: (id) => set({ translationJobId: id }),
-
-  setPackagesJobId: (id) => set({ packagesJobId: id }),
-}));
+    {
+      name: "app-store",
+      // Only persist elapsed time values (transient data survives restarts)
+      partialize: (state) => ({
+        scanElapsedMs: state.scanElapsedMs,
+        translateElapsedMs: state.translateElapsedMs,
+      }),
+    },
+  ),
+);

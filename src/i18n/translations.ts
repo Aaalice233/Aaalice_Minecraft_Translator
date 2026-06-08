@@ -268,7 +268,17 @@ export type TranslationKey =
   | "tooltip.nav"
   | "tooltip.currentPage"
   | "tooltip.busy"
-  | "tooltip.completed";
+  | "tooltip.completed"
+  | "summary.scanCompleted"
+  | "summary.translateCompleted"
+  | "summary.elapsed"
+  | "summary.mods"
+  | "summary.modsSpeed"
+  | "summary.entries"
+  | "summary.entriesSpeed"
+  | "summary.dictionary"
+  | "summary.llm"
+  | "summary.failed";
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -572,6 +582,16 @@ const zhCn: TranslationMap = {
   "tooltip.currentPage": "当前所在页面",
   "tooltip.busy": "{page} 正在运行…",
   "tooltip.completed": "{page} 已完成",
+  "summary.scanCompleted": "扫描完成",
+  "summary.translateCompleted": "翻译完成",
+  "summary.elapsed": "耗时",
+  "summary.mods": "{count} 个模组",
+  "summary.modsSpeed": "{speed} 模组/秒",
+  "summary.entries": "{count} 条翻译",
+  "summary.entriesSpeed": "{speed} 条/秒",
+  "summary.dictionary": "词典 {count}",
+  "summary.llm": "LLM {count}",
+  "summary.failed": "失败 {count}",
 };
 
 const enUs: TranslationMap = {
@@ -779,6 +799,16 @@ const enUs: TranslationMap = {
   "tooltip.currentPage": "You are here",
   "tooltip.busy": "{page} is running…",
   "tooltip.completed": "{page} completed",
+  "summary.scanCompleted": "Scan Complete",
+  "summary.translateCompleted": "Translation Complete",
+  "summary.elapsed": "Elapsed",
+  "summary.mods": "{count} mods",
+  "summary.modsSpeed": "{speed} mods/s",
+  "summary.entries": "{count} entries",
+  "summary.entriesSpeed": "{speed} entries/s",
+  "summary.dictionary": "Dict {count}",
+  "summary.llm": "LLM {count}",
+  "summary.failed": "Failed {count}",
 };
 
 const jaJp: TranslationMap = {
@@ -941,6 +971,16 @@ const jaJp: TranslationMap = {
   "tooltip.currentPage": "現在のページ",
   "tooltip.busy": "{page} を実行中…",
   "tooltip.completed": "{page} 完了",
+  "summary.scanCompleted": "スキャン完了",
+  "summary.translateCompleted": "翻訳完了",
+  "summary.elapsed": "経過時間",
+  "summary.mods": "{count} 個のMOD",
+  "summary.modsSpeed": "{speed} MOD/秒",
+  "summary.entries": "{count} 項目",
+  "summary.entriesSpeed": "{speed} 項目/秒",
+  "summary.dictionary": "辞書 {count}",
+  "summary.llm": "LLM {count}",
+  "summary.failed": "失敗 {count}",
 };
 
 const koKr: TranslationMap = {
@@ -1103,6 +1143,16 @@ const koKr: TranslationMap = {
   "tooltip.currentPage": "현재 페이지",
   "tooltip.busy": "{page} 실행 중…",
   "tooltip.completed": "{page} 완료",
+  "summary.scanCompleted": "스캔 완료",
+  "summary.translateCompleted": "번역 완료",
+  "summary.elapsed": "경과 시간",
+  "summary.mods": "{count} 모드",
+  "summary.modsSpeed": "{speed} 모드/초",
+  "summary.entries": "{count} 항목",
+  "summary.entriesSpeed": "{speed} 항목/초",
+  "summary.dictionary": "사전 {count}",
+  "summary.llm": "LLM {count}",
+  "summary.failed": "실패 {count}",
 };
 
 
@@ -1353,6 +1403,16 @@ const ruRu: TranslationMap = {
   "tooltip.currentPage": "Текущая страница",
   "tooltip.busy": "{page} выполняется…",
   "tooltip.completed": "{page} выполнено",
+  "summary.scanCompleted": "Сканирование завершено",
+  "summary.translateCompleted": "Перевод завершён",
+  "summary.elapsed": "Прошло",
+  "summary.mods": "{count} модов",
+  "summary.modsSpeed": "{speed} модов/с",
+  "summary.entries": "{count} записей",
+  "summary.entriesSpeed": "{speed} записей/с",
+  "summary.dictionary": "Словарь {count}",
+  "summary.llm": "LLM {count}",
+  "summary.failed": "Ошибок {count}",
 };
 const translations: Record<AppLanguage, TranslationMap> = {
   zh_cn: zhCn,
