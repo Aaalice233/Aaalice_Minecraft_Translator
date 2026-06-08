@@ -52,6 +52,41 @@ fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
     });
 }
 
+fn spawn_progress_reader(
+    progress_rx: mpsc::Receiver<PipelineProgress>,
+    app: tauri::AppHandle,
+) {
+    let handle = tauri::async_runtime::spawn_blocking(move || {
+        let mut last_progress: Option<PipelineProgress> = None;
+        loop {
+            match progress_rx.recv_timeout(Duration::from_millis(100)) {
+                Ok(p) => {
+                    last_progress = Some(p);
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    if let Some(ref p) = last_progress {
+                        if let Err(err) = app.emit("translate-progress", &p) {
+                            tracing::error!("translate-progress emit error: {err}");
+                        }
+                        last_progress = None;
+                    }
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    if let Some(ref p) = last_progress {
+                        let _ = app.emit("translate-progress", &p);
+                    }
+                    break;
+                }
+            }
+        }
+    });
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = handle.await {
+            tracing::error!("进度读取器 panic: {:?}", e);
+        }
+    });
+}
+
 #[tauri::command]
 pub async fn start_translation(
     app: tauri::AppHandle,
@@ -72,60 +107,28 @@ pub async fn start_translation(
     let (log_tx, log_rx) = mpsc::channel::<TranslateLogEntry>();
     let (entry_progress_tx, entry_progress_rx) = mpsc::channel::<EntryProgress>();
 
-    // Progress reader (debounced)
-    let app_emit = app.clone();
-    let progress_handle = tauri::async_runtime::spawn_blocking(move || {
-        let mut last_progress: Option<PipelineProgress> = None;
-        loop {
-            match progress_rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(progress) => {
-                    last_progress = Some(progress);
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if let Some(ref p) = last_progress {
-                        if let Err(err) = app_emit.emit("translate-progress", &p) {
-                            tracing::error!("translate-progress emit error: {err}");
-                        }
-                        last_progress = None;
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    if let Some(ref p) = last_progress {
-                        let _ = app_emit.emit("translate-progress", &p);
-                    }
-                    break;
-                }
-            }
-        }
-    });
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = progress_handle.await {
-            tracing::error!("翻译进度读取器 panic: {:?}", e);
-        }
-    });
-
+    spawn_progress_reader(progress_rx, app.clone());
     spawn_batched_reader(log_rx, app.clone(), "translate-log-entries");
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
 
-    // Run pipeline (all blocking I/O inside spawn_blocking)
+
     let result = tauri::async_runtime::spawn_blocking(move || {
-        // Create job metadata file so loadLatestTranslationJob() can find it for retry
         if let Some(ref scan_id) = scan_job_id {
             let mgr = jobs::JobManager::new(root.clone());
             match mgr.create_from_scan_with_job_id(scan_id, &job_id) {
                 Ok(job) => {
-                    let _ = logging::append_main(format!(
+                    logging::append_main(format!(
                         "翻译 Job 状态文件已创建: scan_job_id={scan_id}, 条目={}",
                         job.entries.len()
-                    ));
+                    )).ok();
                 }
                 Err(err) => {
-                    let _ = logging::append_main(format!("创建翻译 Job 状态文件失败: {err}"));
+                    logging::append_main(format!("创建翻译 Job 状态文件失败: {err}")).ok();
                 }
             }
         }
 
-        // Load settings inside blocking thread
+
         let settings_load_result = settings::load_settings(&root);
         let resource_pack_names = settings_load_result
             .as_ref()
@@ -168,8 +171,7 @@ pub async fn start_translation(
 
     logging::append_main(
         format!("翻译任务完成: {} 条目", result.completed),
-    )
-    .ok();
+    ).ok();
 
     Ok(result.completed)
 }
@@ -177,9 +179,7 @@ pub async fn start_translation(
 #[tauri::command]
 pub fn cancel_translation() -> Result<(), String> {
     pipeline::cancel_current_translation();
-    let _ = logging::append_main(
-        "翻译任务被用户取消",
-    );
+    logging::append_main("翻译任务被用户取消").ok();
     Ok(())
 }
 
@@ -200,40 +200,10 @@ pub async fn retry_failed_entries(
     let (progress_tx, progress_rx) = mpsc::channel::<PipelineProgress>();
     let (entry_progress_tx, entry_progress_rx) = mpsc::channel::<EntryProgress>();
 
-    let app_progress = app.clone();
-    let retry_progress_handle = tauri::async_runtime::spawn_blocking(move || {
-        let mut last_progress: Option<PipelineProgress> = None;
-        loop {
-            match progress_rx.recv_timeout(Duration::from_millis(100)) {
-                Ok(p) => {
-                    last_progress = Some(p);
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {
-                    if let Some(ref p) = last_progress {
-                        let _ = app_progress.emit("translate-progress", &p);
-                        last_progress = None;
-                    }
-                }
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    if let Some(ref p) = last_progress {
-                        let _ = app_progress.emit("translate-progress", &p);
-                    }
-                    break;
-                }
-            }
-        }
-    });
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = retry_progress_handle.await {
-            tracing::error!("重试进度读取器 panic: {:?}", e);
-        }
-    });
-
+    spawn_progress_reader(progress_rx, app.clone());
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
 
-    // Run LLM + post-processing inside spawn_blocking so reqwest::blocking::Client
-    // is created/destroyed on a blocking thread, not inside the Tauri async runtime,
-    // and all blocking I/O (load_results, load_settings) is kept inside.
+
     let retried_success = tauri::async_runtime::spawn_blocking(move || {
         let manager = jobs::JobManager::new(root.clone());
         let all_results = manager.load_results(&job_id)?;
@@ -274,7 +244,6 @@ pub async fn retry_failed_entries(
         let succ = retried.iter().filter(|r| r.source_type == "llm").count();
         let failed = retried.iter().filter(|r| r.source_type == "failed").count();
 
-        // Send completion progress
         let _ = progress_tx.send(PipelineProgress {
             current: 1, total: 1,
             phase: crate::core::models::PipelinePhase::Completed,
