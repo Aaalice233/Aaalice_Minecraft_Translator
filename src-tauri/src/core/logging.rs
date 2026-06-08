@@ -72,7 +72,6 @@ pub fn init(root: &Path) -> io::Result<()> {
     let logs_dir = root.join("logs");
     fs::create_dir_all(&logs_dir)?;
 
-    // Load log preferences from settings.json before init
     let (debug_mode, reset_log, http_log) = load_log_prefs(root);
 
     if reset_log {

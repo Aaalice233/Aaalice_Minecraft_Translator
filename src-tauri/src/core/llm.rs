@@ -66,9 +66,6 @@ impl LlmClient {
             .build()
             .expect("reqwest::blocking::Client::build 失败（系统资源不足）")
     }
-}
-
-impl LlmClient {
     /// Validate that the client has sufficient configuration to make API calls.
     pub fn validate(&self) -> Result<(), String> {
         if self.base_url.is_empty() {
@@ -230,9 +227,6 @@ impl LlmClient {
                     }
                 }
                 Err(e) => {
-                    // RATE_LIMITED errors should NOT be retried — they mean "slow down"
-                    // Return immediately so the caller can adapt concurrency.
-                    // Keep the "RATE_LIMITED" prefix intact for the caller to detect.
                     if e.starts_with("RATE_LIMITED") {
                         tracing::warn!(attempt, error = %e, "LLM 请求被限流");
                         let results: Vec<TranslateResult> = entries

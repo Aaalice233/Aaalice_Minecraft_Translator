@@ -81,9 +81,7 @@ export async function clearJobsCache(): Promise<void> {
 }
 
 export async function cancelScan(): Promise<void> {
-  if (!isTauriRuntime()) {
-    return; // browser mode no-op
-  }
+  if (!isTauriRuntime()) return;
   return tauriInvoke<void>("cancel_scan");
 }
 
@@ -183,9 +181,7 @@ export async function startTranslation(
 }
 
 export async function cancelTranslation(): Promise<void> {
-  if (!isTauriRuntime()) {
-    return;
-  }
+  if (!isTauriRuntime()) return;
   return tauriInvoke<void>("cancel_translation");
 }
 
