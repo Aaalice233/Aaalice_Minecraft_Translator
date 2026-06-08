@@ -286,7 +286,7 @@ function AppShell() {
         case "jobs":
           return <JobsPage isActive={isActive} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
         case "validate":
-          return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} scanSummary={scanSummary} />;
+          return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
         case "packages":
           return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
         default:

@@ -16,12 +16,11 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { loadLatestTranslationJob, retryFailedEntries, validateTranslation } from "../api/tauri";
 import { t, type TranslationKey } from "../i18n/translations";
-import type { AppLanguage, ScanSummary, TranslationJobState, ValidationIssue, ValidationReport } from "../types";
+import type { AppLanguage, TranslationJobState, ValidationIssue, ValidationReport } from "../types";
 
 interface Props {
   language: AppLanguage;
   onConfirm: () => void;
-  scanSummary?: ScanSummary | null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -63,7 +62,7 @@ function groupByMod(issues: ValidationIssue[]): Map<string, ValidationIssue[]> {
 
 // ── Component ────────────────────────────────────────────────────
 
-export function ValidatePage({ language, onConfirm, scanSummary }: Props) {
+export function ValidatePage({ language, onConfirm }: Props) {
   // ── State ──
   const [job, setJob] = useState<TranslationJobState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,19 +85,11 @@ export function ValidatePage({ language, onConfirm, scanSummary }: Props) {
     let cancelled = false;
     setLoading(true);
     loadLatestTranslationJob()
-      .then((j) => {
-        if (cancelled) return;
-        // 仅接受与当前扫描匹配的 Job，避免操作过时数据
-        if (j && scanSummary && j.scanJobId !== scanSummary.jobId) {
-          setJob(null);
-          return;
-        }
-        setJob(j);
-      })
+      .then((j) => { if (!cancelled) setJob(j); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [scanSummary]);
+  }, []);
 
   // ── Validation ──
   async function handleValidate() {
