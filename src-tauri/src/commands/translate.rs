@@ -245,68 +245,76 @@ pub async fn retry_failed_entries(
         },
     };
 
-    let retried = pipeline::retry_failed_entries(
-        &root, &job_id, &source_language, &target_language, &llm,
-        &*pipeline::GLOBAL_CANCEL, &progress_tx, &entry_progress_tx,
-    )?;
+    // Run LLM + post-processing inside spawn_blocking so reqwest::blocking::Client
+    // is created/destroyed on a blocking thread, not inside the Tauri async runtime.
+    let retried_success = tauri::async_runtime::spawn_blocking(move || {
+        let retried = pipeline::retry_failed_entries(
+            &root, &job_id, &source_language, &target_language, &llm,
+            &*pipeline::GLOBAL_CANCEL, &progress_tx, &entry_progress_tx,
+        )?;
 
-    let retried_success = retried.iter().filter(|r| r.source_type == "llm").count();
-    let retried_failed = retried.iter().filter(|r| r.source_type == "failed").count();
+        let succ = retried.iter().filter(|r| r.source_type == "llm").count();
+        let failed = retried.iter().filter(|r| r.source_type == "failed").count();
 
-    let merged: Vec<jobs::TranslationResult> = all_results.into_iter()
-        .map(|r| {
-            if r.source_type == "failed" {
-                retried.iter()
-                    .find(|nr| nr.key == r.key && nr.mod_name == r.mod_name)
-                    .cloned()
-                    .unwrap_or(r)
-            } else {
-                r
-            }
-        })
-        .collect();
+        let merged: Vec<jobs::TranslationResult> = all_results.into_iter()
+            .map(|r| {
+                if r.source_type == "failed" {
+                    retried.iter()
+                        .find(|nr| nr.key == r.key && nr.mod_name == r.mod_name)
+                        .cloned()
+                        .unwrap_or(r)
+                } else {
+                    r
+                }
+            })
+            .collect();
 
-    // Rewrite the entire JSONL (atomic: write to tmp then rename)
-    let out_path = paths::translate_job_results_path(&root, &job_id);
-    if let Some(parent) = out_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("创建目录失败: {e}"))?;
-    }
-    let mut content = String::with_capacity(merged.len() * 150);
-    for r in &merged {
-        content.push_str(&serde_json::to_string(r)
-            .map_err(|e| format!("序列化失败: {e}"))?);
-        content.push('\n');
-    }
-    let tmp_path = out_path.with_extension("jsonl.tmp");
-    std::fs::write(&tmp_path, &content)
-        .map_err(|e| format!("写入翻译结果失败: {e}"))?;
-    std::fs::rename(&tmp_path, &out_path)
-        .map_err(|e| format!("重命名翻译结果文件失败: {e}"))?;
+        // Rewrite the entire JSONL (atomic: write to tmp then rename)
+        let out_path = paths::translate_job_results_path(&root, &job_id);
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("创建目录失败: {e}"))?;
+        }
+        let mut content = String::with_capacity(merged.len() * 150);
+        for r in &merged {
+            content.push_str(&serde_json::to_string(r)
+                .map_err(|e| format!("序列化失败: {e}"))?);
+            content.push('\n');
+        }
+        let tmp_path = out_path.with_extension("jsonl.tmp");
+        std::fs::write(&tmp_path, &content)
+            .map_err(|e| format!("写入翻译结果失败: {e}"))?;
+        std::fs::rename(&tmp_path, &out_path)
+            .map_err(|e| format!("重命名翻译结果文件失败: {e}"))?;
 
-    if let Ok(Some(mut job)) = manager.load(&job_id) {
-        let new_completed = merged.iter().filter(|r| r.source_type != "failed").count();
-        let new_failed = merged.len() - new_completed;
-        job.completed_entries = new_completed;
-        job.failed_entries = new_failed;
-        manager.save(&job)
-            .map_err(|e| format!("保存翻译任务状态失败: {e}"))?;
-    }
+        let manager = jobs::JobManager::new(root.clone());
+        if let Ok(Some(mut job)) = manager.load(&job_id) {
+            let new_completed = merged.iter().filter(|r| r.source_type != "failed").count();
+            let new_failed = merged.len() - new_completed;
+            job.completed_entries = new_completed;
+            job.failed_entries = new_failed;
+            let _ = manager.save(&job);
+        }
 
-    // Send completion progress
-    let _ = progress_tx.send(PipelineProgress {
-        current: 1, total: 1,
-        phase: crate::core::models::PipelinePhase::Completed,
-        mod_name: String::new(),
-        sub_step: None,
-        stage_status: crate::core::models::StageStatus::Completed,
-    });
-    drop(progress_tx);
-    drop(entry_progress_tx);
+        // Send completion progress
+        let _ = progress_tx.send(PipelineProgress {
+            current: 1, total: 1,
+            phase: crate::core::models::PipelinePhase::Completed,
+            mod_name: String::new(),
+            sub_step: None,
+            stage_status: crate::core::models::StageStatus::Completed,
+        });
+        drop(progress_tx);
+        drop(entry_progress_tx);
 
-    logging::append_main(
-        format!("重试失败条目完成: 成功 {retried_success}, 仍然失败 {retried_failed}"),
-    ).ok();
+        logging::append_main(
+            format!("重试失败条目完成: 成功 {succ}, 仍然失败 {failed}"),
+        ).ok();
+
+        Ok::<usize, String>(succ)
+    })
+    .await
+    .map_err(|err| format!("重试任务线程崩溃: {err}"))??;
 
     Ok(retried_success)
 }
