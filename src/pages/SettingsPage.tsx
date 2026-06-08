@@ -287,16 +287,6 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                 <small>{t(language, "settings.batchSizeHint")}</small>
               </label>
               <label className="field">
-                <span>{t(language, "settings.batchMaxChars")}</span>
-                <input
-                  type="number" min="1000" max="1000000" step="1000"
-                  value={draft.batchMaxChars}
-                  onChange={(e) => setDraft({...draft, batchMaxChars: Number(e.target.value)})}
-                  data-tooltip={t(language, "settings.batchMaxCharsHint")}
-                />
-                <small>{t(language, "settings.batchMaxCharsHint")}</small>
-              </label>
-              <label className="field">
                 <span>{t(language, "settings.timeoutSecs")}</span>
                 <input
                   type="number" min="10" max="600"

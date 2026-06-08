@@ -200,8 +200,6 @@ export type TranslationKey =
   | "settings.concurrencyHint"
   | "settings.batchSize"
   | "settings.batchSizeHint"
-  | "settings.batchMaxChars"
-  | "settings.batchMaxCharsHint"
   | "settings.timeoutSecs"
   | "settings.timeoutSecsHint"
   | "settings.retryCount"
@@ -521,8 +519,6 @@ const zhCn: TranslationMap = {
   "settings.concurrencyHint": "同时发送的 API 请求数量（默认 10）。程序会自动根据 API 限流情况动态调整，遇 429 自动降级，无需手动操心。",
   "settings.batchSize": "Batch size",
   "settings.batchSizeHint": "每批最多包含的条目数（默认 80）。较大的 batch 可提高 Token 利用率，但单次响应时间更长。建议保持默认。",
-  "settings.batchMaxChars": "每批最大字符数",
-  "settings.batchMaxCharsHint": "每批的最大字符数（默认 120000）。超过此值时自动拆分批次。适用于 API 有上下文窗口限制的情况。",
   "settings.timeoutSecs": "超时时间（秒）",
   "settings.timeoutSecsHint": "单次 API 请求的超时秒数（默认 180）。翻译大批量时可适当增加。",
   "settings.retryCount": "重试次数",
@@ -706,8 +702,6 @@ const enUs: TranslationMap = {
   "settings.concurrency": "Concurrent requests",
   "settings.concurrencyHint": "Concurrent API requests (default 10). Auto-adapts to rate limits — 429 responses trigger automatic backoff.",
   "settings.batchSizeHint": "Max entries per batch (default 80). Larger batches use tokens more efficiently but take longer per request.",
-  "settings.batchMaxChars": "Max chars per batch",
-  "settings.batchMaxCharsHint": "Max characters per batch (default 120000). Batches exceeding this are auto-split.",
   "settings.timeoutSecs": "Timeout (seconds)",
   "settings.timeoutSecsHint": "Single request timeout in seconds (default 180). Increase for large batches.",
   "settings.retryCount": "Retry count",
@@ -915,7 +909,6 @@ const jaJp: TranslationMap = {
   "settings.customModel": "カスタムモデルを入力",
   "settings.pickFromList": "リストから選択",
   "settings.concurrency": "同時リクエスト数",
-  "settings.batchMaxChars": "バッチ最大文字数",
   "settings.timeoutSecs": "タイムアウト（秒）",
   "settings.retryCount": "リトライ回数",
   "settings.retryDelaySecs": "リトライ間隔（秒）",
@@ -1087,7 +1080,6 @@ const koKr: TranslationMap = {
   "settings.customModel": "사용자 모델 입력",
   "settings.pickFromList": "목록에서 선택",
   "settings.concurrency": "동시 요청 수",
-  "settings.batchMaxChars": "배치당 최대 문자 수",
   "settings.timeoutSecs": "타임아웃(초)",
   "settings.retryCount": "재시도 횟수",
   "settings.retryDelaySecs": "재시도 지연(초)",
@@ -1347,7 +1339,6 @@ const ruRu: TranslationMap = {
   "settings.pickFromList": "Выбрать из списка",
   "settings.concurrency": "Параллельных запросов",
   "settings.batchSize": "Размер пачки",
-  "settings.batchMaxChars": "Макс. символов в пачке",
   "settings.timeoutSecs": "Таймаут (сек)",
   "settings.retryCount": "Кол-во повторов",
   "settings.retryDelaySecs": "Задержка повтора (сек)",

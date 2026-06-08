@@ -19,7 +19,6 @@ export interface Settings {
   maxTokens: number;
   concurrency: number;
   batchSize: number;
-  batchMaxChars: number;
   timeoutSecs: number;
   retryCount: number;
   retryDelaySecs: number;

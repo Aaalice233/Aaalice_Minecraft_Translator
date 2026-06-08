@@ -20,7 +20,6 @@ const settings: Settings = {
   maxTokens: 0,
   concurrency: 6,
   batchSize: 80,
-  batchMaxChars: 120000,
   timeoutSecs: 120,
   retryCount: 3,
   retryDelaySecs: 2,
