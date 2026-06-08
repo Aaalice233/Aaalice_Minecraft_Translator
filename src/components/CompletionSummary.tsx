@@ -63,7 +63,10 @@ function AnimatedMetricItem({
   small?: boolean;
 }) {
   const animated = useAnimatedValue(count, 600);
-  const display = template.replace("{n}", String(animated));
+  const decimals = count % 1 !== 0 ? 1 : 0;
+  const display = template
+    .replace("{count}", animated.toFixed(decimals))
+    .replace("{speed}", animated.toFixed(1));
   return (
     <span className="cs-metric">
       <span className={`cs-metric-icon ${small ? "cs-metric-icon--sm" : ""}`}>
