@@ -1,20 +1,20 @@
 import { TableVirtuoso } from "react-virtuoso";
 import {
   CheckCircle,
-  ChevronDown,
-  ChevronRight,
-  ClipboardList,
   FileText,
+  Filter,
   Loader2,
   PackageCheck,
   Save,
   Search,
+  X,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { loadLatestTranslationJobMeta, loadTranslationModSummaries, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { loadLatestTranslationJobMeta, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
 import { t } from "../i18n/translations";
+import { useSortFilter } from "../hooks/useSortFilter";
 import { useAppStore } from "../stores/appStore";
-import type { AppLanguage, ModTranslationSummary, TranslationJobListItem, TranslationResult } from "../types";
+import type { AppLanguage, TranslationJobListItem, TranslationResult } from "../types";
 
 interface Props {
   language: AppLanguage;
@@ -30,19 +30,16 @@ export function ValidatePage({ language, onConfirm }: Props) {
   // ── State ──
   const [job, setJob] = useState<TranslationJobListItem | null>(null);
   const [loading, setLoading] = useState(true);
-  const [modSummaries, setModSummaries] = useState<ModTranslationSummary[]>([]);
-  const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
-  // Lazy-loaded per-mod results: modId -> TranslationResult[]
-  const [modResults, setModResults] = useState<Map<string, TranslationResult[]>>(new Map());
-  // Track which mods are currently loading results
-  const [loadingMods, setLoadingMods] = useState<Set<string>>(new Set());
+  const [allEntries, setAllEntries] = useState<TranslationResult[]>([]);
   const [error, setError] = useState("");
+  const [dismissed, setDismissed] = useState(false);
   // Track per-row saving state: "modId\x00key\x00modName" -> saving
   const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
   const [saveMsg, setSaveMsg] = useState<string>("");
 
-  const [dismissed, setDismissed] = useState(false);
   const prevTranslationJobId = useRef(translationJobId);
+  const [filterTerm, setFilterTerm] = useState("");
+  const sf = useSortFilter<Record<string, string>>();
 
   // ── Auto-recover: 新翻译开始时自动重置 dismissed ──
   useEffect(() => {
@@ -52,37 +49,37 @@ export function ValidatePage({ language, onConfirm }: Props) {
     }
   }, [translationJobId]);
 
-  // ── Load job meta + mod summaries reactively ──
-  // 只在当前会话确有翻译任务（translationJobId 被显式设置）时自动加载；
-  // 否则旧会话遗留的 translate_*.json 会错误显示为已完成任务。
-  // UI 渲染层根据 dismissed 决定是否显示内容。
+  // ── Load job meta + all results reactively ──
   useEffect(() => {
     if (!translationJobId) {
       setLoading(false);
       setJob(null);
-      setModSummaries([]);
+      setAllEntries([]);
       return;
     }
     let cancelled = false;
     setLoading(true);
-    // ⚠️ 清除缓存的 per-mod 数据，防止切换任务后展开同名 modId 时展示旧结果
-    resetModCache();
-    loadLatestTranslationJobMeta()
-      .then(async (j) => {
+    setAllEntries([]);
+    setError("");
+
+    const load = async () => {
+      try {
+        const j = await loadLatestTranslationJobMeta();
         if (cancelled) return;
         setJob(j);
         if (j && j.status === "completed") {
-          // Load lightweight per-mod summaries (no full entries)
-          const summaries = await loadTranslationModSummaries(j.jobId);
+          const results = await loadTranslationResults(j.jobId);
           if (!cancelled) {
-            setModSummaries(summaries);
+            setAllEntries(results);
           }
         }
-      })
-      .catch(() => {/* no job yet — that's OK */})
-      .finally(() => {
+      } catch {
+        // no job yet — that's OK
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+    load();
     return () => { cancelled = true; };
   }, [translationJobId, translationStatus]);
 
@@ -90,56 +87,9 @@ export function ValidatePage({ language, onConfirm }: Props) {
   function handleDismiss() {
     setDismissed(true);
     setJob(null);
-    setModSummaries([]);
-    resetModCache();
+    setAllEntries([]);
     setError("");
     setSaveMsg("");
-  }
-
-  // ── Reset per-mod cache (防止新增缓存状态时遗漏任一重置点) ──
-  function resetModCache() {
-    setModResults(new Map());
-    setExpandedMods(new Set());
-    setLoadingMods(new Set());
-  }
-
-  // ── Lazy load results when a mod is expanded ──
-  async function loadModResults(modId: string) {
-    if (modResults.has(modId)) return; // already loaded
-    if (!job?.jobId) return;
-    setLoadingMods((prev) => new Set(prev).add(modId));
-    setError("");
-    try {
-      const results = await loadTranslationResults(job.jobId, modId);
-      setModResults((prev) => {
-        const next = new Map(prev);
-        next.set(modId, results);
-        return next;
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoadingMods((prev) => {
-        const next = new Set(prev);
-        next.delete(modId);
-        return next;
-      });
-    }
-  }
-
-  // ── Mod expand/collapse ──
-  function toggleMod(modId: string) {
-    setExpandedMods((prev) => {
-      const next = new Set(prev);
-      if (next.has(modId)) {
-        next.delete(modId);
-      } else {
-        next.add(modId);
-        // Trigger lazy load (async, non-blocking)
-        loadModResults(modId);
-      }
-      return next;
-    });
   }
 
   // ── Save a single entry edit back to JSONL ──
@@ -149,19 +99,15 @@ export function ValidatePage({ language, onConfirm }: Props) {
     setSaveMsg("");
     try {
       await saveTranslationEntry(job!.jobId, entry.key, entry.modName, entry.modId, newText);
-      // Update local state: find and update only the changed entry
-      setModResults((prev) => {
-        const existing = prev.get(entry.modId);
-        if (!existing) return prev;
-        const idx = existing.findIndex(
+      // Update local state
+      setAllEntries((prev) => {
+        const idx = prev.findIndex(
           (e) => e.key === entry.key && e.modName === entry.modName && e.modId === entry.modId,
         );
         if (idx === -1) return prev;
-        const copy = existing.slice();
-        copy[idx] = { ...existing[idx], targetText: newText };
-        const next = new Map(prev);
-        next.set(entry.modId, copy);
-        return next;
+        const copy = prev.slice();
+        copy[idx] = { ...prev[idx], targetText: newText };
+        return copy;
       });
       setSaveMsg("已保存");
     } catch (err) {
@@ -175,230 +121,400 @@ export function ValidatePage({ language, onConfirm }: Props) {
     }
   }, [job?.jobId]);
 
-  // ── Render helpers ──
+  // ── Filter & sort entries ──
+  const filteredEntries = useMemo(() => {
+    let result = allEntries;
 
+    // Global text search across all text columns
+    if (filterTerm) {
+      const term = filterTerm.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.modName.toLowerCase().includes(term) ||
+          e.modId.toLowerCase().includes(term) ||
+          e.key.toLowerCase().includes(term) ||
+          e.sourceText.toLowerCase().includes(term) ||
+          (e.targetText || "").toLowerCase().includes(term),
+      );
+    }
+
+    // Per-column filters
+    const fkeys = Object.keys(sf.filters);
+    if (fkeys.length > 0) {
+      result = result.filter((entry) =>
+        fkeys.every((col) => {
+          const value = sf.filters[col];
+          if (!value) return true;
+          switch (col) {
+            case "modName":
+              return entry.modName.toLowerCase().includes(value.toLowerCase());
+            case "modId":
+              return entry.modId.toLowerCase().includes(value.toLowerCase());
+            case "key":
+              return entry.key.toLowerCase().includes(value.toLowerCase());
+            case "sourceText":
+              return entry.sourceText.toLowerCase().includes(value.toLowerCase());
+            case "targetText":
+              return (entry.targetText || "").toLowerCase().includes(value.toLowerCase());
+            case "sourceType":
+              return entry.sourceType === value;
+            default:
+              return true;
+          }
+        }),
+      );
+    }
+
+    // Sort
+    if (sf.sortConfig) {
+      const sc = sf.sortConfig;
+      result = [...result].sort((a, b) => {
+        const dir = sc.direction === "asc" ? 1 : -1;
+        let cmp = 0;
+        switch (sc.key) {
+          case "modName":
+            cmp = a.modName.localeCompare(b.modName); break;
+          case "modId":
+            cmp = a.modId.localeCompare(b.modId); break;
+          case "key":
+            cmp = a.key.localeCompare(b.key); break;
+          case "sourceText":
+            cmp = a.sourceText.localeCompare(b.sourceText); break;
+          case "targetText":
+            cmp = (a.targetText || "").localeCompare(b.targetText || ""); break;
+          case "sourceType":
+            cmp = a.sourceType.localeCompare(b.sourceType); break;
+        }
+        return cmp * dir;
+      });
+    }
+
+    return result;
+  }, [allEntries, filterTerm, sf.filters, sf.sortConfig]);
+
+  // ── Helpers ──
   function rowKey(entry: TranslationResult) {
     return `${entry.modId}\x00${entry.key}\x00${entry.modName}`;
   }
 
-  // ── Render: Loading (job) ──
-  if (loading) {
-    return (
-      <section className="page validate-page">
+  const hasData = job && job.status === "completed" && filteredEntries.length > 0;
+
+  // ── Render helpers ──
+
+  function renderContent() {
+    if (loading) {
+      return (
         <div className="empty-state">
           <Loader2 size={24} className="spin" />
           <p>加载中...</p>
         </div>
-      </section>
-    );
-  }
+      );
+    }
 
-  // ── Render: Dismissed (show empty state even if a job is loaded) ──
-  if (dismissed) {
-    return (
-      <section className="page validate-page validate-workspace">
-        <PageHeader language={language}>
+    if (dismissed) {
+      return (
+        <>
           {job && (
-            <button
-              className="ghost-button"
-              onClick={() => setDismissed(false)}
-              type="button"
-              style={{ fontSize: 13 }}
-            >
-              {t(language, "validate.restoreView")}
-            </button>
-          )}
-        </PageHeader>
-        <div className="empty-state">
-          <Search size={32} />
-          <p>{t(language, "validate.dismissedMessage")}</p>
-        </div>
-      </section>
-    );
-  }
-
-  // ── Render: No job ──
-  if (!job) {
-    return (
-      <section className="page validate-page validate-workspace">
-        <PageHeader language={language} />
-        <div className="empty-state">
-          <Search size={32} />
-          <p>未找到翻译任务。请先在「翻译任务」页面完成一次翻译。</p>
-        </div>
-      </section>
-    );
-  }
-
-  // ── Render: Job found but not completed ──
-  if (job.status !== "completed") {
-    return (
-      <section className="page validate-page validate-workspace">
-        <PageHeader language={language}>
-          <button className="ghost-button" onClick={handleDismiss} type="button">
-            {t(language, "validate.close")}
-          </button>
-        </PageHeader>
-        <div className="empty-state">
-          <Loader2 size={32} />
-          <p>翻译任务尚未完成，请等待翻译完成后进入校对。</p>
-        </div>
-      </section>
-    );
-  }
-
-  // ── Render: Main review workbench ──
-  return (
-    <section className="page validate-page validate-workspace">
-      <PageHeader language={language}>
-          <button className="ghost-button" onClick={handleDismiss} type="button" style={{ fontSize: 13 }}>
-            {t(language, "validate.close")}
-          </button>
-          {modSummaries.length > 0 && (
-            <button
-              className="primary-button"
-              onClick={onConfirm}
-              type="button"
-            >
-              <PackageCheck size={18} />
-              进入打包
-            </button>
-          )}
-        </PageHeader>
-
-      {/* ── Job info bar ── */}
-      <div className="job-info-bar">
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <FileText size={14} />
-          任务: <code style={{ fontSize: 12 }}>{job.jobId}</code>
-        </span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <CheckCircle size={14} style={{ color: "var(--accent)" }} />
-          {job.completedEntries} 条已翻译
-        </span>
-        {job.completedAt && (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <ClipboardList size={14} />
-            {new Date(job.completedAt).toLocaleString()}
-          </span>
-        )}
-        <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>
-          {job.completedEntries} 个条目
-        </span>
-      </div>
-
-      {/* ── Error / Info alerts ── */}
-      {error && (
-        <div className="alert error" style={{ marginBottom: 12 }}>
-          {error}
-        </div>
-      )}
-      {saveMsg && (
-        <div
-          className={`alert ${saveMsg === "已保存" ? "success" : "error"}`}
-          style={{ marginBottom: 12 }}
-        >
-          {saveMsg}
-        </div>
-      )}
-
-      {/* ── No mod summaries ── */}
-      {modSummaries.length === 0 && (
-        <div className="empty-state" style={{ padding: 32 }}>
-          <Search size={28} />
-          <p>暂无翻译结果</p>
-        </div>
-      )}
-
-      {/* ── Review table: mod groups ── */}
-      {modSummaries.length > 0 && (
-        <div className="workspace-layout" style={{ gridTemplateColumns: "1fr", marginTop: 0 }}>
-          <main className="workspace-main">
-            <div className="validate-issue-list" style={{ gap: 6 }}>
-              {modSummaries.map(({ modId, entryCount }) => {
-                const isExpanded = expandedMods.has(modId);
-                const isLoading = loadingMods.has(modId);
-                const entries = modResults.get(modId);
-                const hasEntries = entries && entries.length > 0;
-                return (
-                  <div key={modId} className="mod-group">
-                    <button
-                      className="mod-group-header"
-                      onClick={() => toggleMod(modId)}
-                      type="button"
-                    >
-                      {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                      <span className="mod-name">{modId}</span>
-                      <span className="mod-count">{entryCount} 条</span>
-                    </button>
-
-                    {isExpanded && !hasEntries && isLoading && (
-                      <div className="empty-state" style={{ padding: 16 }}>
-                        <Loader2 size={20} className="spin" />
-                        <p>加载中...</p>
-                      </div>
-                    )}
-
-                    {isExpanded && entries && entries.length > 0 && (
-                      <TableVirtuoso
-                        style={{
-                          height: "min(calc(100vh - 280px), 600px)",
-                          borderTop: "1px solid var(--border)",
-                        }}
-                        totalCount={entries.length}
-                        fixedHeaderContent={() => (
-                          <tr style={{
-                            background: "var(--bg-muted)",
-                            borderBottom: "1px solid var(--border)",
-                          }}>
-                            <th style={{ ...thStyle, width: "25%" }}>Key</th>
-                            <th style={{ ...thStyle, width: "30%" }}>原文 (Source)</th>
-                            <th style={{ ...thStyle, width: "35%" }}>译文 (Target)</th>
-                            <th style={{ ...thStyle, width: 80 }}>操作</th>
-                          </tr>
-                        )}
-                        itemContent={(index) => {
-                          const entry = entries[index];
-                          const rk = rowKey(entry);
-                          const isSaving = savingRows.has(rk);
-                          return (
-                            <ReviewRow
-                              entry={entry}
-                              isSaving={isSaving}
-                              onSave={handleSave}
-                            />
-                          );
-                        }}
-                      />
-                    )}
-                  </div>
-                );
-              })}
+            <div className="page-header">
+              <div>
+                <h1>{t(language, "validate.title")}</h1>
+                <p>{t(language, "validate.description")}</p>
+              </div>
+              <div className="page-header-button">
+                <button className="ghost-button" onClick={() => setDismissed(false)} type="button" style={{ fontSize: 13 }}>
+                  {t(language, "validate.restoreView")}
+                </button>
+              </div>
             </div>
-          </main>
+          )}
+          <div className="empty-state">
+            <Search size={32} />
+            <p>{t(language, "validate.dismissedMessage")}</p>
+          </div>
+        </>
+      );
+    }
+
+    if (!job) {
+      return (
+        <>
+          <div className="page-header">
+            <div>
+              <h1>{t(language, "validate.title")}</h1>
+              <p>{t(language, "validate.description")}</p>
+            </div>
+          </div>
+          <div className="empty-state">
+            <Search size={32} />
+            <p>未找到翻译任务。请先在「翻译任务」页面完成一次翻译。</p>
+          </div>
+        </>
+      );
+    }
+
+    if (job.status !== "completed") {
+      return (
+        <>
+          <div className="page-header">
+            <div>
+              <h1>{t(language, "validate.title")}</h1>
+              <p>{t(language, "validate.description")}</p>
+            </div>
+            <div className="page-header-button">
+              <button className="ghost-button" onClick={handleDismiss} type="button">
+                {t(language, "validate.close")}
+              </button>
+            </div>
+          </div>
+          <div className="empty-state">
+            <Loader2 size={32} />
+            <p>翻译任务尚未完成，请等待翻译完成后进入校对。</p>
+          </div>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <div className="page-header">
+          <div>
+            <h1>{t(language, "validate.title")}</h1>
+            <p>{t(language, "validate.description")}</p>
+          </div>
+          <div className="page-header-button">
+            <button className="ghost-button" onClick={handleDismiss} type="button" style={{ fontSize: 13 }}>
+              {t(language, "validate.close")}
+            </button>
+            {allEntries.length > 0 && (
+              <button className="primary-button" onClick={onConfirm} type="button">
+                <PackageCheck size={18} />
+                进入打包
+              </button>
+            )}
+          </div>
         </div>
-      )}
+
+        {/* ── Job info bar ── */}
+        <div className="job-info-bar">
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <FileText size={14} />
+            任务: <code style={{ fontSize: 12 }}>{job.jobId}</code>
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+            <CheckCircle size={14} style={{ color: "var(--accent)" }} />
+            {job.completedEntries} 条已翻译
+          </span>
+          {job.completedAt && (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              {new Date(job.completedAt).toLocaleString()}
+            </span>
+          )}
+          <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>
+            {allEntries.length} 个条目
+          </span>
+        </div>
+
+        {/* ── Error / Info alerts ── */}
+        {error && (
+          <div className="alert error" style={{ marginBottom: 12 }}>
+            {error}
+          </div>
+        )}
+        {saveMsg && (
+          <div
+            className={`alert ${saveMsg === "已保存" ? "success" : "error"}`}
+            style={{ marginBottom: 12 }}
+          >
+            {saveMsg}
+          </div>
+        )}
+
+        {allEntries.length === 0 && (
+          <div className="empty-state" style={{ padding: 32 }}>
+            <Search size={28} />
+            <p>暂无翻译结果</p>
+          </div>
+        )}
+
+        {/* ── Flat table ── */}
+        {allEntries.length > 0 && (
+          <div className="log-panel" style={{ flex: 1, marginTop: 0 }}>
+            <div className="log-panel-header">
+              <h3>翻译条目</h3>
+              {filteredEntries.length > 0 && (
+                <span className="log-entries-count">
+                  {filteredEntries.length} / {allEntries.length} 条
+                </span>
+              )}
+              <input
+                className="log-panel-filter"
+                placeholder="搜索模组名、ModId、键名、原文或译文..."
+                value={filterTerm}
+                onChange={(e) => setFilterTerm(e.target.value)}
+              />
+            </div>
+            <div className="log-panel-body">
+              {filteredEntries.length === 0 ? (
+                <div className="log-panel-empty">没有匹配的条目</div>
+              ) : (
+                <TableVirtuoso
+                  followOutput={false}
+                  style={{ height: "100%" }}
+                  totalCount={filteredEntries.length}
+                  components={{
+                    Table: ({ children, ...rest }) => (
+                      <table {...rest}>
+                        <colgroup>
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "25%" }} />
+                          <col style={{ width: "30%" }} />
+                          <col style={{ width: "8%" }} />
+                          <col style={{ width: "5%" }} />
+                        </colgroup>
+                        {children}
+                      </table>
+                    ),
+                  }}
+                  fixedHeaderContent={() => (
+                    <tr>
+                      {([
+                        { key: "modName", label: "Mod 名称" },
+                        { key: "modId", label: "Mod ID" },
+                        { key: "sourceText", label: "原文" },
+                        { key: "targetText", label: "译文" },
+                        { key: "sourceType", label: "来源" },
+                        { key: "actions", label: "操作" },
+                      ] as const).map((col) => {
+                        if (col.key === "actions") {
+                          return (
+                            <th key={col.key} style={{ textAlign: "center", ...sortThStyle }}>
+                              {col.label}
+                            </th>
+                          );
+                        }
+                        const isActiveSort = sf.sortConfig?.key === col.key;
+                        const isDefaultSort = !sf.sortConfig && col.key === "modName";
+                        const hasActiveFilter = col.key in sf.filters;
+                        return (
+                          <th
+                            key={col.key}
+                            className={[
+                              "sortable",
+                              isActiveSort ? (sf.sortConfig!.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
+                              isDefaultSort ? "sorted-default" : "",
+                            ].filter(Boolean).join(" ")}
+                            onClick={() => sf.handleSort(col.key)}
+                            style={sortThStyle}
+                          >
+                            <span className="th-filter-wrap">
+                              {col.label}
+                              {(isActiveSort || isDefaultSort) && (
+                                <span className="sort-indicator">
+                                  {isActiveSort ? (sf.sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
+                                </span>
+                              )}
+                              <button
+                                className={[
+                                  "th-filter-btn",
+                                  hasActiveFilter ? "has-filter" : "",
+                                  sf.openFilter === col.key ? "active" : "",
+                                ].filter(Boolean).join(" ")}
+                                onClick={(e) => { e.stopPropagation(); sf.toggleFilter(col.key); }}
+                                type="button"
+                                aria-label={`Filter ${col.label}`}
+                                data-tooltip={t(language, "tooltip.filter")}
+                              >
+                                <Filter size={13} />
+                              </button>
+                              {sf.openFilter === col.key && (
+                                <div
+                                  className="filter-popover"
+                                  ref={sf.filterRef}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <div className="filter-popover-header">
+                                    <span>{col.label}</span>
+                                    <button
+                                      className="filter-popover-clear"
+                                      onClick={() => { sf.handleFilterChange(col.key, null); }}
+                                      type="button"
+                                      data-tooltip={t(language, "tooltip.clearFilter")}
+                                    >
+                                      <X size={13} />
+                                    </button>
+                                  </div>
+                                  <input
+                                    type="text"
+                                    value={sf.filters[col.key] || ""}
+                                    onChange={(e) => sf.handleFilterChange(col.key, e.target.value)}
+                                    placeholder="筛选..."
+                                    autoFocus
+                                  />
+                                </div>
+                              )}
+                            </span>
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  )}
+                  itemContent={(index) => {
+                    const entry = filteredEntries[index];
+                    const rk = rowKey(entry);
+                    const isSaving = savingRows.has(rk);
+                    return (
+                      <ValidateRow
+                        entry={entry}
+                        isSaving={isSaving}
+                        onSave={handleSave}
+                      />
+                    );
+                  }}
+                />
+              )}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  return (
+    <section className="page validate-page">
+      {renderContent()}
     </section>
   );
 }
 
-// ── Row component ────────────────────────────────────────────────
+// ── Shared styles ──
 
-const thStyle: React.CSSProperties = {
+const sortThStyle: React.CSSProperties = {
   textAlign: "left",
-  padding: "8px 12px",
+  padding: "8px 10px",
   fontWeight: 600,
+  fontSize: 11,
+  color: "var(--text-muted)",
   whiteSpace: "nowrap",
-  color: "var(--text-secondary)",
+  background: "var(--bg-surface)",
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: "6px 12px",
+  padding: "6px 10px",
   verticalAlign: "middle",
-  borderBottom: "1px solid var(--border)",
+  borderBottom: "1px solid var(--bg-muted)",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  maxWidth: "0",  // Required for text-overflow in flex/grid contexts
 };
 
-const ReviewRow = React.memo(function ReviewRow({
+// ── Row component ──
+
+const ValidateRow = React.memo(function ValidateRow({
   entry,
   isSaving,
   onSave,
@@ -411,7 +527,7 @@ const ReviewRow = React.memo(function ReviewRow({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isDirty = editText !== entry.targetText;
 
-  // Reset local state when entry changes (e.g. after save from another row)
+  // Reset local state when entry changes
   useEffect(() => {
     setEditText(entry.targetText);
   }, [entry.key, entry.modName, entry.modId, entry.targetText]);
@@ -425,17 +541,28 @@ const ReviewRow = React.memo(function ReviewRow({
     }
   }, [editText]);
 
+  let sourceTypeLabel = entry.sourceType;
+  if (sourceTypeLabel === "llm") sourceTypeLabel = "LLM";
+  else if (sourceTypeLabel === "dictionary") sourceTypeLabel = "词典";
+  else if (sourceTypeLabel === "existing") sourceTypeLabel = "已有";
+  else if (sourceTypeLabel === "skipped") sourceTypeLabel = "跳过";
+  else if (sourceTypeLabel === "failed") sourceTypeLabel = "失败";
+  else if (sourceTypeLabel === "reviewed") sourceTypeLabel = "已审";
+
   return (
     <tr>
-      <td style={{ ...tdStyle, fontFamily: '"JetBrains Mono", monospace', fontSize: 11, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>
-        {entry.key}
+      <td style={{ ...tdStyle, fontWeight: 500 }} title={entry.modName}>
+        {entry.modName}
       </td>
-      <td style={{ ...tdStyle, maxWidth: 300, wordBreak: "break-all" }}>
-        <div style={{ maxHeight: 80, overflowY: "auto", whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
-          {entry.sourceText || "-"}
-        </div>
+      <td style={{ ...tdStyle, fontFamily: '"JetBrains Mono", monospace', fontSize: 11 }} title={entry.modId}>
+        {entry.modId}
       </td>
-      <td style={{ ...tdStyle, maxWidth: 300 }}>
+      <td style={{ ...tdStyle }} title={entry.sourceText}>
+        <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {entry.sourceText}
+        </span>
+      </td>
+      <td style={{ ...tdStyle, padding: "4px 10px", whiteSpace: "normal" }}>
         <textarea
           ref={textareaRef}
           value={editText}
@@ -469,12 +596,15 @@ const ReviewRow = React.memo(function ReviewRow({
         />
       </td>
       <td style={{ ...tdStyle, textAlign: "center" }}>
+        <span className="badge" style={{ fontSize: 10 }}>{sourceTypeLabel}</span>
+      </td>
+      <td style={{ ...tdStyle, textAlign: "center" }}>
         <button
           className="ghost-button"
           onClick={() => onSave(entry, editText)}
           disabled={!isDirty || isSaving}
           type="button"
-          style={{ padding: "4px 8px", fontSize: 12 }}
+          style={{ padding: "4px 8px", fontSize: 12, minWidth: 0 }}
           data-tooltip="保存修改"
         >
           {isSaving ? (
@@ -487,21 +617,3 @@ const ReviewRow = React.memo(function ReviewRow({
     </tr>
   );
 });
-
-// ── Page Header (reduces duplication across 4 render paths) ────
-
-function PageHeader({ language, children }: { language: AppLanguage; children?: React.ReactNode }) {
-  return (
-    <div className="page-header">
-      <div>
-        <h1>{t(language, "validate.title")}</h1>
-        <p>{t(language, "validate.description")}</p>
-      </div>
-      <div className="page-header-button" style={{ gap: 6 }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-

@@ -1,4 +1,4 @@
-use crate::core::{packer, paths};
+use crate::core::{dictionary, packer, paths};
 use tracing::info;
 
 
@@ -18,8 +18,9 @@ pub fn generate_pack_from_job(
     job_id: String,
     target_language: String,
     dry_run: bool,
+    update_dictionary: bool,
 ) -> Result<packer::PackResult, String> {
-    info!("generate_pack_from_job: job_id={}, target_language={}, dry_run={}", job_id, target_language, dry_run);
+    info!("generate_pack_from_job: job_id={}, target_language={}, dry_run={}, update_dictionary={}", job_id, target_language, dry_run, update_dictionary);
     let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let manager = crate::core::jobs::JobManager::new(root.clone());
 
@@ -28,6 +29,15 @@ pub fn generate_pack_from_job(
         .ok_or_else(|| format!("翻译任务 {job_id} 未找到"))?;
 
     let results = manager.load_results(&job_id)?;
+
+    // ── Save LLM/reviewed results to dictionary if requested ──
+    if update_dictionary && !dry_run {
+        let dict_db_path = paths::dictionary_db_path(&root);
+        let conn = dictionary::open(&dict_db_path).map_err(|e| format!("打开词典失败: {e}"))?;
+        let (inserted, updated) = dictionary::save_llm_results_to_dictionary(&conn, &results, &target_language)
+            .map_err(|e| format!("保存到词典失败: {e}"))?;
+        info!("词典更新: 新增 {inserted} 条, 更新 {updated} 条 (任务 {job_id})");
+    }
 
     let total_results = results.len();
     let valid_results: Vec<_> = results.into_iter().filter(|r| r.source_type != "failed").collect();

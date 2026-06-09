@@ -105,6 +105,7 @@ export type TranslationKey =
   | "jobs.retryFailed"
   | "jobs.retrying"
   | "jobs.newTranslation"
+  | "jobs.restart"
   | "jobs.progressFallback"
   | "jobs.logPanel.title"
   | "jobs.logPanel.filterPlaceholder"
@@ -426,6 +427,7 @@ const zhCn: TranslationMap = {
   "jobs.retryFailed": "重试失败条目",
   "jobs.retrying": "重试中...",
   "jobs.newTranslation": "开始新翻译",
+  "jobs.restart": "重新翻译",
   "jobs.progressFallback": "- / -",
   "jobs.logPanel.title": "翻译日志",
   "jobs.logPanel.filterPlaceholder": "按模组名或键名过滤...",

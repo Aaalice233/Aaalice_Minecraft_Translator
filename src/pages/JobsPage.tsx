@@ -193,7 +193,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     );
   }
 
-  const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled");
+  const canTranslate = scanSummary && scanSummary.actualPendingEntries > 0 && (status === "idle" || status === "failed" || status === "canceled" || status === "completed");
 
   useEffect(() => {
     dispatch({
@@ -256,8 +256,13 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   }, [scanSummary?.jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    onBusyChange?.(isRunning);
-  }, [isRunning, onBusyChange]);
+    if (isRunning) {
+      onBusyChange?.(true);
+    } else if (status === "idle") {
+      // Only clear busy state when truly idle — don't overwrite "completed"/"failed"/"canceled"
+      onBusyChange?.(false);
+    }
+  }, [isRunning, status, onBusyChange]);
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) {
@@ -530,7 +535,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               data-tooltip={t(language, "tooltip.startTranslation")}
             >
               <Play size={18} />
-              {t(language, "jobs.start")}
+              {status === "completed" ? t(language, "jobs.restart") : t(language, "jobs.start")}
             </button>
           )}
         </div>
@@ -571,14 +576,6 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                   {t(language, "jobs.retryFailed")} ({Math.max(entryCounts.failed, savedFailedEntriesRef.current)})
                 </button>
               )}
-              <button
-                className="alert-action-button"
-                onClick={handleResetToIdle}
-                type="button"
-              >
-                <Play size={15} />
-                {t(language, "jobs.newTranslation")}
-              </button>
             </>
           )}
         </div>

@@ -429,7 +429,48 @@ pub fn import_resource_pack_entries(
     })
 }
 
-/// Export all entries as JSON lines.
+/// Save LLM translation results into the dictionary.
+/// Used during the pack step when the user checks "更新词典".
+pub fn save_llm_results_to_dictionary(
+    conn: &Connection,
+    results: &[crate::core::jobs::TranslationResult],
+    target_lang: &str,
+) -> SqlResult<(usize, usize)> {
+    let mut inserted = 0usize;
+    let mut updated = 0usize;
+
+    for r in results {
+        if r.source_type != "llm" && r.source_type != "reviewed" {
+            continue;
+        }
+        if r.target_text.trim().is_empty() {
+            continue;
+        }
+
+        let entry = DictionaryEntry {
+            id: None,
+            source_text: r.source_text.clone(),
+            target_text: r.target_text.clone(),
+            source_lang: String::new(),       // auto-detect below
+            target_lang: target_lang.to_string(),
+            source_type: r.source_type.clone(),
+            mod_id: Some(r.mod_id.clone()),
+            translation_key: Some(r.key.clone()),
+            context: None,
+            confidence: 1.0,
+            created_at: None,
+            updated_at: None,
+        };
+        let (_, is_new) = upsert(conn, &entry)?;
+        if is_new {
+            inserted += 1;
+        } else {
+            updated += 1;
+        }
+    }
+
+    Ok((inserted, updated))
+}
 pub fn export_jsonl(conn: &Connection) -> SqlResult<Vec<String>> {
     let mut stmt = conn.prepare(
         &format!("{SELECT_COLS} ORDER BY id"),

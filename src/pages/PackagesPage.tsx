@@ -64,6 +64,7 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
   const [didAutoGenerate, setDidAutoGenerate] = useState(false);
+  const [updateDictionary, setUpdateDictionary] = useState(false);
 
   const animFrameRef = useRef<number>(0);
 
@@ -72,7 +73,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   // ═══════════════════════════════════════════════════════════
 
   const generateFromJob = useCallback(
-    async (dryRun: boolean) => {
+    async (dryRun: boolean, updateDict?: boolean) => {
       if (!translationJob) return;
       setLoading(true);
       setError("");
@@ -85,6 +86,7 @@ export const PackagesPage = React.memo(function PackagesPage({
           translationJob.jobId,
           targetLang,
           dryRun,
+          updateDict ?? updateDictionary,
         );
         setPackResult(result);
       } catch (err) {
@@ -94,7 +96,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         setLoading(false);
       }
     },
-    [translationJob, scanSummary?.targetLanguage],
+    [translationJob, scanSummary?.targetLanguage, updateDictionary],
   );
 
   const handleRegenerate = useCallback(() => {
@@ -277,6 +279,19 @@ export const PackagesPage = React.memo(function PackagesPage({
             </button>
           </div>
         </div>
+
+        {/* ── 更新词典复选框 ── */}
+        {translationJob && (
+          <label className="toggle-row" style={{ marginBottom: 12, fontSize: 13, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={updateDictionary}
+              onChange={(e) => setUpdateDictionary(e.target.checked)}
+              style={{ width: 16, height: 16, cursor: "pointer" }}
+            />
+            <span>打包时更新词典（将 LLM 翻译结果保存到词典）</span>
+          </label>
+        )}
 
         {/* Stats bar */}
         {packResult && !loading && (
