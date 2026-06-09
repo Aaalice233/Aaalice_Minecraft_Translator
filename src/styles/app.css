@@ -2650,3 +2650,45 @@ button.essb-legend-item:hover {
 .splash-overlay.visible .splash-icon-wrapper {
   animation: splashFloatUp 500ms ease-out forwards, splashPulse 600ms ease-out 800ms 1;
 }
+
+/* ═══════════════════════════════════════════════════
+   ── View Transition: dark/light mode toggle ───────
+   ═══════════════════════════════════════════════════ */
+
+/* ── Expand: new content reveals from click point (light→dark) ── */
+:root[data-vt-mode="expand"]::view-transition-old(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+:root[data-vt-mode="expand"]::view-transition-new(root) {
+  animation: clip-expand 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  mix-blend-mode: normal;
+}
+
+/* ── Shrink: old content shrinks to click point (dark→light) ── */
+:root[data-vt-mode="shrink"]::view-transition-old(root) {
+  animation: clip-shrink 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  mix-blend-mode: normal;
+}
+:root[data-vt-mode="shrink"]::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+@keyframes clip-expand {
+  from {
+    clip-path: circle(0% at var(--click-x, 50%) var(--click-y, 50%));
+  }
+  to {
+    clip-path: circle(150% at var(--click-x, 50%) var(--click-y, 50%));
+  }
+}
+
+@keyframes clip-shrink {
+  from {
+    clip-path: circle(150% at var(--click-x, 50%) var(--click-y, 50%));
+  }
+  to {
+    clip-path: circle(0% at var(--click-x, 50%) var(--click-y, 50%));
+  }
+}

@@ -266,11 +266,41 @@ function AppShell() {
   const dbCompleted = useCallback((c: boolean) => setNavCompleted("dashboard", c), [setNavCompleted]);
   const jobsBusy = useCallback((b: boolean) => setNavBusy("jobs", b), [setNavBusy]);
   const jobsCompleted = useCallback((c: boolean) => setNavCompleted("jobs", c), [setNavCompleted]);
-  const toggleDarkMode = useCallback(() => {
-    if (!settings) return;
+  const animatingRef = useRef(false);
+
+  const toggleDarkMode = useCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
+    if (animatingRef.current || !settings) return;
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = rect.left + rect.width / 2;
+    const y = rect.top + rect.height / 2;
+    document.documentElement.style.setProperty('--click-x', x + 'px');
+    document.documentElement.style.setProperty('--click-y', y + 'px');
+
     const next = !settings.uiDarkMode;
     const updated: Settings = { ...settings, uiDarkMode: next };
-    document.documentElement.dataset.theme = next ? "dark" : "light";
+
+    animatingRef.current = true;
+
+    // Set direction before transition so CSS selectors apply correctly
+    document.documentElement.dataset.vtMode = next ? 'expand' : 'shrink';
+
+    try {
+      const vt = (document as any).startViewTransition?.(() => {
+        document.documentElement.dataset.theme = next ? "dark" : "light";
+      });
+      if (vt) {
+        await vt.finished;
+      } else {
+        // Fallback: no View Transition API support
+        document.documentElement.dataset.theme = next ? "dark" : "light";
+      }
+    } catch {
+      // Transition skipped or failed — state update still needed
+    }
+
+    document.documentElement.removeAttribute('data-vt-mode');
+    animatingRef.current = false;
     syncedDispatch({ type: "SET_SETTINGS", payload: updated });
     saveSettings(updated).catch((err) => console.warn("saveSettings 失败:", err));
   }, [settings, syncedDispatch]);
@@ -409,7 +439,7 @@ function AppShell() {
           <div className="sidebar-footer-left">
             <button
               className="dark-toggle-btn"
-              onClick={toggleDarkMode}
+              onClick={(e) => toggleDarkMode(e)}
               type="button"
               data-tooltip={settings?.uiDarkMode ? t(language, "settings.uiDarkModeOff") : t(language, "settings.uiDarkModeOn")}
               data-tooltip-direction="down"
