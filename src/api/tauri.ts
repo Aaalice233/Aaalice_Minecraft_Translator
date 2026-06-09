@@ -305,6 +305,14 @@ export async function copyPackToInstance(
   });
 }
 
+/** Copy a file from src to dest (used by "保存本地" feature). */
+export async function copyFile(src: string, dest: string): Promise<void> {
+  if (!isTauriRuntime()) {
+    throw new Error("浏览器预览模式下不可用");
+  }
+  return tauriInvoke<void>("copy_file", { src, dest });
+}
+
 export async function generatePackFromJob(
   jobId: string,
   targetLanguage: string,

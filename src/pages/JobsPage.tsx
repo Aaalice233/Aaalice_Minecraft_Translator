@@ -5,6 +5,7 @@ import { cancelTranslation, loadLatestTranslationJobMeta, retryFailedEntries, st
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
+import { toErrorMessage } from "../utils";
 import { CompletionSummary } from "../components/CompletionSummary";
 import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
 
@@ -87,10 +88,6 @@ function getEntryStatusFromEP(
     default:
       return entry.sourceType;
   }
-}
-
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 const LogRow = React.memo(function LogRow({

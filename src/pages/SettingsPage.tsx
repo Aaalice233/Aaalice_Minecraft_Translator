@@ -24,6 +24,7 @@ import {
 } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
 import type { AppLanguage, LlmModel, Settings } from "../types";
+import { toErrorMessage } from "../utils";
 
 interface Props {
   settings: Settings;
@@ -656,10 +657,6 @@ function normalizeTranslationLanguage(value: string, allowAuto: boolean): string
   if (normalized === "auto") return allowAuto ? normalized : null;
   if (/^[a-z]{2,3}_[a-z0-9]{2,8}$/.test(normalized)) return normalized;
   return null;
-}
-
-function toErrorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 // ── API Settings Tab ──────────────────────────
