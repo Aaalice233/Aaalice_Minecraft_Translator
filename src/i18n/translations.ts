@@ -104,6 +104,7 @@ export type TranslationKey =
   | "jobs.failed.message"
   | "jobs.retryFailed"
   | "jobs.retrying"
+  | "jobs.newTranslation"
   | "jobs.progressFallback"
   | "jobs.logPanel.title"
   | "jobs.logPanel.filterPlaceholder"
@@ -271,7 +272,15 @@ export type TranslationKey =
   | "summary.entriesSpeed"
   | "summary.dictionary"
   | "summary.llm"
-  | "summary.failed";
+  | "summary.failed"
+  | "validate.title"
+  | "validate.description"
+  | "validate.restoreView"
+  | "validate.dismissedMessage"
+  | "validate.selectHistoryHint"
+  | "validate.close"
+  | "validate.selectJobPlaceholder"
+  | "validate.entries";
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -418,6 +427,7 @@ const zhCn: TranslationMap = {
   "jobs.failed.message": "翻译失败：{error}",
   "jobs.retryFailed": "重试失败条目",
   "jobs.retrying": "重试中...",
+  "jobs.newTranslation": "开始新翻译",
   "jobs.progressFallback": "- / -",
   "jobs.logPanel.title": "翻译日志",
   "jobs.logPanel.filterPlaceholder": "按模组名或键名过滤...",
@@ -578,6 +588,14 @@ const zhCn: TranslationMap = {
   "summary.dictionary": "词典 {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "失败 {count}",
+  "validate.title": "校对工作台",
+  "validate.description": "逐条审核 LLM 翻译结果，确认后可进入打包阶段",
+  "validate.restoreView": "恢复任务视图",
+  "validate.dismissedMessage": "已关闭当前任务视图。启动新的翻译后视图将自动恢复，或点击「恢复任务视图」按钮。",
+  "validate.selectHistoryHint": "或在下方选择一个历史任务：",
+  "validate.close": "✕ 关闭",
+  "validate.selectJobPlaceholder": "选择历史任务...",
+  "validate.entries": "{count} 条",
 };
 
 const enUs: TranslationMap = {
@@ -731,6 +749,7 @@ const enUs: TranslationMap = {
   "jobs.failed.message": "Translation failed: {error}",
   "jobs.retryFailed": "Retry Failed",
   "jobs.retrying": "Retrying...",
+  "jobs.newTranslation": "Start New Translation",
   "jobs.progressFallback": "- / -",
   "jobs.logPanel.title": "Translation Log",
   "jobs.logPanel.filterPlaceholder": "Filter by mod name or key...",
@@ -788,6 +807,14 @@ const enUs: TranslationMap = {
   "summary.dictionary": "Dict {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "Failed {count}",
+  "validate.title": "Validate Translations",
+  "validate.description": "Review LLM translation results entry by entry, then proceed to packaging",
+  "validate.restoreView": "Restore View",
+  "validate.dismissedMessage": "View dismissed. Starting a new translation will restore this view, or click the 'Restore View' button.",
+  "validate.selectHistoryHint": "Or select a historical task below:",
+  "validate.close": "✕ Close",
+  "validate.selectJobPlaceholder": "Select historical task...",
+  "validate.entries": "{count} entries",
 };
 
 const jaJp: TranslationMap = {
@@ -1236,6 +1263,7 @@ const ruRu: TranslationMap = {
   "jobs.canceled": "Перевод отменен",
   "jobs.canceledStatus": "Отменено",
   "jobs.failed.message": "Ошибка перевода: {error}",
+  "jobs.newTranslation": "Новый перевод",
   "jobs.progressFallback": "- / -",
   "jobs.logPanel.title": "Журнал перевода",
   "jobs.logPanel.filterPlaceholder": "Фильтр по имени мода или ключу...",

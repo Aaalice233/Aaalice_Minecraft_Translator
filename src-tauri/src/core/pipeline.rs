@@ -845,37 +845,6 @@ impl Phase for LlmPhase {
         let llm_entries = std::mem::take(&mut ctx.llm_only_entries);
         debug!("LlmPhase::run: {} entries to translate", llm_entries.len());
 
-        // Checkpoint recovery: skip entries already in the JSONL results file
-        let completed_keys = load_completed_keys(&ctx.config.root, ctx.job_id);
-        let llm_entries: Vec<_> = if completed_keys.is_empty() {
-            llm_entries
-        } else {
-            let before = llm_entries.len();
-            let mut filtered = Vec::with_capacity(llm_entries.len());
-            for (entry, file_name) in llm_entries {
-                if completed_keys.contains(&entry.key) {
-                    // Send Completed event so the frontend doesn't see a stale Pending
-                    let _ = ctx.entry_progress_tx.send(EntryProgress {
-                        key: entry.key.clone(),
-                        mod_name: file_name.clone(),
-                        source_text: entry.text.clone(),
-                        target_text: None,
-                        status: EntryStatus::Completed,
-                        error_message: None,
-                    });
-                } else {
-                    filtered.push((entry, file_name));
-                }
-            }
-            let skipped = before - filtered.len();
-            if skipped > 0 {
-                let _ = logging::append_main(format!(
-                    "LLM 翻译阶段: 从检查点恢复，跳过 {skipped} 个已翻译条目"
-                ));
-            }
-            filtered
-        };
-
         let result = llm_phase(ctx, &llm_entries, &dict_db_path)?;
         ctx.accumulated_token_usage = result.accumulated_token_usage;
         ctx.llm_count = result.llm_count;
@@ -941,6 +910,9 @@ impl Phase for FinalizePhase {
 
 /// Check if a previous translation run left checkpointed results for this job.
 /// Returns the set of already-translated keys so the pipeline can skip them.
+/// NOTE: 检查点恢复已禁用 (2026-06-09 deep-interview spec)，此函数不再被调用。
+/// 保留函数体是为了在将来可能需要此功能时复用，且不删除测试依赖引用。
+#[allow(dead_code)]
 fn load_completed_keys(root: &std::path::Path, job_id: &str) -> HashSet<String> {
     let results_path = paths::translate_job_results_path(root, job_id);
     if !results_path.exists() {
@@ -1159,28 +1131,6 @@ fn resolve_scan(
     cancel: &CancelToken,
     progress_tx: &mpsc::Sender<PipelineProgress>,
 ) -> Result<ScanSummary, String> {
-    // Try loading from cached scan file
-    if let Some(ref sid) = config.scan_job_id {
-        if !sid.is_empty() {
-            let scan_path = paths::job_state_path(&config.root, sid);
-            if let Ok(content) = std::fs::read_to_string(&scan_path) {
-                if let Ok(summary) = serde_json::from_str::<ScanSummary>(&content) {
-                    if summary.source_language == config.source_language
-                        && summary.target_language == config.target_language
-                    {
-                        let _ = logging::append_main(format!("从缓存加载扫描结果 (任务 {sid})"));
-                        return Ok(summary);
-                    }
-                    let _ = logging::append_main(format!(
-                        "缓存扫描语言不匹配 (缓存: {}→{}, 当前: {}→{}), 重新扫描",
-                        summary.source_language, summary.target_language,
-                        config.source_language, config.target_language,
-                    ));
-                }
-            }
-        }
-    }
-
     // Run a new scan, relaying progress to the pipeline channel
     let relay = |scan_progress: ScanProgress| {
         let _ = progress_tx.send(PipelineProgress {
@@ -1201,19 +1151,6 @@ fn resolve_scan(
         &|| cancel.is_scan_cancelled(),
         &relay,
     ).map_err(|e| format!("扫描失败: {e}"))?;
-
-    // Persist scan result
-    if !summary.cancelled {
-        if let Ok(json) = serde_json::to_string_pretty(&summary) {
-            let job_path = paths::job_state_path(&config.root, &summary.job_id);
-            if let Some(parent) = job_path.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            if let Err(err) = std::fs::write(&job_path, &json) {
-                let _ = logging::append_main(format!("扫描结果写入失败 ({}): {err}", job_path.display()));
-            }
-        }
-    }
 
     Ok(summary)
 }

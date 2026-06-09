@@ -11,7 +11,9 @@ import {
   Search,
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { loadLatestTranslationJobMeta, loadTranslationModSummaries, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
+import { listTranslationJobs, loadLatestTranslationJobMeta, loadTranslationModSummaries, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
+import { t } from "../i18n/translations";
+import { useAppStore } from "../stores/appStore";
 import type { AppLanguage, ModTranslationSummary, TranslationJobListItem, TranslationResult } from "../types";
 
 interface Props {
@@ -21,7 +23,10 @@ interface Props {
 
 // ── Component ────────────────────────────────────────────────────
 
-export function ValidatePage({ language: _language, onConfirm }: Props) {
+export function ValidatePage({ language, onConfirm }: Props) {
+  const translationJobId = useAppStore((s) => s.translationJobId);
+  const translationStatus = useAppStore((s) => s.translationStatus);
+
   // ── State ──
   const [job, setJob] = useState<TranslationJobListItem | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,10 +41,35 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
   const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
   const [saveMsg, setSaveMsg] = useState<string>("");
 
-  // ── Load job meta + mod summaries on mount ──
+  // ── Job selector state ──
+  const [jobList, setJobList] = useState<TranslationJobListItem[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
+  const prevTranslationJobId = useRef(translationJobId);
+
+  // ── Auto-recover: 新翻译开始时自动重置 dismissed ──
+  useEffect(() => {
+    if (translationJobId && translationJobId !== prevTranslationJobId.current) {
+      prevTranslationJobId.current = translationJobId;
+      setDismissed(false);
+    }
+  }, [translationJobId]);
+
+  // ── Job list for dropdown ──
+  useEffect(() => {
+    listTranslationJobs()
+      .then((jobs) => setJobList(jobs))
+      .catch(() => {/* not critical */});
+  }, [translationJobId, translationStatus]);
+
+  // ── Load job meta + mod summaries reactively ──
+  // 始终自动加载最新任务（不依赖 dismissed）；UI 渲染层根据 dismissed 决定显示什么
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    // ⚠️ 清除缓存的 per-mod 数据，防止切换任务后展开同名 modId 时展示旧结果
+    resetModCache();
+    setSelectedJobId(null); // 新任务自动加载时清除手动选中
     loadLatestTranslationJobMeta()
       .then(async (j) => {
         if (cancelled) return;
@@ -57,7 +87,46 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [translationJobId, translationStatus]);
+
+  // ── Switch to a specific job from the list ──
+  function switchToJob(jobId: string) {
+    setSelectedJobId(jobId);
+    setDismissed(false);
+    const found = jobList.find((j) => j.jobId === jobId);
+    if (!found) return;
+    setLoading(true);
+    resetModCache();
+    setJob(found);
+    if (found.status === "completed") {
+      loadTranslationModSummaries(found.jobId)
+        .then((summaries) => {
+          setModSummaries(summaries);
+        })
+        .catch(() => {/* ignore */})
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
+    }
+  }
+
+  // ── Dismiss / clear view ──
+  function handleDismiss() {
+    setDismissed(true);
+    setSelectedJobId(null);
+    setJob(null);
+    setModSummaries([]);
+    resetModCache();
+    setError("");
+    setSaveMsg("");
+  }
+
+  // ── Reset per-mod cache (防止新增缓存状态时遗漏任一重置点) ──
+  function resetModCache() {
+    setModResults(new Map());
+    setExpandedMods(new Set());
+    setLoadingMods(new Set());
+  }
 
   // ── Lazy load results when a mod is expanded ──
   async function loadModResults(modId: string) {
@@ -149,13 +218,68 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
     );
   }
 
+  // ── Render: Dismissed (show empty state even if a job is loaded) ──
+  if (dismissed) {
+    return (
+      <section className="page validate-page validate-workspace">
+        <PageHeader language={language}>
+          {job && (
+            <button
+              className="ghost-button"
+              onClick={() => setDismissed(false)}
+              type="button"
+              style={{ fontSize: 13 }}
+            >
+              {t(language, "validate.restoreView")}
+            </button>
+          )}
+        </PageHeader>
+        <div className="empty-state">
+          <Search size={32} />
+          <p>{t(language, "validate.dismissedMessage")}</p>
+        </div>
+      </section>
+    );
+  }
+
   // ── Render: No job ──
   if (!job) {
     return (
       <section className="page validate-page validate-workspace">
+        <PageHeader language={language}>
+          {jobList.length > 1 && (
+            <JobSelector
+              language={language}
+              jobList={jobList}
+              selectedJobId={selectedJobId}
+              onSelect={switchToJob}
+            />
+          )}
+        </PageHeader>
         <div className="empty-state">
           <Search size={32} />
-          <p>未找到翻译任务。请先在"翻译任务"页面完成一次翻译。</p>
+          <p>未找到翻译任务。请先在「翻译任务」页面完成一次翻译。</p>
+          {jobList.length > 0 && (
+            <p style={{ marginTop: 12, color: "var(--text-muted)", fontSize: 13 }}>
+              {t(language, "validate.selectHistoryHint")}
+            </p>
+          )}
+          {jobList.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {jobList.filter((j) => j.status === "completed").map((j) => (
+                <button
+                  key={j.jobId}
+                  className="ghost-button"
+                  onClick={() => switchToJob(j.jobId)}
+                  type="button"
+                  style={{ fontSize: 13, padding: "6px 12px" }}
+                >
+                  {j.jobId} — {t(language, "validate.entries", { count: j.completedEntries })}
+                  {j.completedAt && ` (${new Date(j.completedAt).toLocaleString()})`}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     );
@@ -165,6 +289,19 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
   if (job.status !== "completed") {
     return (
       <section className="page validate-page validate-workspace">
+        <PageHeader language={language}>
+          {jobList.length > 1 && (
+            <JobSelector
+              language={language}
+              jobList={jobList}
+              selectedJobId={selectedJobId}
+              onSelect={switchToJob}
+            />
+          )}
+          <button className="ghost-button" onClick={handleDismiss} type="button">
+            {t(language, "validate.close")}
+          </button>
+        </PageHeader>
         <div className="empty-state">
           <Loader2 size={32} />
           <p>翻译任务尚未完成，请等待翻译完成后进入校对。</p>
@@ -176,13 +313,18 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
   // ── Render: Main review workbench ──
   return (
     <section className="page validate-page validate-workspace">
-      {/* ── Header ── */}
-      <div className="page-header">
-        <div>
-          <h1>校对工作台</h1>
-          <p>逐条审核 LLM 翻译结果，确认后可进入打包阶段</p>
-        </div>
-        <div className="page-header-button" style={{ gap: 6 }}>
+      <PageHeader language={language}>
+          {jobList.length > 1 && (
+            <JobSelector
+              language={language}
+              jobList={jobList}
+              selectedJobId={selectedJobId ?? job.jobId}
+              onSelect={switchToJob}
+            />
+          )}
+          <button className="ghost-button" onClick={handleDismiss} type="button" style={{ fontSize: 13 }}>
+            {t(language, "validate.close")}
+          </button>
           {modSummaries.length > 0 && (
             <button
               className="primary-button"
@@ -193,8 +335,7 @@ export function ValidatePage({ language: _language, onConfirm }: Props) {
               进入打包
             </button>
           )}
-        </div>
-      </div>
+        </PageHeader>
 
       {/* ── Job info bar ── */}
       <div className="job-info-bar">
@@ -417,3 +558,61 @@ const ReviewRow = React.memo(function ReviewRow({
     </tr>
   );
 });
+
+// ── Page Header (reduces duplication across 4 render paths) ────
+
+function PageHeader({ language, children }: { language: AppLanguage; children: React.ReactNode }) {
+  return (
+    <div className="page-header">
+      <div>
+        <h1>{t(language, "validate.title")}</h1>
+        <p>{t(language, "validate.description")}</p>
+      </div>
+      <div className="page-header-button" style={{ gap: 6 }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ── Job Selector ────────────────────────────────────────────────
+
+function JobSelector({
+  language,
+  jobList,
+  selectedJobId,
+  onSelect,
+}: {
+  language: AppLanguage;
+  jobList: TranslationJobListItem[];
+  selectedJobId: string | null;
+  onSelect: (jobId: string) => void;
+}) {
+  return (
+    <select
+      value={selectedJobId ?? ""}
+      onChange={(e) => {
+        if (e.target.value) onSelect(e.target.value);
+      }}
+      style={{
+        fontSize: 13,
+        padding: "4px 8px",
+        borderRadius: 6,
+        border: "1px solid var(--border-input)",
+        background: "var(--bg-surface)",
+        color: "var(--text-primary)",
+        maxWidth: 260,
+        cursor: "pointer",
+      }}
+    >
+      <option value="">{t(language, "validate.selectJobPlaceholder")}</option>
+      {jobList
+        .filter((j) => j.status === "completed")
+        .map((j) => (
+          <option key={j.jobId} value={j.jobId}>
+            {j.jobId.slice(-12)} ({t(language, "validate.entries", { count: j.completedEntries })})
+          </option>
+        ))}
+    </select>
+  );
+}

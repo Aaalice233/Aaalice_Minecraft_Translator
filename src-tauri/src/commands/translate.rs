@@ -112,6 +112,10 @@ pub async fn start_translation(
     spawn_batched_reader(entry_progress_rx, app.clone(), "translate-entry-progresses");
 
     let result = tauri::async_runtime::spawn_blocking(move || {
+        // 清理旧的翻译任务文件，仅保留词典
+        let mgr = jobs::JobManager::new(root.clone());
+        let _ = mgr.cleanup_old_translation_jobs(&job_id);
+
         if let Some(ref scan_id) = scan_job_id {
             let mgr = jobs::JobManager::new(root.clone());
             match mgr.create_from_scan_with_job_id(scan_id, &job_id) {

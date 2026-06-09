@@ -205,6 +205,35 @@ impl JobManager {
         Ok(())
     }
 
+    // ── Cleanup ─────────────────────────────────────────────────────
+
+    /// Remove all non-current translation job files (translate_*.json and translate_*.jsonl)
+    /// from the jobs directory. Called at the start of a new translation flow.
+    /// Only the job with `current_job_id` is kept; all other translate_ files are deleted.
+    pub fn cleanup_old_translation_jobs(&self, current_job_id: &str) -> Result<(), String> {
+        let jobs_dir = paths::jobs_dir(&self.root);
+        if !jobs_dir.exists() {
+            return Ok(());
+        }
+        for entry in std::fs::read_dir(&jobs_dir).map_err(|e| format!("读取 jobs 目录失败: {e}"))? {
+            let Ok(entry) = entry else { continue };
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    let is_translate = name.starts_with("translate_")
+                        && (name.ends_with(".json") || name.ends_with(".jsonl"))
+                        && !name.ends_with(".json.tmp");
+                    let is_current = name == format!("translate_{current_job_id}.json")
+                        || name == format!("translate_{current_job_id}_results.jsonl");
+                    if is_translate && !is_current {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     // ── Load ─────────────────────────────────────────────────────────
 
     /// Load a specific translation job by its job_id.

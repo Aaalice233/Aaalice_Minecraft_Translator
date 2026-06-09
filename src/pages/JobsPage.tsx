@@ -382,6 +382,18 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
   }
 
+  function handleResetToIdle() {
+    cancelledRef.current = false;
+    setStatus("idle");
+    setTranslationResult(null);
+    setTranslationError("");
+    onCompleteChange?.(false);
+    logRef.current = [];
+    setLogVersion(0);
+    entryProgressMapRef.current = new Map();
+    setEntryProgressVersion((v) => v + 1);
+  }
+
   async function handleCancel() {
     cancelledRef.current = true; // signal handleStart not to set completed
     setTranslateElapsedMs(null);
@@ -584,15 +596,27 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               <RefreshCw size={15} className="spinning" />
               {t(language, "jobs.retrying")}
             </span>
-          ) : (entryCounts.failed > 0 || savedFailedEntriesRef.current > 0) && (
-            <button
-              className="alert-action-button"
-              onClick={handleRetry}
-              type="button"
-            >
-              <RefreshCw size={15} />
-              {t(language, "jobs.retryFailed")} ({Math.max(entryCounts.failed, savedFailedEntriesRef.current)})
-            </button>
+          ) : (
+            <>
+              {(entryCounts.failed > 0 || savedFailedEntriesRef.current > 0) && (
+                <button
+                  className="alert-action-button"
+                  onClick={handleRetry}
+                  type="button"
+                >
+                  <RefreshCw size={15} />
+                  {t(language, "jobs.retryFailed")} ({Math.max(entryCounts.failed, savedFailedEntriesRef.current)})
+                </button>
+              )}
+              <button
+                className="alert-action-button"
+                onClick={handleResetToIdle}
+                type="button"
+              >
+                <Play size={15} />
+                {t(language, "jobs.newTranslation")}
+              </button>
+            </>
           )}
         </div>
       )}

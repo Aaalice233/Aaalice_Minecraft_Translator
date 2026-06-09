@@ -65,10 +65,7 @@ export const useAppStore = create<AppState>()(
 
       setNavState: (key, status) =>
         set((state) => {
-          // Skip redundant updates
           if (state.navStates[key] === status) return state;
-          // Once completed, don't revert to idle
-          if (status === "idle" && state.navStates[key] === "completed") return state;
           return { navStates: { ...state.navStates, [key]: status } };
         }),
 

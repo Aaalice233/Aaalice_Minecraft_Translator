@@ -137,22 +137,32 @@ fn job_state_persistence_works() {
 
 // ── End-to-end test with fake LLM server ──
 
-/// Run the pipeline with a ScanSummary cached on disk, pointing to the fake LLM.
+/// Run the pipeline with a fake scan directory on disk, pointing to the fake LLM.
 fn run_fake_llm_pipeline(port: u16, root: &std::path::Path) -> Result<PipelineResult, String> {
     let scan = create_scan_summary("fake-llm-e2e");
-    let scan_job_id = scan.job_id.clone();
-    let scan_path = aaalice_mc_translator_lib::core::paths::job_state_path(root, &scan_job_id);
-    if let Some(parent) = scan_path.parent() {
-        std::fs::create_dir_all(parent).ok();
+
+    // Create a minimal instance directory with mods/ so the scanner passes
+    let instance_path = root.join("test-instance");
+    let instance_path_str = instance_path.to_string_lossy().to_string();
+    std::fs::create_dir_all(instance_path.join("mods")).ok();
+
+    // Copy a fixture jar so scanner finds real entries to process
+    let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/modpacks/basic_pack/mods");
+    if let Ok(entries) = std::fs::read_dir(&fixture_dir) {
+        for entry in entries.flatten() {
+            if entry.path().extension().and_then(|e| e.to_str()) == Some("jar") {
+                let target = instance_path.join("mods").join(entry.file_name());
+                let _ = std::fs::copy(entry.path(), &target);
+            }
+        }
     }
-    std::fs::write(&scan_path, serde_json::to_string_pretty(&scan).unwrap()).ok();
 
     let config = PipelineConfig {
         root: root.to_path_buf(),
-        instance_path: "test-instance".into(),
+        instance_path: instance_path_str,
         source_language: "en_us".into(),
         target_language: "zh_cn".into(),
-        scan_job_id: Some(scan_job_id),
+        scan_job_id: Some(scan.job_id.clone()),
         resource_pack_names: vec![],
         llm: Some(LlmConfig {
             base_url: format!("http://127.0.0.1:{}", port),
@@ -215,13 +225,18 @@ fn fake_llm_pipeline_cancel_returns_partial() {
 
     let scan = create_scan_summary("fake-llm-cancel");
     let scan_job_id = scan.job_id.clone();
+
+    // Create a minimal instance directory with mods/ so the scanner passes
+    let instance_path = root.join("test-instance");
+    let instance_path_str = instance_path.to_string_lossy().to_string();
+    std::fs::create_dir_all(instance_path.join("mods")).ok();
     let scan_path = aaalice_mc_translator_lib::core::paths::job_state_path(root, &scan_job_id);
     if let Some(parent) = scan_path.parent() { std::fs::create_dir_all(parent).ok(); }
     std::fs::write(&scan_path, serde_json::to_string_pretty(&scan).unwrap()).ok();
 
     let config = PipelineConfig {
         root: root.to_path_buf(),
-        instance_path: "test-instance".into(),
+        instance_path: instance_path_str,
         source_language: "en_us".into(), target_language: "zh_cn".into(),
         scan_job_id: Some(scan_job_id), resource_pack_names: vec![],
         llm: Some(LlmConfig {
