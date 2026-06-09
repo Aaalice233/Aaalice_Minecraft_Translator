@@ -18,7 +18,7 @@ use crate::core::{
     dictionary,
     logging,
     models::{
-        InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanProgress,
+        InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanPhase, ScanProgress,
         ScanSummary, ScanWarning, StageStatus,
     },
     paths::display_path,
@@ -106,7 +106,7 @@ pub fn scan_instance(
             current: 0,
             total: 0,
             mod_name: String::new(),
-            phase: "resourcepacks".to_string(),
+            phase: ScanPhase::ResourcePacks,
             sub_step: None,
             stage_status: StageStatus::Running,
         });
@@ -174,7 +174,7 @@ pub fn scan_instance(
             current: 0,
             total: 1,
             mod_name: String::new(),
-            phase: "aggregate".to_string(),
+            phase: ScanPhase::Aggregate,
             sub_step: None,
             stage_status: StageStatus::Running,
         });
@@ -182,7 +182,7 @@ pub fn scan_instance(
             current: 1,
             total: 1,
             mod_name: String::new(),
-            phase: "aggregate".to_string(),
+            phase: ScanPhase::Aggregate,
             sub_step: None,
             stage_status: StageStatus::Completed,
         });
@@ -197,7 +197,7 @@ pub fn scan_instance(
             current: 0,
             total: total_mods,
             mod_name: String::new(),
-            phase: "log".to_string(),
+            phase: ScanPhase::Log,
             sub_step: None,
             stage_status: StageStatus::Running,
         });
@@ -231,7 +231,7 @@ pub fn scan_instance(
                 current: i + 1,
                 total: total_mods,
                 mod_name: mod_result.file_name.clone(),
-                phase: "log".to_string(),
+                phase: ScanPhase::Log,
                 sub_step: None,
                 stage_status: StageStatus::Running,
             });
@@ -254,7 +254,7 @@ pub fn scan_instance(
             current: total_mods,
             total: total_mods,
             mod_name: String::new(),
-            phase: "log".to_string(),
+            phase: ScanPhase::Log,
             sub_step: None,
             stage_status: StageStatus::Completed,
         });
@@ -359,7 +359,7 @@ pub fn scan_mods(
                 current,
                 total,
                 mod_name: file_name,
-                phase: "scan".to_string(),
+                phase: ScanPhase::Scan,
                 sub_step: None,
                 stage_status: StageStatus::Running,
             });
@@ -428,7 +428,7 @@ pub fn scan_resourcepacks(
             current,
             total,
             mod_name: name.clone(),
-            phase: "resourcepacks".to_string(),
+            phase: ScanPhase::ResourcePacks,
             sub_step: None,
             stage_status: StageStatus::Running,
         });
@@ -1274,7 +1274,7 @@ Second line",
             calls.fetch_add(1, Ordering::SeqCst);
             assert!(p.current >= 1);
             assert_eq!(p.total, 2);
-            assert!(p.phase == "scan");
+            assert!(p.phase == ScanPhase::Scan);
         }).unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), mods.len());
         assert!(mods.len() > 0);

@@ -9,6 +9,7 @@ use std::time::Duration;
 use crate::core::models::*;
 use crate::core::{cfpa, dictionary, jobs, logging, paths, scanner, shield};
 use crate::core::llm::{LlmClient, TranslateResult, TranslationEntry};
+use tracing::debug;
 
 // ── Cancel mechanism ──────────────────────────────────────────
 
@@ -106,7 +107,6 @@ pub struct PipelineContext<'a> {
     pub log_tx: &'a mpsc::Sender<TranslateLogEntry>,
     pub entry_progress_tx: &'a mpsc::Sender<EntryProgress>,
     pub scan_summary: Option<ScanSummary>,
-    pub dict_conn: Option<rusqlite::Connection>,
     pub dict_db_path: Option<std::path::PathBuf>,
     // Phase-owned data (no lifetime dependency — cloned at phase boundaries)
     pub pending_entries: Vec<(LanguageEntry, String, Option<String>)>,
@@ -204,11 +204,10 @@ fn dictionary_phase(
     let log_tx = ctx.log_tx;
     let entry_progress_tx = ctx.entry_progress_tx;
 
-    eprintln!("dictionary_phase: processing {} pending entries", pending.len());
+    debug!("dictionary_phase: processing {} pending entries", pending.len());
     let prefer_user_dict = config.llm.as_ref().map(|c| c.prefer_user_dict).unwrap_or(false);
     let dict_db_path = paths::dictionary_db_path(&config.root);
     let dict_conn = dictionary::open(&dict_db_path).map_err(|e| format!("打开词典失败: {e}"))?;
-    ctx.dict_conn = Some(dict_conn);
 
     let mut processed = 0usize;
     let mut batch_results: Vec<jobs::TranslationResult> = Vec::new();
@@ -231,7 +230,6 @@ fn dictionary_phase(
         }
     };
 
-    let dict_conn_ref = ctx.dict_conn.as_ref().unwrap();
     for (entry, file_name, existing_target) in pending {
         if cancel.is_cancelled(job_id) {
             break;
@@ -287,7 +285,7 @@ fn dictionary_phase(
             });
         } else {
             let source_hash = dictionary::hash_text(&entry.text);
-            match dictionary::search_by_hash(dict_conn_ref, &source_hash, &config.target_language) {
+            match dictionary::search_by_hash(&dict_conn, &source_hash, &config.target_language) {
                 Ok(results) => {
                     let dict_match = if prefer_user_dict {
                         results.iter().find(|d| d.source_type == "manual")
@@ -347,7 +345,7 @@ fn dictionary_phase(
     flush_dict_batch(&mut entry_progress_buf, &mut log_buf);
 
     let non_llm_count = processed - llm_only_entries.len();
-    eprintln!("dictionary_phase: processed={}, non_llm={}, llm_only={}", processed, non_llm_count, llm_only_entries.len());
+    debug!("dictionary_phase: processed={}, non_llm={}, llm_only={}", processed, non_llm_count, llm_only_entries.len());
     logging::append_main(format!(
         "词典匹配完成: 共 {processed} 条目, 非 LLM {non_llm_count}, 待 LLM 翻译 {}",
         llm_only_entries.len()
@@ -489,7 +487,7 @@ fn llm_phase(
         });
     }
 
-    eprintln!("llm_phase START: {} entries into LLM phase", llm_only_entries.len());
+    debug!("llm_phase START: {} entries into LLM phase", llm_only_entries.len());
     let llm_cfg = config.llm.as_ref().ok_or_else(|| "LLM 未配置，但有待翻译条目需要 LLM 翻译".to_string())?;
     let effective_batch_size = llm_cfg.batch_size.max(1);
 
@@ -555,7 +553,7 @@ fn llm_phase(
             s.spawn(|| {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     active_workers.fetch_add(1, Ordering::Relaxed);
-                    eprintln!("WORKER: started (worker #{})", active_workers.load(Ordering::Relaxed));
+                    debug!("WORKER: started (worker #{})", active_workers.load(Ordering::Relaxed));
                     let mut worker_429_count = 0usize;
                     let batch_capacity = RESULTS_FLUSH_INTERVAL * effective_batch_size;
                     let mut result_buf: Vec<jobs::TranslationResult> = Vec::with_capacity(batch_capacity);
@@ -650,9 +648,9 @@ fn llm_phase(
                             }
                         };
 
-                        eprintln!("WORKER: calling translate_batch for batch {}, {} entries", bi, entries.len());
+                        debug!("WORKER: calling translate_batch for batch {}, {} entries", bi, entries.len());
                         let (results, token_usage) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
-                        eprintln!("WORKER: translate_batch returned {} results", results.len());
+                        debug!("WORKER: translate_batch returned {} results", results.len());
                         let token = token_usage.unwrap_or_default();
 
                         let all_rate_limited = results.iter().all(|r| {
@@ -661,11 +659,18 @@ fn llm_phase(
 
                         if all_rate_limited {
                             worker_429_count += 1;
-                            let wait_secs = match worker_429_count {
-                                1 => 30u64,
-                                2 => 60,
-                                _ => 120,
-                            };
+                            // Extract Retry-After from the first rate-limited error message.
+                            // Error format: "RATE_LIMITED:<seconds>", where <seconds> comes
+                            // from the HTTP Retry-After response header when available.
+                            let wait_secs = results.iter()
+                                .find_map(|r| r.error.as_deref()
+                                    .and_then(|e| e.strip_prefix("RATE_LIMITED:"))
+                                    .and_then(|v| v.parse::<u64>().ok()))
+                                .unwrap_or_else(|| match worker_429_count {
+                                    1 => 30u64,
+                                    2 => 60,
+                                    _ => 120,
+                                });
                             std::thread::sleep(Duration::from_secs(wait_secs));
 
                             let (retry_results, retry_token) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
@@ -800,13 +805,13 @@ fn llm_phase(
     }
 
     if active_workers.load(Ordering::Relaxed) == 0 {
-        eprintln!("llm_phase: ALL WORKERS FAILED");
+        debug!("llm_phase: ALL WORKERS FAILED");
         return Err("所有 LLM 工作者启动失败，请检查词典数据库可用性".to_string());
     }
 
     let llm_count = global_llm_count.load(Ordering::SeqCst);
     let failed_count = global_failed_count.load(Ordering::SeqCst);
-    eprintln!("llm_phase: llm_count={}, failed_count={}", llm_count, failed_count);
+    debug!("llm_phase: llm_count={}, failed_count={}", llm_count, failed_count);
     logging::append_main(format!(
         "LLM 翻译阶段完成: 成功 {llm_count} 条目, 失败 {failed_count} 条目",
     )).ok();
@@ -928,7 +933,7 @@ impl Phase for LlmPhase {
         let dict_db_path = ctx.dict_db_path.clone()
             .unwrap_or_else(|| paths::dictionary_db_path(&ctx.config.root));
         let llm_entries = std::mem::take(&mut ctx.llm_only_entries);
-        eprintln!("LlmPhase::run: {} entries to translate", llm_entries.len());
+        debug!("LlmPhase::run: {} entries to translate", llm_entries.len());
 
         // Checkpoint recovery: skip entries already in the JSONL results file
         let completed_keys = load_completed_keys(&ctx.config.root, ctx.job_id);
@@ -979,7 +984,7 @@ impl Phase for FinalizePhase {
         let llm_count = ctx.llm_count;
         let failed_count = ctx.failed_count;
         let completed = non_llm_count + llm_count;
-        eprintln!("FinalizePhase: non_llm={}, llm={}, completed={}", non_llm_count, llm_count, completed);
+        debug!("FinalizePhase: non_llm={}, llm={}, completed={}", non_llm_count, llm_count, completed);
 
         if ctx.cancel.is_cancelled(ctx.job_id) {
             let _ = logging::append_job(ctx.job_id, "翻译任务在完成前被取消");
@@ -1111,7 +1116,6 @@ pub fn run_pipeline(
         log_tx: &log_tx,
         entry_progress_tx: &entry_progress_tx,
         scan_summary: None,
-        dict_conn: None,
         dict_db_path: None,
         pending_entries: Vec::new(),
         llm_only_entries: Vec::new(),

@@ -106,13 +106,26 @@ pub enum StageStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub enum ScanPhase {
+    #[default]
+    #[serde(rename = "scan")]
+    Scan,
+    #[serde(rename = "resourcepacks")]
+    ResourcePacks,
+    #[serde(rename = "aggregate")]
+    Aggregate,
+    #[serde(rename = "log")]
+    Log,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
 #[serde(default)]
 pub struct ScanProgress {
     pub current: usize,
     pub total: usize,
     pub mod_name: String,
-    pub phase: String,
+    pub phase: ScanPhase,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sub_step: Option<String>,
     pub stage_status: StageStatus,
