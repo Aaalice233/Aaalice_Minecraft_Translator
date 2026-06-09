@@ -101,16 +101,14 @@ function AppShell() {
     // localStorage inaccessible
   }
 
-  // ── Combined warmup: register listener first, then start warmup ──
-  // This eliminates the race where Rust emits events before the frontend
-  // listener is registered.
+  // Register listener before starting warmup to eliminate the race
+  // where Rust emits events before the frontend listener is registered.
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     let cancelled = false;
 
     (async () => {
       try {
-        // Step 1: Register event listener BEFORE starting warmup
         const { listen } = await import("@tauri-apps/api/event");
         unlisten = await listen<WarmupProgress>("warmup-progress", (event) => {
           if (cancelled) return;
@@ -121,27 +119,18 @@ function AppShell() {
             setWarmupComplete(true);
           }
 
-          // Detect offline mode: LLM phase completed with an error but app can still run
-          if (
-            p.phase === "llm" &&
-            p.status === "completed" &&
-            p.error
-          ) {
+          if (p.phase === "llm" && p.status === "completed" && p.error) {
             setIsOffline(true);
           }
 
-          // Detect fatal configuration error
           if (p.phase === "settings" && p.status === "failed" && p.error) {
             setFatalWarmupError(p.error);
           }
         });
 
-        // Step 2: Now safe to start warmup — listener is already registered
         await runWarmup();
       } catch {
         if (cancelled) return;
-        // Non-Tauri environment (browser preview) or early warmup failure
-        // — let the splash screen proceed so the user isn't stuck
         setWarmupComplete(true);
       }
     })();
@@ -201,7 +190,6 @@ function AppShell() {
 
   const [mountedPages, setMountedPages] = useState<Set<PageKey>>(() => new Set(["dashboard"]));
 
-  // 挂载新页面（立即生效）
   useEffect(() => {
     setMountedPages((prev) => {
       if (prev.has(activePage)) return prev;
@@ -297,10 +285,12 @@ function AppShell() {
       // Transition skipped or failed — state update still needed
     }
 
-    document.documentElement.removeAttribute('data-vt-mode');
-    animatingRef.current = false;
-    syncedDispatch({ type: "SET_SETTINGS", payload: updated });
-    saveSettings(updated).catch((err) => console.warn("saveSettings 失败:", err));
+    requestAnimationFrame(() => {
+      document.documentElement.removeAttribute('data-vt-mode');
+      animatingRef.current = false;
+      syncedDispatch({ type: "SET_SETTINGS", payload: updated });
+      saveSettings(updated).catch((err) => console.warn("saveSettings 失败:", err));
+    });
   }, [settings, syncedDispatch]);
 
   const handleSettingsChange = useCallback(
@@ -336,12 +326,7 @@ function AppShell() {
   }
 
   useEffect(() => {
-    const accent = settings?.uiTheme === "default" ? "green" : (settings?.uiTheme || "green");
-    if (accent === "green") {
-      document.documentElement.dataset.accent = "green";
-    } else {
-      document.documentElement.dataset.accent = accent;
-    }
+    document.documentElement.dataset.accent = settings?.uiTheme === "default" ? "green" : (settings?.uiTheme || "green");
     document.documentElement.dataset.theme = settings?.uiDarkMode ? "dark" : "light";
     if (settings?.uiFont) {
       applyFont(settings.uiFont);
