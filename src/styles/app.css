@@ -151,7 +151,7 @@ select {
   height: 100vh;
   background:
     linear-gradient(90deg, rgba(31, 138, 91, 0.04), transparent 34%),
-    var(--bg-app, #f7f4ec);
+    var(--bg-app);
 }
 
 /* ── Dark mode: app-shell ── */
@@ -930,10 +930,6 @@ select optgroup option {
 
 .alert-action-button:hover {
   background: rgba(255,255,255,0.1);
-}
-  color: var(--text-muted);
-  font-family: "JetBrains Mono", Consolas, monospace;
-  font-size: 12px;
 }
 
 .alert.warning {
@@ -2391,7 +2387,7 @@ button.essb-legend-item:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-muted, #efeade);
+  background: var(--bg-muted);
   transition: opacity 400ms ease-out;
 }
 
@@ -2523,7 +2519,7 @@ button.essb-legend-item:hover {
 .splash-progress-track {
   width: 100%;
   height: 4px;
-  background: var(--border-input, #ded8cc);
+  background: var(--border-input);
   border-radius: 2px;
   overflow: hidden;
 }
@@ -2559,11 +2555,11 @@ button.essb-legend-item:hover {
 }
 
 .splash-phase-step.done {
-  color: var(--accent-text, #0f6a43);
+  color: var(--accent-text);
 }
 
 .splash-phase-step.failed {
-  color: var(--danger, #b8423a);
+  color: var(--danger);
 }
 
 .splash-phase-icon {
@@ -2651,11 +2647,8 @@ button.essb-legend-item:hover {
   animation: splashFloatUp 500ms ease-out forwards, splashPulse 600ms ease-out 800ms 1;
 }
 
-/* ═══════════════════════════════════════════════════
-   ── View Transition: dark/light mode toggle ───────
-   ═══════════════════════════════════════════════════ */
+/* ── View Transition: dark/light mode toggle ─── */
 
-/* Disable default UA cross-fade blend for both layers */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   mix-blend-mode: normal;
@@ -2669,12 +2662,14 @@ button.essb-legend-item:hover {
   animation: clip-expand 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-/* Shrink: old content shrinks to click point (dark→light) */
+/* Shrink: old (dark) on top shrinks to click point, revealing new (light) below */
 :root[data-vt-mode="shrink"]::view-transition-old(root) {
   animation: clip-shrink 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 1;
 }
 :root[data-vt-mode="shrink"]::view-transition-new(root) {
   animation: none;
+  z-index: 0;
 }
 
 @keyframes clip-expand {
