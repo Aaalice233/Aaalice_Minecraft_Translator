@@ -1,7 +1,6 @@
 import { TableVirtuoso } from "react-virtuoso";
 import {
   CheckCircle,
-  FileText,
   Loader2,
   PackageCheck,
   Save,
@@ -280,16 +279,12 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
         {/* ── Job info bar ── */}
         <div className="job-info-bar">
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <FileText size={14} />
-            任务: <code style={{ fontSize: 12 }}>{job.jobId}</code>
-          </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
             <CheckCircle size={14} style={{ color: "var(--accent)" }} />
             {job.completedEntries} 条已翻译
           </span>
           {job.completedAt && (
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              {new Date(job.completedAt).toLocaleString()}
+              {new Date(job.completedAt).toLocaleString("zh-CN", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}
             </span>
           )}
           <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>
