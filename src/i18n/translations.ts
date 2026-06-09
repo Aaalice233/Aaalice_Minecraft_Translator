@@ -175,6 +175,9 @@ export type TranslationKey =
   | "settings.uiFontSystem"
   | "settings.loadingFonts"
   | "settings.uiTheme"
+  | "settings.uiDarkMode"
+  | "settings.uiDarkModeOn"
+  | "settings.uiDarkModeOff"
   | "settings.uiThemeOption.default"
   | "settings.uiThemeOption.ocean"
   | "settings.uiThemeOption.aurora"
@@ -495,6 +498,9 @@ const zhCn: TranslationMap = {
   "settings.uiFontSystem": "系统字体（{count} 个）",
   "settings.loadingFonts": "正在加载…",
   "settings.uiTheme": "主题",
+  "settings.uiDarkMode": "暗色模式",
+  "settings.uiDarkModeOn": "切换到暗色模式",
+  "settings.uiDarkModeOff": "切换到亮色模式",
   "settings.uiThemeOption.default": "经典",
   "settings.uiThemeOption.ocean": "海洋蓝",
   "settings.uiThemeOption.aurora": "极光紫",
@@ -678,6 +684,9 @@ const enUs: TranslationMap = {
   "settings.uiFontSystem": "System Fonts ({count})",
   "settings.loadingFonts": "Loading…",
   "settings.uiTheme": "Theme",
+  "settings.uiDarkMode": "Dark Mode",
+  "settings.uiDarkModeOn": "Switch to Dark Mode",
+  "settings.uiDarkModeOff": "Switch to Light Mode",
   "settings.uiThemeOption.default": "Classic",
   "settings.uiThemeOption.ocean": "Ocean Blue",
   "settings.uiThemeOption.aurora": "Aurora Purple",
@@ -884,6 +893,9 @@ const jaJp: TranslationMap = {
   "settings.uiFontSystem": "システムフォント（{count}）",
   "settings.loadingFonts": "読み込み中…",
   "settings.uiTheme": "テーマ",
+  "settings.uiDarkMode": "ダークモード",
+  "settings.uiDarkModeOn": "ダークモードに切り替え",
+  "settings.uiDarkModeOff": "ライトモードに切り替え",
   "settings.uiThemeOption.default": "クラシック",
   "settings.uiThemeOption.ocean": "オーシャンブルー",
   "settings.uiThemeOption.aurora": "オーロラパープル",
@@ -1053,6 +1065,9 @@ const koKr: TranslationMap = {
   "settings.uiFontSystem": "시스템 글꼴 ({count}개)",
   "settings.loadingFonts": "로딩 중…",
   "settings.uiTheme": "테마",
+  "settings.uiDarkMode": "다크 모드",
+  "settings.uiDarkModeOn": "다크 모드로 전환",
+  "settings.uiDarkModeOff": "라이트 모드로 전환",
   "settings.uiThemeOption.default": "클래식",
   "settings.uiThemeOption.ocean": "오션 블루",
   "settings.uiThemeOption.aurora": "오로라 퍼플",
@@ -1307,6 +1322,9 @@ const ruRu: TranslationMap = {
   "settings.uiFontSystem": "Системные шрифты ({count})",
   "settings.loadingFonts": "Загрузка…",
   "settings.uiTheme": "Тема",
+  "settings.uiDarkMode": "Тёмная тема",
+  "settings.uiDarkModeOn": "Переключить на тёмную тему",
+  "settings.uiDarkModeOff": "Переключить на светлую тему",
   "settings.uiThemeOption.default": "Классика",
   "settings.uiThemeOption.ocean": "Океанский синий",
   "settings.uiThemeOption.aurora": "Пурпурный",

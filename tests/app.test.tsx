@@ -34,6 +34,7 @@ const settings: Settings = {
   systemPrompt: "",
   uiFont: "system",
   uiTheme: "default",
+  uiDarkMode: false,
 };
 
 afterEach(() => {

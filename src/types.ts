@@ -30,6 +30,7 @@ export interface Settings {
   systemPrompt: string;
   uiFont: string;
   uiTheme: string;
+  uiDarkMode: boolean;
 }
 
 export type AppLanguage = "zh_cn" | "en_us" | "ja_jp" | "ko_kr" | "ru_ru";

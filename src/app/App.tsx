@@ -9,9 +9,11 @@ import {
   Home,
   ListChecks,
   Loader2,
+  Moon,
   PackageCheck,
   ScanLine,
   Settings as SettingsIcon,
+  Sun,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -24,7 +26,7 @@ import { PlaceholderPage } from "../pages/PlaceholderPage";
 import { SplashScreen } from "../components/SplashScreen";
 import { applyFont, SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
-import { getSettings, runWarmup } from "../api/tauri";
+import { getSettings, runWarmup, saveSettings } from "../api/tauri";
 import { AppProvider, useAppState } from "./AppContext";
 import { useAppStore } from "../stores/appStore";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
@@ -264,6 +266,15 @@ function AppShell() {
   const dbCompleted = useCallback((c: boolean) => setNavCompleted("dashboard", c), [setNavCompleted]);
   const jobsBusy = useCallback((b: boolean) => setNavBusy("jobs", b), [setNavBusy]);
   const jobsCompleted = useCallback((c: boolean) => setNavCompleted("jobs", c), [setNavCompleted]);
+  const toggleDarkMode = useCallback(() => {
+    if (!settings) return;
+    const next = !settings.uiDarkMode;
+    const updated: Settings = { ...settings, uiDarkMode: next };
+    document.documentElement.dataset.theme = next ? "dark" : "light";
+    syncedDispatch({ type: "SET_SETTINGS", payload: updated });
+    saveSettings(updated).catch((err) => console.warn("saveSettings 失败:", err));
+  }, [settings, syncedDispatch]);
+
   const packsBusy = useCallback((b: boolean) => setNavBusy("packages", b), [setNavBusy]);
   const handleSettingsChange = useCallback(
     (s: Settings) => syncedDispatch({ type: "SET_SETTINGS", payload: s }),
@@ -298,13 +309,17 @@ function AppShell() {
   }
 
   useEffect(() => {
-    if (settings?.uiTheme) {
-      document.documentElement.dataset.theme = settings.uiTheme;
+    const accent = settings?.uiTheme === "default" ? "green" : (settings?.uiTheme || "green");
+    if (accent === "green") {
+      document.documentElement.dataset.accent = "green";
+    } else {
+      document.documentElement.dataset.accent = accent;
     }
+    document.documentElement.dataset.theme = settings?.uiDarkMode ? "dark" : "light";
     if (settings?.uiFont) {
       applyFont(settings.uiFont);
     }
-  }, [settings?.uiTheme, settings?.uiFont]);
+  }, [settings?.uiTheme, settings?.uiDarkMode, settings?.uiFont]);
 
   return (
     <div className="app-root">
@@ -391,7 +406,18 @@ function AppShell() {
         </nav>
 
         <div className="sidebar-footer">
-          <span>v0.1.0</span>
+          <div className="sidebar-footer-left">
+            <button
+              className="dark-toggle-btn"
+              onClick={toggleDarkMode}
+              type="button"
+              data-tooltip={settings?.uiDarkMode ? t(language, "settings.uiDarkModeOff") : t(language, "settings.uiDarkModeOn")}
+              data-tooltip-direction="down"
+            >
+              {settings?.uiDarkMode ? <Sun size={14} /> : <Moon size={14} />}
+            </button>
+            <span>v0.1.0</span>
+          </div>
           <span className="status-dot">{t(language, "app.ready")}</span>
         </div>
       </aside>

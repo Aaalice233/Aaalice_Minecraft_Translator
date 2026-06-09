@@ -92,6 +92,8 @@ pub struct Settings {
     pub ui_font: String,
     #[serde(default = "default_ui_theme")]
     pub ui_theme: String,
+    #[serde(default)]
+    pub ui_dark_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -174,6 +176,7 @@ impl Default for Settings {
             system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
             ui_font: "system".to_string(),
             ui_theme: "default".to_string(),
+            ui_dark_mode: false,
         }
     }
 }

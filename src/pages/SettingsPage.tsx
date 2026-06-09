@@ -45,6 +45,12 @@ const tabs = [
 /** 预设字体键名列表 — 与 CSS [data-font] 选择器对应 */
 export const FONT_PRESETS = ["system", "yahei", "noto", "simsun"] as const;
 
+/** 应用主题到文档根元素：accent（强调色）和 darkMode（暗色模式）。 */
+export function applyTheme(accent: string | undefined, darkMode: boolean): void {
+  document.documentElement.dataset.accent = (!accent || accent === "default") ? "green" : accent;
+  document.documentElement.dataset.theme = darkMode ? "dark" : "light";
+}
+
 /** 应用字体到文档根元素：预设走 data-font 属性，自定义走 --ui-font CSS 变量 */
 export function applyFont(font: string): void {
   const presets: readonly string[] = FONT_PRESETS;
@@ -272,7 +278,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                       onChange={(event) => {
                         const newTheme = event.target.value;
                         setDraft(prev => ({ ...prev, uiTheme: newTheme }));
-                        document.documentElement.dataset.theme = newTheme;
+                        applyTheme(newTheme, draft.uiDarkMode);
                         scheduleSave();
                       }}
                     >
@@ -280,6 +286,20 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                         <option key={key} value={key}>{t(language, `settings.uiThemeOption.${key}` as TranslationKey)}</option>
                       ))}
                     </select>
+                  </label>
+                  <label className="toggle-row">
+                    <span>{t(language, "settings.uiDarkMode")}</span>
+                    <div
+                      className={`toggle-track${draft.uiDarkMode ? " active" : ""}`}
+                      onClick={() => {
+                        const next = !draft.uiDarkMode;
+                        setDraft(prev => ({ ...prev, uiDarkMode: next }));
+                        applyTheme(draft.uiTheme, next);
+                        scheduleSave();
+                      }}
+                    >
+                      <div className="toggle-thumb" />
+                    </div>
                   </label>
                   <label className="field">
                     {t(language, "settings.uiFont")}

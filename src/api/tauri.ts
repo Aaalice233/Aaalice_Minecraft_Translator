@@ -29,6 +29,7 @@ const defaultSettings: Settings = {
   systemPrompt: "",
   uiFont: "system",
   uiTheme: "default",
+  uiDarkMode: false,
 };
 
 function isTauriRuntime(): boolean {
