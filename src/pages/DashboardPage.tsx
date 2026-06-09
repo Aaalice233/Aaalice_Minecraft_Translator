@@ -1,4 +1,4 @@
-import { AlertTriangle, Filter, FolderOpen, Loader2, Package, RefreshCcw, ScanLine, Square, X, Zap } from "lucide-react";
+import { AlertTriangle, ChevronDown, Filter, FolderOpen, Loader2, Package, RefreshCcw, ScanLine, Square, X, Zap } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useSortFilter } from "../hooks/useSortFilter";
@@ -133,6 +133,7 @@ export const DashboardPage = React.memo(function DashboardPage({
   }, [instancePath, settings.instancePath, onBusyChange]);
 
   const [searchText, setSearchText] = useState("");
+  const [resourcePacksCollapsed, setResourcePacksCollapsed] = useState(true);
   const debouncedSearch = useDebouncedValue(searchText, 200);
   const sf = useSortFilter<Record<string, string | { min?: number; max?: number }>>();
   const copyFlash = useCallback(async (text: string, key: string) => {
@@ -615,13 +616,31 @@ export const DashboardPage = React.memo(function DashboardPage({
       </div>
 
       <div className="resource-section">
-        <div className="resource-section-header">{t(language, "dashboard.resourceSources")}</div>
-        <div className="resource-section-body">
+        <div
+          className="resource-section-header"
+          onClick={() => setResourcePacksCollapsed((v) => !v)}
+          style={{ cursor: "pointer", display: "flex", alignItems: "center", gap: 6, userSelect: "none" }}
+        >
+          <ChevronDown
+            size={14}
+            style={{
+              transition: "transform 0.15s",
+              transform: resourcePacksCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
+            }}
+          />
+          {t(language, "dashboard.resourceSources")}
+          {scanSummary && scanSummary.resourcePacks.length > 0 && (
+            <span style={{ marginLeft: "auto", fontWeight: 400, fontSize: 12, color: "var(--text-muted)" }}>
+              {scanSummary.resourcePacks.reduce((s, p) => s + p.langFileCount, 0)} 个文件 / {scanSummary.resourcePacks.reduce((s, p) => s + p.entryCount, 0)} 条
+            </span>
+          )}
+        </div>
+        {!resourcePacksCollapsed && (
+          <div className="resource-section-body">
           {(scanSummary?.resourcePacks ?? []).map((pack) => (
             <div key={pack.path} className="resource-pack">
               <div className="resource-pack-top">
                 <span className="resource-pack-name" title={pack.name}>{pack.name}</span>
-                <span className={`badge ${pack.sourceType}`}>{pack.sourceType}</span>
               </div>
               <div className="resource-pack-meta">
                 {t(language, "dashboard.resourceCount", { files: pack.langFileCount, entries: pack.entryCount })}
@@ -634,6 +653,7 @@ export const DashboardPage = React.memo(function DashboardPage({
             </div>
           )}
         </div>
+      )}
       </div>
 
       <div className="dashboard-grid">
