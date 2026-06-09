@@ -141,7 +141,9 @@ export const DashboardPage = React.memo(function DashboardPage({
       await navigator.clipboard.writeText(text);
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 1200);
-    } catch {}
+    } catch (err) {
+      console.warn("剪贴板复制失败:", err);
+    }
   }, []);
 
   const stageLabel = (phase: string): string => {

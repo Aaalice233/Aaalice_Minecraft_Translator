@@ -1,25 +1,9 @@
-import { createContext, useContext, useReducer, type Dispatch, type ReactNode } from "react";
+import { createContext, useContext, useCallback, type Dispatch, type ReactNode } from "react";
 import type { PageNavStatus, ScanSummary, Settings } from "../types";
+import { useAppStore } from "../stores/appStore";
+import type { PageKey, TranslationPageStatus } from "../stores/appStore";
 
-type PageKey =
-  | "dashboard" | "jobs" | "validate" | "dictionary"
-  | "packages" | "ftb" | "hardcoded" | "settings" | "logs";
-
-export type TranslationPageStatus = "idle" | "running" | "completed" | "canceled" | "failed";
-
-interface AppState {
-  settings: Settings | null;
-  scanSummary: ScanSummary | null;
-  navStates: Partial<Record<PageKey, PageNavStatus>>;
-  // Translation state persistence (M7)
-  translationJobId: string | null;
-  translationStatus: TranslationPageStatus;
-  translationResult: number | null;
-  translationError: string;
-  // Packages page selected job (P10)
-  packagesJobId: string | null;
-}
-
+// Unified dispatch action that maps to Zustand store actions.
 type AppAction =
   | { type: "SET_SETTINGS"; payload: Settings }
   | { type: "SET_SCAN_SUMMARY"; payload: ScanSummary | null }
@@ -28,52 +12,76 @@ type AppAction =
   | { type: "SET_TRANSLATION_JOB_ID"; payload: string | null }
   | { type: "SET_PACKAGES_JOB_ID"; payload: string | null };
 
-function appReducer(state: AppState, action: AppAction): AppState {
+interface AppContextState {
+  settings: Settings | null;
+  scanSummary: ScanSummary | null;
+  navStates: Partial<Record<PageKey, PageNavStatus>>;
+  translationJobId: string | null;
+  translationStatus: TranslationPageStatus;
+  translationResult: number | null;
+  translationError: string;
+  packagesJobId: string | null;
+}
+
+function dispatchToStore(action: AppAction) {
+  const s = useAppStore.getState();
   switch (action.type) {
     case "SET_SETTINGS":
-      return { ...state, settings: action.payload };
+      s.setSettings(action.payload);
+      break;
     case "SET_SCAN_SUMMARY":
-      return { ...state, scanSummary: action.payload };
-    case "SET_NAV_STATE": {
-      const { key, status } = action.payload;
-      if (state.navStates[key] === status) return state;
-      if (status === "idle" && state.navStates[key] === "completed") return state;
-      return { ...state, navStates: { ...state.navStates, [key]: status } };
-    }
-    case "SET_TRANSLATION_STATUS": {
-      const { status, result, error } = action.payload;
-      return {
-        ...state,
-        translationStatus: status,
-        translationResult: result !== undefined ? result : state.translationResult,
-        translationError: error !== undefined ? error : state.translationError,
-      };
-    }
+      s.setScanSummary(action.payload);
+      break;
+    case "SET_NAV_STATE":
+      s.setNavState(action.payload.key, action.payload.status);
+      break;
+    case "SET_TRANSLATION_STATUS":
+      s.setTranslationStatus(action.payload.status, action.payload.result, action.payload.error);
+      break;
     case "SET_TRANSLATION_JOB_ID":
-      return { ...state, translationJobId: action.payload };
+      s.setTranslationJobId(action.payload);
+      break;
     case "SET_PACKAGES_JOB_ID":
-      return { ...state, packagesJobId: action.payload };
-    default:
-      return state;
+      s.setPackagesJobId(action.payload);
+      break;
   }
 }
 
+export type AppDispatch = Dispatch<AppAction>;
+
 const AppContext = createContext<{
-  state: AppState;
-  dispatch: Dispatch<AppAction>;
+  state: AppContextState;
+  dispatch: AppDispatch;
 } | null>(null);
 
+function useStoreSnapshot() {
+  const settings = useAppStore((s) => s.settings);
+  const scanSummary = useAppStore((s) => s.scanSummary);
+  const navStates = useAppStore((s) => s.navStates);
+  const translationJobId = useAppStore((s) => s.translationJobId);
+  const translationStatus = useAppStore((s) => s.translationStatus);
+  const translationResult = useAppStore((s) => s.translationResult);
+  const translationError = useAppStore((s) => s.translationError);
+  const packagesJobId = useAppStore((s) => s.packagesJobId);
+
+  return {
+    settings,
+    scanSummary,
+    navStates,
+    translationJobId,
+    translationStatus,
+    translationResult,
+    translationError,
+    packagesJobId,
+  };
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, {
-    settings: null,
-    scanSummary: null,
-    navStates: {},
-    translationJobId: null,
-    translationStatus: "idle",
-    translationResult: null,
-    translationError: "",
-    packagesJobId: null,
-  });
+  const state = useStoreSnapshot();
+  const dispatch = useCallback((action: AppAction) => {
+    dispatchToStore(action);
+  }, []);
+
   return (
     <AppContext.Provider value={{ state, dispatch }}>
       {children}

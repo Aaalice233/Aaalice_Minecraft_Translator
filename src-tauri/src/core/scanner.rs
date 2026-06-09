@@ -3,7 +3,7 @@ use std::{
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 /// Maximum uncompressed size for a single language file inside a jar (50 MB).
@@ -72,7 +72,7 @@ pub fn scan_instance(
     source_language: String,
     target_language: String,
     resource_pack_names: Vec<String>,
-    cancel: &AtomicBool,
+    cancel: &(dyn Fn() -> bool + Sync),
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<ScanSummary> {
     let source_language = normalize_source_language(&source_language)?;
@@ -99,7 +99,7 @@ pub fn scan_instance(
     )?;
 
     // Stage 2: resource packs — can be skipped on cancel
-    let resource_packs = if cancel.load(Ordering::SeqCst) {
+    let resource_packs = if cancel() {
         Vec::new()
     } else {
         progress(ScanProgress {
@@ -169,7 +169,7 @@ pub fn scan_instance(
     warnings.extend(mods.iter().flat_map(|m| m.warnings.clone()));
 
     // Emit aggregate progress event only if not cancelled
-    if !cancel.load(Ordering::SeqCst) {
+    if !cancel() {
         progress(ScanProgress {
             current: 0,
             total: 1,
@@ -191,7 +191,7 @@ pub fn scan_instance(
     // Stage 4: log — only write if not cancelled.
     // Emit per-mod progress so the frontend shows realtime granularity
     // instead of a single 0/1→1/1 jump (which felt frozen for seconds).
-    if !cancel.load(Ordering::SeqCst) {
+    if !cancel() {
         let total_mods = mods.len();
         progress(ScanProgress {
             current: 0,
@@ -272,11 +272,11 @@ pub fn scan_instance(
     }
 
     // Log cancellation to main log if mid-flight cancel happened
-    if cancel.load(Ordering::SeqCst) {
+    if cancel() {
         logging::append_main("扫描已被用户取消".to_string())?;
     }
 
-    let cancelled = cancel.load(Ordering::SeqCst);
+    let cancelled = cancel();
 
     Ok(ScanSummary {
         job_id,
@@ -301,7 +301,7 @@ pub fn scan_mods(
     mods_path: &Path,
     source_language: &str,
     target_language: &str,
-    cancel: &AtomicBool,
+    cancel: &(dyn Fn() -> bool + Sync),
     progress: &(dyn Fn(ScanProgress) + Sync),
 ) -> io::Result<Vec<ModScanResult>> {
     if !mods_path.is_dir() {
@@ -332,7 +332,7 @@ pub fn scan_mods(
                 .unwrap_or_default();
 
             // Check cancel before doing heavy IO (zip reading)
-            let result = if cancel.load(Ordering::SeqCst) {
+            let result = if cancel() {
                 ModScanResult {
                     mod_id: String::new(),
                     file_name: file_name.clone(),
@@ -505,13 +505,16 @@ fn scan_mod_jar(path: &Path, file_name: &str, source_language: &str, target_lang
                 formats.insert(format.to_string());
                 language_files.insert(name.clone());
                 let parsed = parse_language_entries(&name, &content, format, path, &mut warnings);
-                if parsed.recovered {
-                    recovered_language_files += 1;
+                match parsed {
+                    ParseOutcome::Strict(e) => entries.extend(e),
+                    ParseOutcome::Recovered(e) => {
+                        recovered_language_files += 1;
+                        entries.extend(e);
+                    }
+                    ParseOutcome::Failed => {
+                        failed_language_files += 1;
+                    }
                 }
-                if parsed.failed {
-                    failed_language_files += 1;
-                }
-                entries.extend(parsed.entries);
             }
         }
         Err(err) => warnings.push(warning(
@@ -722,48 +725,26 @@ fn parse_language_entries(
     format: &str,
     jar_path: &Path,
     warnings: &mut Vec<ScanWarning>,
-) -> ParsedLanguageFile {
+) -> ParseOutcome {
     let Some((mod_id, language)) = parse_lang_path(name) else {
-        return ParsedLanguageFile::failed();
+        return ParseOutcome::Failed;
     };
 
     match format {
         "json" => parse_json_entries(&mod_id, &language, name, content, jar_path, warnings),
-        "lang" => ParsedLanguageFile::strict(parse_lang_entries(&mod_id, &language, name, content)),
-        _ => ParsedLanguageFile::failed(),
+        "lang" => ParseOutcome::Strict(parse_lang_entries(&mod_id, &language, name, content)),
+        _ => ParseOutcome::Failed,
     }
 }
 
-struct ParsedLanguageFile {
-    entries: Vec<LanguageEntry>,
-    recovered: bool,
-    failed: bool,
-}
-
-impl ParsedLanguageFile {
-    fn strict(entries: Vec<LanguageEntry>) -> Self {
-        Self {
-            entries,
-            recovered: false,
-            failed: false,
-        }
-    }
-
-    fn recovered(entries: Vec<LanguageEntry>) -> Self {
-        Self {
-            entries,
-            recovered: true,
-            failed: false,
-        }
-    }
-
-    fn failed() -> Self {
-        Self {
-            entries: Vec::new(),
-            recovered: false,
-            failed: true,
-        }
-    }
+/// Result of parsing a single language file.
+enum ParseOutcome {
+    /// Parsed successfully via standard JSON/serde.
+    Strict(Vec<LanguageEntry>),
+    /// Parsed via lenient recovery (fallback parser).
+    Recovered(Vec<LanguageEntry>),
+    /// Failed to parse.
+    Failed,
 }
 
 fn parse_json_entries(
@@ -773,26 +754,26 @@ fn parse_json_entries(
     content: &str,
     jar_path: &Path,
     warnings: &mut Vec<ScanWarning>,
-) -> ParsedLanguageFile {
+) -> ParseOutcome {
     match serde_json::from_str::<HashMap<String, String>>(content) {
         Ok(map) => {
             let entries = map
                 .into_iter()
                 .map(|(key, text)| language_entry(mod_id, language, "json", source_file, key, text))
                 .collect();
-            ParsedLanguageFile::strict(entries)
+            ParseOutcome::Strict(entries)
         }
         Err(err) => {
             let lenient_entries = parse_lenient_json_lang_entries(mod_id, language, source_file, content);
             if !lenient_entries.is_empty() {
-                return ParsedLanguageFile::recovered(lenient_entries);
+                return ParseOutcome::Recovered(lenient_entries);
             }
             warnings.push(warning(
                 "json_parse_failed",
                 &format!("跳过无法解析的 JSON 语言文件 {source_file}: {err}"),
                 jar_path,
             ));
-            ParsedLanguageFile::failed()
+            ParseOutcome::Failed
         }
     }
 }
@@ -1002,8 +983,10 @@ fn parse_resourcepack_lang_file(
     warnings: &mut Vec<ScanWarning>,
 ) -> Vec<LanguageEntry> {
     let format = if name.ends_with(".json") { "json" } else { "lang" };
-    let result = parse_language_entries(name, content, format, Path::new(name), warnings);
-    result.entries
+    match parse_language_entries(name, content, format, Path::new(name), warnings) {
+        ParseOutcome::Strict(e) | ParseOutcome::Recovered(e) => e,
+        ParseOutcome::Failed => Vec::new(),
+    }
 }
 
 fn parse_lang_path(path: &str) -> Option<(String, String)> {
@@ -1161,6 +1144,7 @@ pub use dictionary::hash_text;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicBool;
 
     fn fixtures_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -1182,7 +1166,7 @@ mod tests {
     #[test]
     fn scans_mod_jars_and_detects_existing_zh_cn() {
         let cancel = AtomicBool::new(false);
-        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &cancel, &|_| {}).unwrap();
+        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &|| cancel.load(Ordering::SeqCst), &|_| {}).unwrap();
         let example = mods.iter().find(|item| item.mod_id == "examplemod").unwrap();
         let placeholder = mods.iter().find(|item| item.mod_id == "placeholdermod").unwrap();
 
@@ -1270,7 +1254,7 @@ Second line",
     fn progress_callback_is_called_for_each_jar() {
         let calls = AtomicUsize::new(0);
         let cancel = AtomicBool::new(false);
-        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &cancel, &|p: ScanProgress| {
+        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &|| cancel.load(Ordering::SeqCst), &|p: ScanProgress| {
             calls.fetch_add(1, Ordering::SeqCst);
             assert!(p.current >= 1);
             assert_eq!(p.total, 2);

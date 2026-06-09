@@ -103,7 +103,7 @@ pub async fn scan_instance(
             source_language,
             target_language,
             pack_names,
-            &SCAN_CANCEL,
+            &|| SCAN_CANCEL.load(Ordering::SeqCst),
             &|progress: ScanProgress| {
                 let _ = progress_tx_scan.send(progress);
             },

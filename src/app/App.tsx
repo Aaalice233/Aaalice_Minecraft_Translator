@@ -28,21 +28,10 @@ import { applyFont, SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
 import { getSettings, runWarmup, saveSettings } from "../api/tauri";
 import { AppProvider, useAppState } from "./AppContext";
-import { useAppStore } from "../stores/appStore";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
 import type { ScanSummary, Settings, WarmupProgress } from "../types";
-
-type PageKey =
-  | "dashboard"
-  | "jobs"
-  | "validate"
-  | "dictionary"
-  | "packages"
-  | "ftb"
-  | "hardcoded"
-  | "settings"
-  | "logs";
+import type { PageKey } from "../stores/appStore";
 
 interface NavItem {
   key: PageKey;
@@ -152,23 +141,9 @@ function AppShell() {
     }
   }, [warmupComplete]);
 
-  // Sync AppContext → Zustand store on state changes
-  const syncedDispatch = useCallback<typeof dispatch>((action) => {
-    dispatch(action);
-    const s = useAppStore.getState();
-    switch (action.type) {
-      case "SET_SETTINGS": s.setSettings(action.payload); break;
-      case "SET_SCAN_SUMMARY": s.setScanSummary(action.payload); break;
-      case "SET_NAV_STATE": s.setNavState(action.payload.key, action.payload.status); break;
-      case "SET_TRANSLATION_STATUS": s.setTranslationStatus(action.payload.status, action.payload.result, action.payload.error); break;
-      case "SET_TRANSLATION_JOB_ID": s.setTranslationJobId(action.payload); break;
-      case "SET_PACKAGES_JOB_ID": s.setPackagesJobId(action.payload); break;
-    }
-  }, [dispatch]);
-
   useEffect(() => {
     getSettings()
-      .then((s) => syncedDispatch({ type: "SET_SETTINGS", payload: s }))
+      .then((s) => dispatch({ type: "SET_SETTINGS", payload: s }))
       .catch((error) => console.warn("getSettings 失败:", error));
   }, [dispatch]);
 
@@ -247,9 +222,9 @@ function AppShell() {
   }, [sidebarWidth]);
 
   const setNavBusy = useCallback((key: PageKey, busy: boolean) =>
-    syncedDispatch({ type: "SET_NAV_STATE", payload: { key, status: busy ? "busy" : "idle" } }), [syncedDispatch]);
+    dispatch({ type: "SET_NAV_STATE", payload: { key, status: busy ? "busy" : "idle" } }), [dispatch]);
   const setNavCompleted = useCallback((key: PageKey, done: boolean) =>
-    syncedDispatch({ type: "SET_NAV_STATE", payload: { key, status: done ? "completed" : "idle" } }), [syncedDispatch]);
+    dispatch({ type: "SET_NAV_STATE", payload: { key, status: done ? "completed" : "idle" } }), [dispatch]);
   const dbBusy = useCallback((b: boolean) => setNavBusy("dashboard", b), [setNavBusy]);
   const dbCompleted = useCallback((c: boolean) => setNavCompleted("dashboard", c), [setNavCompleted]);
   const jobsBusy = useCallback((b: boolean) => setNavBusy("jobs", b), [setNavBusy]);
@@ -288,18 +263,18 @@ function AppShell() {
     requestAnimationFrame(() => {
       document.documentElement.removeAttribute('data-vt-mode');
       animatingRef.current = false;
-      syncedDispatch({ type: "SET_SETTINGS", payload: updated });
+      dispatch({ type: "SET_SETTINGS", payload: updated });
       saveSettings(updated).catch((err) => console.warn("saveSettings 失败:", err));
     });
-  }, [settings, syncedDispatch]);
+  }, [settings, dispatch]);
 
   const handleSettingsChange = useCallback(
-    (s: Settings) => syncedDispatch({ type: "SET_SETTINGS", payload: s }),
-    [syncedDispatch],
+    (s: Settings) => dispatch({ type: "SET_SETTINGS", payload: s }),
+    [dispatch],
   );
   const handleScanSummaryChange = useCallback(
-    (s: ScanSummary | null) => syncedDispatch({ type: "SET_SCAN_SUMMARY", payload: s }),
-    [syncedDispatch],
+    (s: ScanSummary | null) => dispatch({ type: "SET_SCAN_SUMMARY", payload: s }),
+    [dispatch],
   );
 
   function renderPage(page: PageKey) {

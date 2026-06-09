@@ -10,7 +10,7 @@ use serde_json::Value;
 use std::time::Duration;
 
 use crate::core::logging::HTTP_LOG_ENABLED;
-use std::sync::atomic::Ordering;
+use std::sync::{atomic::Ordering, OnceLock};
 
 // ── Data types ──────────────────────────────────────────────────────────
 
@@ -496,21 +496,33 @@ fn healing_parse_response(
 
 /// 修复常见 JSON 格式错误
 fn fix_json_errors(s: &str) -> String {
-    let mut s = s.to_string();
-    // 去掉 markdown 代码块标记
-    s = s.replace("```json", "").replace("```", "");
-    // 去掉尾部逗号（JSON 不允许）
-    s = s.trim().to_string();
-    if s.ends_with(',') {
-        s.pop();
+    // 快速路径：已经是合法 JSON 则直接返回
+    if serde_json::from_str::<serde_json::Value>(s).is_ok() {
+        return s.to_string();
     }
-    // 去掉闭合括号前的多余逗号（如 {"key":"a","text":"b",} 或 [{"key":"a"},]）
-    while s.contains(",]") || s.contains(",}") {
-        s = s.replace(",]", "]");
+
+    let mut s = s.to_string();
+
+    // ── 清理 markdown 代码块标记 ──
+    // 只移除行首 fence，不全局替换避免误伤内容
+    static FENCE_RE: OnceLock<regex::Regex> = OnceLock::new();
+    let fence_re = FENCE_RE.get_or_init(|| regex::Regex::new(r"(?m)^```(?:json)?\s*$").unwrap());
+    s = fence_re.replace_all(&s, "").to_string();
+    s = s.trim().to_string();
+
+    // ── 去掉闭合括号/方括号前的多余逗号（如 {"key":"a","text":"b",}） ──
+    // 循环处理嵌套场景：去掉 `,}` → `}`, `,]` → `]`
+    while s.contains(",}") {
         s = s.replace(",}", "}");
     }
-    // 只在 JSON 结构边界处将单引号替换为双引号
-    // （避免误伤文本内容中的撇号，如 "Miner's Helmet"）
+    while s.contains(",]") {
+        s = s.replace(",]", "]");
+    }
+
+    // ── 将 JSON 结构边界处的单引号替换为双引号 ──
+    // 顺序很重要：先处理带空格的变体，再处理紧凑变体
+    s = s.replace(": '", ": \"");
+    s = s.replace(", '", ", \"");
     s = s.replace(":'", ":\"");
     s = s.replace("':", "\":");
     s = s.replace("',", "\",");
@@ -519,8 +531,6 @@ fn fix_json_errors(s: &str) -> String {
     s = s.replace("']", "\"]");
     s = s.replace("{'", "{\"");
     s = s.replace("['", "[\"");
-    s = s.replace(": '", ": \"");
-    s = s.replace(", '", ", \"");
     s
 }
 

@@ -5,14 +5,18 @@ import { AppProvider } from "../src/app/AppContext";
 import { ValidatePage } from "../src/pages/ValidatePage";
 
 vi.mock("../src/api/tauri", () => ({
-  loadLatestTranslationJob: () => Promise.resolve({
+  loadLatestTranslationJobMeta: () => Promise.resolve({
     jobId: "test-job-001", scanJobId: "scan-001",
     status: "completed" as const,
     sourceLanguage: "en_us", targetLanguage: "zh_cn",
-    entries: [], completedEntries: 5, failedEntries: 1,
+    entries: 3, completedEntries: 5, failedEntries: 1,
     tokenUsage: { promptTokens: 100, completionTokens: 200, totalTokens: 300 },
     createdAt: "2026-01-01T00:00:00Z",
   }),
+  loadTranslationModSummaries: () => Promise.resolve([
+    { modId: "testmod", modName: "testmod-1.0.jar", entryCount: 2, completedCount: 2, failedCount: 0 },
+    { modId: "othermod", modName: "othermod-1.0.jar", entryCount: 1, completedCount: 1, failedCount: 0 },
+  ]),
   loadTranslationResults: () => Promise.resolve([
     { key: "item.test.a", sourceText: "Hello A", targetText: "你好A", modId: "testmod", modName: "testmod-1.0.jar", sourceType: "llm" },
     { key: "item.test.b", sourceText: "Hello B", targetText: "你好B", modId: "othermod", modName: "othermod-1.0.jar", sourceType: "llm" },
