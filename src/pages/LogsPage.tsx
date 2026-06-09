@@ -5,7 +5,6 @@ import { t } from "../i18n/translations";
 import type { AppLanguage, LogEntry } from "../types";
 
 interface Props {
-  scanSummary: unknown; // unused, kept for interface compatibility
   language: AppLanguage;
 }
 

@@ -171,9 +171,8 @@ impl LlmClient {
                 }
             }
 
-            match send_request(&self.http_client, &url, &self.api_key, &body) {
-                Ok(response_body) => {
-                    let token_usage = extract_token_usage(&response_body);
+            match try_single_request(&self.http_client, &url, &self.api_key, &body, entries) {
+                Ok((results, token_usage)) => {
                     if let Some(ref usage) = token_usage {
                         tracing::info!(
                             attempt,
@@ -185,60 +184,23 @@ impl LlmClient {
                     } else {
                         tracing::info!(attempt, "LLM batch 请求成功（无 token 数据）");
                     }
-                    // 从 API 响应结构中提取 content 字段
-                    let content_str = match response_body
-                        .get("choices")
-                        .and_then(|c| c.as_array())
-                        .and_then(|c| c.first())
-                        .and_then(|c| c.get("message"))
-                        .and_then(|m| m.get("content"))
-                        .and_then(|c| c.as_str())
-                    {
-                        Some(s) => s,
-                        None => {
-                            last_error = format!(
-                                "API 响应结构异常: choices/message/content 路径缺失: {}",
-                                serde_json::to_string(&response_body).unwrap_or_default()
-                            );
-                            tracing::error!(attempt, last_error, "LLM 响应结构异常");
-                            continue;
-                        }
-                    };
-                    match healing_parse_response(content_str, entries) {
-                        Ok(results) => {
-                            let success_count = results.iter().filter(|r| r.success).count();
-                            let fail_count = results.len() - success_count;
-                            tracing::info!(
-                                total = results.len(),
-                                success_count,
-                                fail_count,
-                                "LLM batch 翻译完成"
-                            );
-                            if let Some(cb) = on_batch_complete {
-                                cb(&results);
-                            }
-                            return (results, token_usage);
-                        }
-                        Err(e) => {
-                            last_error = format!("解析响应失败: {e}");
-                            tracing::warn!(attempt, last_error, "LLM 响应解析失败，准备重试");
-                            continue;
-                        }
+                    let success_count = results.iter().filter(|r| r.success).count();
+                    let fail_count = results.len() - success_count;
+                    tracing::info!(
+                        total = results.len(),
+                        success_count,
+                        fail_count,
+                        "LLM batch 翻译完成"
+                    );
+                    if let Some(cb) = on_batch_complete {
+                        cb(&results);
                     }
+                    return (results, token_usage);
                 }
                 Err(e) => {
                     if e.starts_with("RATE_LIMITED") {
                         tracing::warn!(attempt, error = %e, "LLM 请求被限流");
-                        let results: Vec<TranslateResult> = entries
-                            .iter()
-                            .map(|entry| TranslateResult {
-                                key: entry.key.clone(),
-                                original_text: entry.text.clone(),
-                                translated_text: entry.text.clone(),
-                                success: false,
-                                error: Some(e.clone()),
-                            })
-                            .collect();
+                        let results = make_failed_results(entries, e.clone());
                         if let Some(cb) = on_batch_complete {
                             cb(&results);
                         }
@@ -253,16 +215,7 @@ impl LlmClient {
 
         // All retries exhausted — mark all entries as failed
         tracing::error!(max_retries, last_error, "LLM batch 所有重试均失败");
-        let results: Vec<TranslateResult> = entries
-            .iter()
-            .map(|e| TranslateResult {
-                key: e.key.clone(),
-                original_text: e.text.clone(),
-                translated_text: e.text.clone(),
-                success: false,
-                error: Some(last_error.clone()),
-            })
-            .collect();
+        let results = make_failed_results(entries, last_error.clone());
 
         // Call on_complete so frontend doesn't see entries stuck in Translating state
         if let Some(cb) = on_batch_complete {
@@ -274,6 +227,39 @@ impl LlmClient {
 }
 
 // ── Internal helpers ────────────────────────────────────────────────────
+
+/// Execute one API request attempt and parse the response.
+/// Returns Ok((results, token_usage)) on success, or Err(error_message) on failure.
+fn try_single_request(
+    http_client: &reqwest::blocking::Client,
+    url: &str,
+    api_key: &str,
+    body: &serde_json::Value,
+    entries: &[TranslationEntry],
+) -> Result<(Vec<TranslateResult>, Option<super::models::TokenUsage>), String> {
+    let response_body = send_request(http_client, url, api_key, body)?;
+
+    let token_usage = extract_token_usage(&response_body);
+
+    let content_str = response_body
+        .get("choices")
+        .and_then(|c| c.as_array())
+        .and_then(|c| c.first())
+        .and_then(|c| c.get("message"))
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_str())
+        .ok_or_else(|| {
+            format!(
+                "API 响应结构异常: choices/message/content 路径缺失: {}",
+                serde_json::to_string(&response_body).unwrap_or_default()
+            )
+        })?;
+
+    let results = healing_parse_response(content_str, entries)
+        .map_err(|e| format!("解析响应失败: {e}"))?;
+
+    Ok((results, token_usage))
+}
 
 /// Build a structured prompt for the LLM from a batch of entries.
 fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &str) -> String {
@@ -552,6 +538,17 @@ fn parse_translations_from_value(parsed: &Value, entries: &[TranslationEntry]) -
     }
 
     Ok(map_results(pairs, entries))
+}
+
+/// Map all entries to failed TranslateResults with the given error.
+fn make_failed_results(entries: &[TranslationEntry], error: String) -> Vec<TranslateResult> {
+    entries.iter().map(|e| TranslateResult {
+        key: e.key.clone(),
+        original_text: e.text.clone(),
+        translated_text: e.text.clone(),
+        success: false,
+        error: Some(error.clone()),
+    }).collect()
 }
 
 /// 将 (key, text) 对映射回 entries 顺序

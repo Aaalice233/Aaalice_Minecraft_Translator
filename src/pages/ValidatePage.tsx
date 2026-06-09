@@ -63,8 +63,16 @@ export function ValidatePage({ language, onConfirm }: Props) {
   }, [translationJobId, translationStatus]);
 
   // ── Load job meta + mod summaries reactively ──
-  // 始终自动加载最新任务（不依赖 dismissed）；UI 渲染层根据 dismissed 决定显示什么
+  // 只在当前会话确有翻译任务（translationJobId 被显式设置）时自动加载；
+  // 否则旧会话遗留的 translate_*.json 会错误显示为已完成任务。
+  // UI 渲染层根据 dismissed 决定是否显示内容。
   useEffect(() => {
+    if (!translationJobId) {
+      setLoading(false);
+      setJob(null);
+      setModSummaries([]);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     // ⚠️ 清除缓存的 per-mod 数据，防止切换任务后展开同名 modId 时展示旧结果

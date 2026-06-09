@@ -79,6 +79,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   const language = normalizeAppLanguage(draft.appLanguage);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCommittedRef = useRef(settings);
   const draftRef = useRef(draft);
   draftRef.current = draft;
   const settingsRef = useRef(settings);
@@ -131,6 +132,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
         onSettingsChangeRef.current(nextSettings);
         setError("");
         setSaveIndicator("saved");
+        lastCommittedRef.current = nextSettings;
       } catch (err) {
         setDraft(s);
         setError(toErrorMessage(err));
@@ -152,6 +154,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
       onSettingsChangeRef.current(updatedSettings);
       setMessage(t(normalized, "settings.saved"));
       setSaveIndicator("saved");
+      lastCommittedRef.current = updatedSettings;
     } catch (err) {
       setError(toErrorMessage(err));
     }
@@ -176,7 +179,17 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
     }
   }
 
-  // 进入外观选项卡时懒加载系统字体列表
+  // Sync draft with external settings changes (e.g. dark mode toggle from sidebar)
+  useEffect(() => {
+    const settingsStr = JSON.stringify(settings);
+    const lastStr = JSON.stringify(lastCommittedRef.current);
+    if (settingsStr !== lastStr) {
+      setDraft(settings);
+      lastCommittedRef.current = settings;
+    }
+  }, [settings]);
+
+  // Lazy-load system fonts when entering the appearance tab
   useEffect(() => {
     if (activeTab === "appearance" && fonts.length === 0 && !isLoadingFonts) {
       setIsLoadingFonts(true);

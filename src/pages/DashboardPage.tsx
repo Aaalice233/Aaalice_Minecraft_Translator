@@ -1,6 +1,7 @@
 import { AlertTriangle, Filter, FolderOpen, Loader2, Package, RefreshCcw, ScanLine, Square, X, Zap } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { useSortFilter } from "../hooks/useSortFilter";
 import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
@@ -130,12 +131,9 @@ export const DashboardPage = React.memo(function DashboardPage({
     }
   }, [instancePath, settings.instancePath, onBusyChange]);
 
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
-  const [filters, setFilters] = useState<Record<string, string | { min?: number; max?: number }>>({});
   const [searchText, setSearchText] = useState("");
   const debouncedSearch = useDebouncedValue(searchText, 200);
-  const [openFilter, setOpenFilter] = useState<string | null>(null);
-  const filterRef = useRef<HTMLDivElement>(null);
+  const sf = useSortFilter<Record<string, string | { min?: number; max?: number }>>();
   const copyFlash = useCallback(async (text: string, key: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -169,11 +167,11 @@ export const DashboardPage = React.memo(function DashboardPage({
     const mods = scanSummary?.mods ?? [];
     let result = mods;
 
-    const activeFilterKeys = Object.keys(filters);
+    const activeFilterKeys = Object.keys(sf.filters);
     if (activeFilterKeys.length > 0) {
       result = result.filter((mod) =>
         activeFilterKeys.every((col) => {
-          const value = filters[col];
+          const value = sf.filters[col];
           if (value == null) return true;
           switch (col) {
             case "fileName":
@@ -199,11 +197,12 @@ export const DashboardPage = React.memo(function DashboardPage({
       );
     }
 
-    if (sortConfig) {
+    if (sf.sortConfig) {
+      const sc = sf.sortConfig;
       result = [...result].sort((a, b) => {
-        const dir = sortConfig.direction === "asc" ? 1 : -1;
+        const dir = sc.direction === "asc" ? 1 : -1;
         let cmp = 0;
-        switch (sortConfig.key) {
+        switch (sc.key) {
           case "fileName":
             cmp = a.fileName.localeCompare(b.fileName);
             break;
@@ -228,7 +227,7 @@ export const DashboardPage = React.memo(function DashboardPage({
     }
 
     return result;
-  }, [scanSummary?.mods, sortConfig, filters]);
+  }, [scanSummary?.mods, sf.sortConfig, sf.filters]);
 
   // Register scan-progress listener — only in real Tauri runtime
   useEffect(() => {
@@ -253,17 +252,6 @@ export const DashboardPage = React.memo(function DashboardPage({
       unlistenFn?.();
     };
   }, []);
-
-  useEffect(() => {
-    if (!openFilter) return;
-    const handler = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setOpenFilter(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [openFilter]);
 
   async function handleCancel() {
     setIsCancelling(true);
@@ -295,10 +283,8 @@ export const DashboardPage = React.memo(function DashboardPage({
     onScanSummaryChange?.(null);
     setScanProgress(null);
     setError("");
-    setSortConfig(null);
     setSearchText("");
-    setFilters({});
-    setOpenFilter(null);
+    sf.resetFilters();
     try {
       const nextSettings = { ...settings, instancePath };
       onSettingsChange?.(nextSettings);
@@ -327,33 +313,8 @@ export const DashboardPage = React.memo(function DashboardPage({
 
   // Sync debounced search text into filters (avoids per-keystroke re-render of full table)
   useEffect(() => {
-    handleFilterChange("fileName", debouncedSearch);
+    sf.handleFilterChange("fileName", debouncedSearch);
   }, [debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  function handleSort(column: string) {
-    setSortConfig((prev) => {
-      if (!prev || prev.key !== column) return { key: column, direction: "asc" };
-      if (prev.direction === "asc") return { key: column, direction: "desc" };
-      return null; // back to default (fileName asc)
-    });
-    setOpenFilter(null);
-  }
-
-  function toggleFilter(column: string) {
-    setOpenFilter((prev) => (prev === column ? null : column));
-  }
-
-  function handleFilterChange(column: string, value: string | { min?: number; max?: number } | null) {
-    setFilters((prev) => {
-      const next = { ...prev };
-      if (value === null || value === "" || (typeof value === "object" && !("min" in value) && !("max" in value))) {
-        delete next[column];
-      } else {
-        next[column] = value;
-      }
-      return next;
-    });
-  }
 
   // 判断文本中是否含有显著比例的 CJK 字符（与后端 has_substantial_cjk 一致）
   function hasSubstantialCjk(text: string): boolean {
@@ -627,50 +588,50 @@ export const DashboardPage = React.memo(function DashboardPage({
                     { key: "pending", label: t(language, "dashboard.column.pending") },
                     { key: "hasTargetLanguage", label: t(language, "dashboard.column.status") },
                   ].map((col) => {
-                    const isActiveSort = sortConfig?.key === col.key;
-                    const isDefaultSort = !sortConfig && col.key === "fileName";
-                    const hasActiveFilter = col.key in filters;
+                    const isActiveSort = sf.sortConfig?.key === col.key;
+                    const isDefaultSort = !sf.sortConfig && col.key === "fileName";
+                    const hasActiveFilter = col.key in sf.filters;
                     return (
                       <th
                         key={col.key}
                         className={[
                           "sortable",
-                          isActiveSort ? (sortConfig.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
+                          isActiveSort ? (sf.sortConfig!.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
                           isDefaultSort ? "sorted-default" : "",
                         ].filter(Boolean).join(" ")}
-                        onClick={() => handleSort(col.key)}
+                        onClick={() => sf.handleSort(col.key)}
                       >
                         <span className="th-filter-wrap">
                           {col.label}
                           {(isActiveSort || isDefaultSort) && (
                             <span className="sort-indicator">
-                              {isActiveSort ? (sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
+                              {isActiveSort ? (sf.sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
                             </span>
                           )}
                           <button
                             className={[
                               "th-filter-btn",
                               hasActiveFilter ? "has-filter" : "",
-                              openFilter === col.key ? "active" : "",
+                              sf.openFilter === col.key ? "active" : "",
                             ].filter(Boolean).join(" ")}
-                            onClick={(e) => { e.stopPropagation(); toggleFilter(col.key); }}
+                            onClick={(e) => { e.stopPropagation(); sf.toggleFilter(col.key); }}
                             type="button"
                             aria-label={`Filter ${col.label}`}
                             data-tooltip={t(language, "tooltip.filter")}
                           >
                             <Filter size={13} />
                           </button>
-                          {openFilter === col.key && (
+                          {sf.openFilter === col.key && (
                             <div
                               className={["filter-popover", (col.key === "pending" || col.key === "hasTargetLanguage") ? "popover-right" : ""].filter(Boolean).join(" ")}
-                              ref={filterRef}
+                              ref={sf.filterRef}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div className="filter-popover-header">
                                 <span>{col.label}</span>
                                 <button
                                   className="filter-popover-clear"
-                                  onClick={() => handleFilterChange(col.key, null)}
+                                  onClick={() => sf.handleFilterChange(col.key, null)}
                                   type="button"
                                   data-tooltip={t(language, "tooltip.clearFilter")}
                                 >
@@ -680,16 +641,16 @@ export const DashboardPage = React.memo(function DashboardPage({
                               {(col.key === "fileName" || col.key === "modId") && (
                                 <input
                                   type="text"
-                                  value={(filters[col.key] as string) || ""}
-                                  onChange={(e) => handleFilterChange(col.key, e.target.value)}
+                                  value={(sf.filters[col.key] as string) || ""}
+                                  onChange={(e) => sf.handleFilterChange(col.key, e.target.value)}
                                   placeholder={t(language, "dashboard.filterSearch")}
                                   autoFocus
                                 />
                               )}
                               {col.key === "formats" && (
                                 <select
-                                  value={(filters.formats as string) || ""}
-                                  onChange={(e) => handleFilterChange("formats", e.target.value || null)}
+                                  value={(sf.filters.formats as string) || ""}
+                                  onChange={(e) => sf.handleFilterChange("formats", e.target.value || null)}
                                   autoFocus
                                 >
                                   <option value="">全部格式</option>
@@ -704,10 +665,10 @@ export const DashboardPage = React.memo(function DashboardPage({
                                     <input
                                       type="number"
                                       min={0}
-                                      value={(filters[col.key] as { min?: number })?.min ?? ""}
+                                      value={(sf.filters[col.key] as { min?: number })?.min ?? ""}
                                       onChange={(e) => {
-                                        const prev = (filters[col.key] as { min?: number; max?: number }) ?? {};
-                                        handleFilterChange(col.key, { min: e.target.value === "" ? undefined : Number(e.target.value), max: prev.max });
+                                        const prev = (sf.filters[col.key] as { min?: number; max?: number }) ?? {};
+                                        sf.handleFilterChange(col.key, { min: e.target.value === "" ? undefined : Number(e.target.value), max: prev.max });
                                       }}
                                       autoFocus
                                     />
@@ -717,10 +678,10 @@ export const DashboardPage = React.memo(function DashboardPage({
                                     <input
                                       type="number"
                                       min={0}
-                                      value={(filters[col.key] as { max?: number })?.max ?? ""}
+                                      value={(sf.filters[col.key] as { max?: number })?.max ?? ""}
                                       onChange={(e) => {
-                                        const prev = (filters[col.key] as { min?: number; max?: number }) ?? {};
-                                        handleFilterChange(col.key, { min: prev.min, max: e.target.value === "" ? undefined : Number(e.target.value) });
+                                        const prev = (sf.filters[col.key] as { min?: number; max?: number }) ?? {};
+                                        sf.handleFilterChange(col.key, { min: prev.min, max: e.target.value === "" ? undefined : Number(e.target.value) });
                                       }}
                                     />
                                   </div>
@@ -728,8 +689,8 @@ export const DashboardPage = React.memo(function DashboardPage({
                               )}
                               {col.key === "hasTargetLanguage" && (
                                 <select
-                                  value={(filters.hasTargetLanguage as string) ?? ""}
-                                  onChange={(e) => handleFilterChange("hasTargetLanguage", e.target.value ?? null)}
+                                  value={(sf.filters.hasTargetLanguage as string) ?? ""}
+                                  onChange={(e) => sf.handleFilterChange("hasTargetLanguage", e.target.value ?? null)}
                                   autoFocus
                                 >
                                   <option value="">全部状态</option>

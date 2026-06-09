@@ -1,7 +1,9 @@
 import { AlertTriangle, BookOpen, Bot, CheckCircle, FileText, Filter, Play, RefreshCw, Square, X, XCircle, Zap } from "lucide-react";
 import { TableVirtuoso } from "react-virtuoso";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSortFilter } from "../hooks/useSortFilter";
 import { cancelTranslation, loadLatestTranslationJobMeta, retryFailedEntries, startTranslation } from "../api/tauri";
+import { MOCK_TRANSLATION_ENTRIES } from "../mocks/browser-translation-log";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
@@ -176,11 +178,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   const translateElapsedMs = useAppStore((s) => s.translateElapsedMs);
   const [isRetrying, setIsRetrying] = useState(false);
   const [filterTerm, setFilterTerm] = useState("");
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>(null);
-  const [filters, setFilters] = useState<Record<string, string>>({});
-  const [openFilter, setOpenFilter] = useState<string | null>(null);
+  const sf = useSortFilter<Record<string, string>>();
   const prevScanJobId = useRef<string | undefined>(undefined);
-  const filterRef = useRef<HTMLDivElement>(null);
   const virtuosoRef = useRef<any>(null);
   const cancelledRef = useRef(false);
   const postCompletionRescan = useRef(false);
@@ -210,12 +209,14 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     loadLatestTranslationJobMeta()
       .then((job) => {
         if (cancelled || !job) return;
-        dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
-        // Only restore completed status if the job matches the current scan,
+        // Only restore job ID + status if the job matches the current scan,
         // otherwise stale translate_*.json from a different session would
-        // incorrectly show "completed" with zero progress.
+        // incorrectly show "completed" with zero progress and leak into
+        // global state, causing ValidatePage to display old results.
         const scanMatches = scanSummary && job.scanJobId === scanSummary.jobId;
-        if (job.status === "completed" && scanMatches) {
+        if (!scanMatches) return;
+        dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
+        if (job.status === "completed") {
           setStatus("completed");
           setTranslationResult(job.completedEntries);
           savedFailedEntriesRef.current = job.failedEntries ?? 0;
@@ -260,11 +261,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
 
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) {
-      logRef.current = [
-        { key: "item.example.name", sourceText: "Example Item", targetText: "示例物品", modName: "example-mod-1.21.1.jar", sourceType: "llm" },
-        { key: "item.example.desc", sourceText: "A useful example item", targetText: "一个有用的示例物品", modName: "example-mod-1.21.1.jar", sourceType: "llm" },
-        { key: "block.example.ore", sourceText: "Example Ore", targetText: "示例矿石", modName: "example-mod-1.21.1.jar", sourceType: "dictionary" },
-      ];
+      logRef.current = [...MOCK_TRANSLATION_ENTRIES];
       setLogVersion(1);
     }
   }, []);
@@ -438,11 +435,11 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       );
     }
 
-    const activeKeys = Object.keys(filters);
+    const activeKeys = Object.keys(sf.filters);
     if (activeKeys.length > 0) {
       result = result.filter((entry) =>
         activeKeys.every((col) => {
-          const value = filters[col];
+          const value = sf.filters[col];
           if (!value) return true;
           switch (col) {
             case "key":
@@ -464,11 +461,12 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       );
     }
 
-    if (sortConfig) {
+    if (sf.sortConfig) {
+      const sc = sf.sortConfig;
       result = [...result].sort((a, b) => {
-        const dir = sortConfig.direction === "asc" ? 1 : -1;
+        const dir = sc.direction === "asc" ? 1 : -1;
         let cmp = 0;
-        switch (sortConfig.key) {
+        switch (sc.key) {
           case "key":
             cmp = a.key.localeCompare(b.key);
             break;
@@ -493,7 +491,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
 
     return result;
-  }, [logVersion, filterTerm, filters, sortConfig, entryProgressVersion]);
+  }, [logVersion, filterTerm, sf.filters, sf.sortConfig, entryProgressVersion]);
 
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
@@ -506,41 +504,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
   }, []);
 
-  function handleSort(column: string) {
-    setSortConfig((prev) => {
-      if (!prev || prev.key !== column) return { key: column, direction: "asc" };
-      if (prev.direction === "asc") return { key: column, direction: "desc" };
-      return null;
-    });
-    setOpenFilter(null);
-  }
 
-  function toggleFilter(column: string) {
-    setOpenFilter((prev) => (prev === column ? null : column));
-  }
 
-  function handleFilterChange(column: string, value: string | null) {
-    setFilters((prev) => {
-      const next = { ...prev };
-      if (value === null || value === "") {
-        delete next[column];
-      } else {
-        next[column] = value;
-      }
-      return next;
-    });
-  }
 
-  useEffect(() => {
-    if (!openFilter) return;
-    const handler = (e: MouseEvent) => {
-      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
-        setOpenFilter(null);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [openFilter]);
 
   return (
     <section className="page page-jobs">
@@ -691,21 +657,21 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               <div className="essb-legend">
                 {visibleStatuses.map(({ key, color }) => (
                   <button
-                    className={["essb-legend-item", filters.status === key ? "active" : ""].filter(Boolean).join(" ")}
+                    className={["essb-legend-item", sf.filters.status === key ? "active" : ""].filter(Boolean).join(" ")}
                     key={key}
-                    onClick={() => handleFilterChange("status", filters.status === key ? null : key)}
+                    onClick={() => sf.handleFilterChange("status", sf.filters.status === key ? null : key)}
                     type="button"
-                    title={filters.status === key ? "点击取消过滤此状态" : "点击过滤此状态"}
+                    title={sf.filters.status === key ? "点击取消过滤此状态" : "点击过滤此状态"}
                   >
                     <span className="essb-legend-dot" style={{ backgroundColor: color }} />
                     {statusLabel(key, language)}
                     <span className="essb-legend-count">{entryCounts[key]}</span>
                   </button>
                 ))}
-                {filters.status && (
+                {sf.filters.status && (
                   <button
                     className="essb-legend-item essb-legend-clear"
-                    onClick={() => handleFilterChange("status", null)}
+                    onClick={() => sf.handleFilterChange("status", null)}
                     type="button"
                     title="清除状态过滤"
                   >
@@ -846,50 +812,50 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                     { key: "sourceType", label: t(language, "jobs.logPanel.colType") },
                     { key: "status", label: t(language, "jobs.logPanel.colStatus") },
                   ] as const).map((col) => {
-                    const isActiveSort = sortConfig?.key === col.key;
-                    const isDefaultSort = !sortConfig && col.key === "key";
-                    const hasActiveFilter = col.key in filters;
+                    const isActiveSort = sf.sortConfig?.key === col.key;
+                    const isDefaultSort = !sf.sortConfig && col.key === "key";
+                    const hasActiveFilter = col.key in sf.filters;
                     return (
                       <th
                         key={col.key}
                         className={[
                           "sortable",
-                          isActiveSort ? (sortConfig.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
+                          isActiveSort ? (sf.sortConfig!.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
                           isDefaultSort ? "sorted-default" : "",
                         ].filter(Boolean).join(" ")}
-                        onClick={() => handleSort(col.key)}
+                        onClick={() => sf.handleSort(col.key)}
                       >
                         <span className="th-filter-wrap">
                           {col.label}
                           {(isActiveSort || isDefaultSort) && (
                             <span className="sort-indicator">
-                              {isActiveSort ? (sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
+                              {isActiveSort ? (sf.sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
                             </span>
                           )}
                           <button
                             className={[
                               "th-filter-btn",
                               hasActiveFilter ? "has-filter" : "",
-                              openFilter === col.key ? "active" : "",
+                              sf.openFilter === col.key ? "active" : "",
                             ].filter(Boolean).join(" ")}
-                            onClick={(e) => { e.stopPropagation(); toggleFilter(col.key); }}
+                            onClick={(e) => { e.stopPropagation(); sf.toggleFilter(col.key); }}
                             type="button"
                             aria-label={`Filter ${col.label}`}
                             data-tooltip={t(language, "tooltip.filter")}
                           >
                             <Filter size={13} />
                           </button>
-                          {openFilter === col.key && (
+                          {sf.openFilter === col.key && (
                             <div
                               className="filter-popover"
-                              ref={filterRef}
+                              ref={sf.filterRef}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <div className="filter-popover-header">
                                 <span>{col.label}</span>
                                 <button
                                   className="filter-popover-clear"
-                                  onClick={() => { handleFilterChange(col.key, null); }}
+                                  onClick={() => { sf.handleFilterChange(col.key, null); }}
                                   type="button"
                                   data-tooltip={t(language, "tooltip.clearFilter")}
                                 >
@@ -899,16 +865,16 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                               {["key", "sourceText", "targetText", "modName"].includes(col.key) && (
                                 <input
                                   type="text"
-                                  value={filters[col.key] || ""}
-                                  onChange={(e) => handleFilterChange(col.key, e.target.value)}
+                                  value={sf.filters[col.key] || ""}
+                                  onChange={(e) => sf.handleFilterChange(col.key, e.target.value)}
                                   placeholder={t(language, "dashboard.filterSearch")}
                                   autoFocus
                                 />
                               )}
                               {col.key === "sourceType" && (
                                 <select
-                                  value={filters.sourceType || ""}
-                                  onChange={(e) => handleFilterChange("sourceType", e.target.value || null)}
+                                  value={sf.filters.sourceType || ""}
+                                  onChange={(e) => sf.handleFilterChange("sourceType", e.target.value || null)}
                                   autoFocus
                                 >
                                   <option value="">全部</option>
@@ -919,8 +885,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                               )}
                               {col.key === "status" && (
                                 <select
-                                  value={filters.status || ""}
-                                  onChange={(e) => handleFilterChange("status", e.target.value || null)}
+                                  value={sf.filters.status || ""}
+                                  onChange={(e) => sf.handleFilterChange("status", e.target.value || null)}
                                   autoFocus
                                 >
                                   <option value="">全部</option>

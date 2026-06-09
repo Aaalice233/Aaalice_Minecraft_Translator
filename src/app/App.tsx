@@ -252,7 +252,7 @@ function AppShell() {
       case "settings":
         return <SettingsPage settings={settings!} onSettingsChange={handleSettingsChange} />;
       case "logs":
-        return <LogsPage scanSummary={scanSummary} language={language} />;
+        return <LogsPage language={language} />;
       case "dictionary":
         return <DictionaryPage language={language} />;
       case "jobs":
