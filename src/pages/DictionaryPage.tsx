@@ -1,5 +1,9 @@
 import { BookOpen, Download, Search, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { TableVirtuoso } from "react-virtuoso";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSortFilter } from "../hooks/useSortFilter";
+import { useDebouncedValue } from "../hooks/useDebouncedValue";
+import { SortableTableHeader, type ColumnConfig } from "../components/SortableTableHeader";
 import {
   deleteDictionaryEntry,
   getDictionaryStats,
@@ -14,52 +18,149 @@ interface Props {
   language: AppLanguage;
 }
 
+function typeLabel(st: string, lang: AppLanguage): string {
+  const key = `dictionary.type${st.charAt(0).toUpperCase() + st.slice(1)}` as any;
+  const label = t(lang, key);
+  return label || st;
+}
+
+// ── Row component ──
+
+const DictionaryRow = React.memo(function DictionaryRow({
+  entry,
+  isEditing,
+  editText,
+  onEdit,
+  onEditChange,
+  onSave,
+  onCancel,
+  onDelete,
+  language,
+}: {
+  entry: DictionaryEntry;
+  isEditing: boolean;
+  editText: string;
+  onEdit: (entry: DictionaryEntry) => void;
+  onEditChange: (text: string) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  onDelete: (id: number) => void;
+  language: AppLanguage;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isEditing]);
+
+  return (
+    <>
+      <td title={entry.sourceText}>{entry.sourceText}</td>
+      <td>
+        {isEditing ? (
+          <div className="inline-edit">
+            <input
+              ref={inputRef}
+              value={editText}
+              onChange={(e) => onEditChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onSave();
+                if (e.key === "Escape") onCancel();
+              }}
+            />
+            <button className="text-button" onClick={onSave} type="button">
+              {t(language, "common.save")}
+            </button>
+            <button className="text-button" onClick={onCancel} type="button">
+              {t(language, "common.cancel")}
+            </button>
+          </div>
+        ) : (
+          <span
+            className="editable-text"
+            onClick={() => onEdit(entry)}
+            title={t(language, "dictionary.clickToEdit")}
+          >
+            {entry.targetText}
+          </span>
+        )}
+      </td>
+      <td>{entry.modId ?? "-"}</td>
+      <td className="mono">{entry.translationKey ?? "-"}</td>
+      <td>
+        <span className={`badge ${entry.sourceType}`}>
+          {typeLabel(entry.sourceType, language)}
+        </span>
+      </td>
+      <td>
+        <button
+          className="ghost-button danger"
+          onClick={() => entry.id != null && onDelete(entry.id)}
+          type="button"
+          data-tooltip={t(language, "tooltip.delete")}
+        >
+          {t(language, "common.delete")}
+        </button>
+      </td>
+    </>
+  );
+});
+
+// ── Dictionary page ──
+
 export function DictionaryPage({ language }: Props) {
   const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [stats, setStats] = useState<DictionaryStats | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sourceTypeFilter, setSourceTypeFilter] = useState("");
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editText, setEditText] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(globalSearch, 300);
 
-  const fetchEntries = async () => {
+  // Editing state (page-level for TableVirtuoso row recycling)
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+  // Stable refs so handleSaveEdit doesn't depend on editText/editingId (defeats React.memo)
+  const editTextRef = useRef(editText);
+  const editingIdRef = useRef(editingId);
+  editTextRef.current = editText;
+  editingIdRef.current = editingId;
+
+  const sf = useSortFilter();
+
+  // ── Data loading ──
+
+  const fetchEntries = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const results = await searchDictionary(
-        searchQuery || undefined,
-        sourceTypeFilter || undefined,
-      );
+      const results = await searchDictionary(undefined, undefined, undefined, undefined, undefined, 1000);
       setEntries(results);
-      const s = await getDictionaryStats();
-      setStats(s);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
       const s = await getDictionaryStats();
       setStats(s);
     } catch {
       // ignore
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchEntries();
-  }, [sourceTypeFilter]);
-
-  useEffect(() => {
     fetchStats();
-  }, []);
+  }, [fetchEntries, fetchStats]);
+
+  // ── Import handler ──
 
   const handleImport = async () => {
     setImporting(true);
@@ -67,7 +168,10 @@ export function DictionaryPage({ language }: Props) {
     setMessage("");
     try {
       const result = await importTranslationResultsToDictionary();
-      setMessage(`已导入 ${result.imported} 条，跳过 ${result.skipped} 条` + (result.conflicts.length > 0 ? `，${result.conflicts.length} 条冲突` : ""));
+      setMessage(
+        `已导入 ${result.imported} 条，跳过 ${result.skipped} 条` +
+          (result.conflicts.length > 0 ? `，${result.conflicts.length} 条冲突` : ""),
+      );
       fetchEntries();
       fetchStats();
     } catch (err) {
@@ -77,46 +181,137 @@ export function DictionaryPage({ language }: Props) {
     }
   };
 
-  const handleSearch = () => fetchEntries();
+  // ── Edit handlers ──
 
-  const handleEdit = (entry: DictionaryEntry) => {
+  const handleEdit = useCallback((entry: DictionaryEntry) => {
     setEditingId(entry.id ?? null);
     setEditText(entry.targetText);
-  };
+  }, []);
 
-  const handleSaveEdit = async () => {
-    if (editingId === null) return;
+  const handleSaveEdit = useCallback(async () => {
+    const id = editingIdRef.current;
+    if (id === null) return;
     setError("");
     setMessage("");
     try {
-      await updateDictionaryEntry(editingId, editText);
+      await updateDictionaryEntry(id, editTextRef.current);
       setMessage(t(language, "dictionary.saved"));
       setEditingId(null);
       fetchEntries();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  };
+  }, [language, fetchEntries]);
 
-  const handleDelete = async (id: number) => {
-    setError("");
-    setMessage("");
-    try {
-      await deleteDictionaryEntry(id);
-      setMessage(t(language, "dictionary.deleted"));
-      fetchEntries();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const handleCancelEdit = () => {
+  const handleCancelEdit = useCallback(() => {
     setEditingId(null);
     setEditText("");
-  };
+  }, []);
+
+  const handleDelete = useCallback(
+    async (id: number) => {
+      setError("");
+      setMessage("");
+      try {
+        await deleteDictionaryEntry(id);
+        setMessage(t(language, "dictionary.deleted"));
+        fetchEntries();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [language, fetchEntries],
+  );
+
+  // ── Client-side filter + sort ──
+
+  const filteredEntries = useMemo(() => {
+    let result = entries;
+
+    // Global search (debounced)
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
+      result = result.filter(
+        (e) =>
+          e.sourceText.toLowerCase().includes(q) ||
+          e.targetText.toLowerCase().includes(q) ||
+          (e.modId ?? "").toLowerCase().includes(q) ||
+          (e.translationKey ?? "").toLowerCase().includes(q),
+      );
+    }
+
+    // Column-level filters
+    const f = sf.filters as Record<string, string>;
+    for (const key of Object.keys(f)) {
+      const val = f[key];
+      if (!val) continue;
+      const v = val.toLowerCase();
+      result = result.filter((e) => {
+        switch (key) {
+          case "sourceText":
+            return e.sourceText.toLowerCase().includes(v);
+          case "targetText":
+            return e.targetText.toLowerCase().includes(v);
+          case "modId":
+            return (e.modId ?? "").toLowerCase().includes(v);
+          case "translationKey":
+            return (e.translationKey ?? "").toLowerCase().includes(v);
+          case "sourceType":
+            return e.sourceType === val;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Sort
+    if (sf.sortConfig) {
+      const { key, direction } = sf.sortConfig;
+      const dir = direction === "asc" ? 1 : -1;
+      const getVal = (x: DictionaryEntry): string => {
+        switch (key) {
+          case "sourceText": return x.sourceText;
+          case "targetText": return x.targetText;
+          case "modId": return x.modId ?? "";
+          case "translationKey": return x.translationKey ?? "";
+          case "sourceType": return x.sourceType;
+          default: return "";
+        }
+      };
+      result = [...result].sort((a, b) =>
+        getVal(a).localeCompare(getVal(b), undefined, { sensitivity: "base" }) * dir,
+      );
+    }
+
+    return result;
+  }, [entries, debouncedSearch, sf.filters, sf.sortConfig]);
+
+  // ── Column config ──
+
+  const dictColumns: ColumnConfig[] = useMemo(
+    () => [
+      { key: "sourceText", label: t(language, "dictionary.col.source"), filterType: "text" },
+      { key: "targetText", label: t(language, "dictionary.col.target"), filterType: "text" },
+      { key: "modId", label: t(language, "dictionary.col.mod"), filterType: "text" },
+      { key: "translationKey", label: t(language, "dictionary.col.key"), filterType: "text" },
+      {
+        key: "sourceType",
+        label: t(language, "dictionary.col.type"),
+        filterType: "select",
+        filterOptions: ["manual", "resourcepack", "cfpa", "llm"].map((v) => ({
+          value: v,
+          label: typeLabel(v, language),
+        })),
+      },
+      { key: "actions", label: t(language, "dictionary.col.actions"), sortable: false, filterType: "none" },
+    ],
+    [language],
+  );
+
+  // ── Render ──
 
   return (
-    <section className="page">
+    <section className="page dictionary-page">
       <div className="page-header">
         <div>
           <h1>{t(language, "dictionary.title")}</h1>
@@ -137,11 +332,21 @@ export function DictionaryPage({ language }: Props) {
             <Download size={17} />
             {importing ? "导入中..." : "导入已有翻译"}
           </button>
-          <button className="ghost-button" type="button" disabled={!isTauriRuntime()} data-tooltip={t(language, "tooltip.export")}>
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={!isTauriRuntime()}
+            data-tooltip={t(language, "tooltip.export")}
+          >
             <Download size={17} />
             {t(language, "dictionary.export")}
           </button>
-          <button className="ghost-button" type="button" disabled={!isTauriRuntime()} data-tooltip={t(language, "tooltip.import")}>
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={!isTauriRuntime()}
+            data-tooltip={t(language, "tooltip.import")}
+          >
             <Upload size={17} />
             {t(language, "dictionary.import")}
           </button>
@@ -151,109 +356,88 @@ export function DictionaryPage({ language }: Props) {
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert error">{error}</div>}
 
+      {/* Search bar */}
       <div className="instance-row">
         <label className="search-field">
           <Search size={17} />
           <input
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            value={globalSearch}
+            onChange={(e) => setGlobalSearch(e.target.value)}
             placeholder={t(language, "dictionary.searchPlaceholder")}
           />
         </label>
-        <select
-          value={sourceTypeFilter}
-          onChange={(e) => setSourceTypeFilter(e.target.value)}
-          className="filter-select"
-        >
-          <option value="">{t(language, "dictionary.allTypes")}</option>
-          <option value="manual">{t(language, "dictionary.typeManual")}</option>
-          <option value="resourcepack">{t(language, "dictionary.typeResourcepack")}</option>
-          <option value="cfpa">{t(language, "dictionary.typeCfpa")}</option>
-          <option value="llm">{t(language, "dictionary.typeLlm")}</option>
-        </select>
-        <button className="ghost-button" onClick={handleSearch} type="button" data-tooltip={t(language, "tooltip.search")}>
-          <Search size={17} />
-          {t(language, "dictionary.search")}
-        </button>
+        {filteredEntries.length > 0 && (
+          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+            {filteredEntries.length} / {entries.length} 条
+          </span>
+        )}
       </div>
 
+      {/* Loading state */}
       {loading && <div className="empty-state">{t(language, "common.loading")}</div>}
 
-      {!loading && entries.length === 0 && (
+      {/* Empty state */}
+      {!loading && filteredEntries.length === 0 && (
         <div className="empty-state">
           <BookOpen size={32} />
           <p>{t(language, "dictionary.empty")}</p>
         </div>
       )}
 
-      {entries.length > 0 && (
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>{t(language, "dictionary.col.source")}</th>
-                <th>{t(language, "dictionary.col.target")}</th>
-                <th>{t(language, "dictionary.col.mod")}</th>
-                <th>{t(language, "dictionary.col.key")}</th>
-                <th>{t(language, "dictionary.col.type")}</th>
-                <th>{t(language, "dictionary.col.actions")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.slice(0, 500).map((entry) => (
-                <tr key={entry.id}>
-                  <td title={entry.sourceText}>{entry.sourceText}</td>
-                  <td>
-                    {editingId === entry.id ? (
-                      <div className="inline-edit">
-                        <input
-                          value={editText}
-                          onChange={(e) => setEditText(e.target.value)}
-                          autoFocus
-                        />
-                        <button className="text-button" onClick={handleSaveEdit} type="button">
-                          {t(language, "common.save")}
-                        </button>
-                        <button className="text-button" onClick={handleCancelEdit} type="button">
-                          {t(language, "common.cancel")}
-                        </button>
-                      </div>
-                    ) : (
-                      <span
-                        className="editable-text"
-                        onClick={() => handleEdit(entry)}
-                        title={t(language, "dictionary.clickToEdit")}
-                      >
-                        {entry.targetText}
-                      </span>
-                    )}
-                  </td>
-                  <td>{entry.modId ?? "-"}</td>
-                  <td className="mono">{entry.translationKey ?? "-"}</td>
-                  <td>
-                    <span className={`badge ${entry.sourceType}`}>{entry.sourceType}</span>
-                  </td>
-                  <td>
-                    <button
-                      className="ghost-button danger"
-                      onClick={() => entry.id && handleDelete(entry.id)}
-                      type="button"
-                      data-tooltip={t(language, "tooltip.delete")}
-                    >
-                      {t(language, "common.delete")}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {entries.length > 500 && (
-        <div className="alert warning">
-          {t(language, "dictionary.moreResults", { count: entries.length - 500 })}
+      {/* Virtual-scrolled table */}
+      {!loading && filteredEntries.length > 0 && (
+        <div className="log-panel" style={{ flex: 1, marginTop: 12 }}>
+          <div className="log-panel-body">
+            <TableVirtuoso
+              style={{ height: "100%" }}
+              totalCount={filteredEntries.length}
+              components={{
+                Table: ({ children, ...rest }) => (
+                  <table {...rest}>
+                    <colgroup>
+                      <col style={{ width: "30%" }} />
+                      <col style={{ width: "30%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "15%" }} />
+                      <col style={{ width: "5%" }} />
+                      <col style={{ width: "5%" }} />
+                    </colgroup>
+                    {children}
+                  </table>
+                ),
+              }}
+              fixedHeaderContent={() => (
+                <SortableTableHeader
+                  columns={dictColumns}
+                  sortConfig={sf.sortConfig}
+                  filters={sf.filters}
+                  openFilter={sf.openFilter}
+                  filterRef={sf.filterRef}
+                  onSort={sf.handleSort}
+                  onToggleFilter={sf.toggleFilter}
+                  onFilterChange={sf.handleFilterChange}
+                  defaultSortKey="sourceText"
+                />
+              )}
+              itemContent={(index) => {
+                const entry = filteredEntries[index];
+                return (
+                  <DictionaryRow
+                    key={entry.id ?? index}
+                    entry={entry}
+                    isEditing={editingId === entry.id}
+                    editText={editText}
+                    onEdit={handleEdit}
+                    onEditChange={setEditText}
+                    onSave={handleSaveEdit}
+                    onCancel={handleCancelEdit}
+                    onDelete={handleDelete}
+                    language={language}
+                  />
+                );
+              }}
+            />
+          </div>
         </div>
       )}
     </section>

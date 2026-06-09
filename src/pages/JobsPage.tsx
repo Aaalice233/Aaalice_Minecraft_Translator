@@ -1,4 +1,4 @@
-import { AlertTriangle, BookOpen, Bot, CheckCircle, FileText, Filter, Play, RefreshCw, Square, X, XCircle, Zap } from "lucide-react";
+import { AlertTriangle, BookOpen, Bot, CheckCircle, FileText, Play, RefreshCw, Square, XCircle, Zap } from "lucide-react";
 import { TableVirtuoso } from "react-virtuoso";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSortFilter } from "../hooks/useSortFilter";
@@ -9,6 +9,7 @@ import { t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
 import { toErrorMessage } from "../utils";
 import { CompletionSummary } from "../components/CompletionSummary";
+import { SortableTableHeader } from "../components/SortableTableHeader";
 import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
 
 function csvQuote(val: string): string {
@@ -111,10 +112,10 @@ const LogRow = React.memo(function LogRow({
   const errorMsg = ep?.errorMessage;
   return (
     <>
-      <td>{entry.key}</td>
+      <td title={entry.key}>{entry.key}</td>
       <td title={entry.sourceText}>{entry.sourceText}</td>
       <td title={tgtText}>{tgtText}</td>
-      <td className="truncate" style={{ maxWidth: 180 }}>{entry.modName}</td>
+      <td title={entry.modName}>{entry.modName}</td>
       <td><span className="badge">{sourceTypeLabel(entry.sourceType, language)}</span></td>
       <td>
         <span className={`badge badge-${st}`} data-tooltip={st === "failed" && errorMsg ? errorMsg : undefined}>
@@ -827,107 +828,45 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                   );
                 },
               }}
-              fixedHeaderContent={() => (
-                <tr>
-                  {([
-                    { key: "key", label: t(language, "jobs.logPanel.colKey") },
-                    { key: "sourceText", label: t(language, "jobs.logPanel.colSource") },
-                    { key: "targetText", label: t(language, "jobs.logPanel.colTarget") },
-                    { key: "modName", label: t(language, "jobs.logPanel.colMod") },
-                    { key: "sourceType", label: t(language, "jobs.logPanel.colType") },
-                    { key: "status", label: t(language, "jobs.logPanel.colStatus") },
-                  ] as const).map((col) => {
-                    const isActiveSort = sf.sortConfig?.key === col.key;
-                    const isDefaultSort = !sf.sortConfig && col.key === "key";
-                    const hasActiveFilter = col.key in sf.filters;
-                    return (
-                      <th
-                        key={col.key}
-                        className={[
-                          "sortable",
-                          isActiveSort ? (sf.sortConfig!.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
-                          isDefaultSort ? "sorted-default" : "",
-                        ].filter(Boolean).join(" ")}
-                        onClick={() => sf.handleSort(col.key)}
-                      >
-                        <span className="th-filter-wrap">
-                          {col.label}
-                          {(isActiveSort || isDefaultSort) && (
-                            <span className="sort-indicator">
-                              {isActiveSort ? (sf.sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
-                            </span>
-                          )}
-                          <button
-                            className={[
-                              "th-filter-btn",
-                              hasActiveFilter ? "has-filter" : "",
-                              sf.openFilter === col.key ? "active" : "",
-                            ].filter(Boolean).join(" ")}
-                            onClick={(e) => { e.stopPropagation(); sf.toggleFilter(col.key); }}
-                            type="button"
-                            aria-label={`Filter ${col.label}`}
-                            data-tooltip={t(language, "tooltip.filter")}
-                          >
-                            <Filter size={13} />
-                          </button>
-                          {sf.openFilter === col.key && (
-                            <div
-                              className="filter-popover"
-                              ref={sf.filterRef}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <div className="filter-popover-header">
-                                <span>{col.label}</span>
-                                <button
-                                  className="filter-popover-clear"
-                                  onClick={() => { sf.handleFilterChange(col.key, null); }}
-                                  type="button"
-                                  data-tooltip={t(language, "tooltip.clearFilter")}
-                                >
-                                  <X size={13} />
-                                </button>
-                              </div>
-                              {["key", "sourceText", "targetText", "modName"].includes(col.key) && (
-                                <input
-                                  type="text"
-                                  value={sf.filters[col.key] || ""}
-                                  onChange={(e) => sf.handleFilterChange(col.key, e.target.value)}
-                                  placeholder={t(language, "dashboard.filterSearch")}
-                                  autoFocus
-                                />
-                              )}
-                              {col.key === "sourceType" && (
-                                <select
-                                  value={sf.filters.sourceType || ""}
-                                  onChange={(e) => sf.handleFilterChange("sourceType", e.target.value || null)}
-                                  autoFocus
-                                >
-                                  <option value="">全部</option>
-                                  {KNOWN_SOURCE_TYPES.map((st) => (
-                                    <option key={st} value={st}>{sourceTypeLabel(st, language)}</option>
-                                  ))}
-                                </select>
-                              )}
-                              {col.key === "status" && (
-                                <select
-                                  value={sf.filters.status || ""}
-                                  onChange={(e) => sf.handleFilterChange("status", e.target.value || null)}
-                                  autoFocus
-                                >
-                                  <option value="">全部</option>
-                                  {KNOWN_STATUSES.map((st) => (
-                                    <option key={st} value={st}>{statusLabel(st, language)}</option>
-                                  ))}
-                                </select>
-                              )}
-                            </div>
-                          )}
-                        </span>
-                      </th>
-                    );
-                  })}
-                </tr>
-              )}
+              fixedHeaderContent={() => {
+                const jobColumns: import("../components/SortableTableHeader").ColumnConfig[] = [
+                  { key: "key", label: t(language, "jobs.logPanel.colKey"), filterType: "text" },
+                  { key: "sourceText", label: t(language, "jobs.logPanel.colSource"), filterType: "text" },
+                  { key: "targetText", label: t(language, "jobs.logPanel.colTarget"), filterType: "text" },
+                  { key: "modName", label: t(language, "jobs.logPanel.colMod"), filterType: "text" },
+                  {
+                    key: "sourceType",
+                    label: t(language, "jobs.logPanel.colType"),
+                    filterType: "select",
+                    filterOptions: KNOWN_SOURCE_TYPES.map((st) => ({
+                      value: st,
+                      label: sourceTypeLabel(st, language),
+                    })),
+                  },
+                  {
+                    key: "status",
+                    label: t(language, "jobs.logPanel.colStatus"),
+                    filterType: "select",
+                    filterOptions: KNOWN_STATUSES.map((st) => ({
+                      value: st,
+                      label: statusLabel(st, language),
+                    })),
+                  },
+                ];
+                return (
+                  <SortableTableHeader
+                    columns={jobColumns}
+                    sortConfig={sf.sortConfig}
+                    filters={sf.filters}
+                    openFilter={sf.openFilter}
+                    filterRef={sf.filterRef}
+                    onSort={sf.handleSort}
+                    onToggleFilter={sf.toggleFilter}
+                    onFilterChange={sf.handleFilterChange}
+                    defaultSortKey="key"
+                  />
+                );
+              }}
               itemContent={(index) => {
                 const entry = filteredEntries[index];
                 return (

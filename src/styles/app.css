@@ -2202,10 +2202,14 @@ th.sorted-default .sort-indicator {
   border-bottom: 1px solid var(--bg-muted);
   vertical-align: top;
   line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-/* Validate page table: override log-panel-body for editable review rows */
-.validate-page .log-panel-body td {
+/* Validate & Dictionary pages: override log-panel-body so cell content isn't clipped */
+.validate-page .log-panel-body td,
+.dictionary-page .log-panel-body td {
   overflow: visible;
   white-space: normal;
 }
@@ -2217,13 +2221,7 @@ th.sorted-default .sort-indicator {
   transition: background 0.1s;
 }
 
-/* Virtual scrolling: browser skips rendering off-screen rows */
-.log-panel-body tbody tr {
-  content-visibility: auto;
-  contain-intrinsic-size: 52px;
-}
-
-/* Dashboard mod table: same virtual-scroll optimization */
+/* Dashboard mod table: virtual-scroll optimization (native <table>, no TableVirtuoso) */
 .dashboard-grid .table-wrap table tbody tr {
   content-visibility: auto;
   contain-intrinsic-size: 38px;

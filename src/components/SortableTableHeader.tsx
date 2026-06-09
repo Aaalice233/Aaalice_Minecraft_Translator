@@ -1,0 +1,187 @@
+import { Filter, X } from "lucide-react";
+import type { ReactNode } from "react";
+
+// ── Column config ──
+
+export interface ColumnConfig {
+  key: string;
+  label: string;
+  sortable?: boolean;
+  /** Default sort direction when clicked first time (default "asc"). */
+  defaultSort?: "asc" | "desc";
+  filterType?: "text" | "select" | "none";
+  filterOptions?: { value: string; label: string }[];
+  /** Override the entire filter popover content. When set, filterType is ignored. */
+  renderFilterContent?: (props: FilterContentProps) => ReactNode;
+  /** Extra style for the <th> element. */
+  thStyle?: React.CSSProperties;
+}
+
+export interface FilterContentProps {
+  column: string;
+  value: string | undefined;
+  onChange: (value: string | null) => void;
+}
+
+// ── Sort/filter state shape ──
+
+export interface SortConfig {
+  key: string;
+  direction: "asc" | "desc";
+}
+
+// ── Component ──
+
+interface Props {
+  columns: ColumnConfig[];
+  sortConfig: SortConfig | null;
+  filters: Record<string, string>;
+  openFilter: string | null;
+  filterRef: React.RefObject<HTMLDivElement | null>;
+  onSort: (key: string) => void;
+  onToggleFilter: (key: string) => void;
+  onFilterChange: (key: string, value: string | null) => void;
+  /** Default column for initial sort indicator */
+  defaultSortKey?: string;
+}
+
+/**
+ * Reusable sortable table header row.
+ *
+ * Usage:
+ * ```tsx
+ * <SortableTableHeader
+ *   columns={columns}
+ *   sortConfig={sf.sortConfig}
+ *   filters={sf.filters}
+ *   openFilter={sf.openFilter}
+ *   filterRef={sf.filterRef}
+ *   onSort={sf.handleSort}
+ *   onToggleFilter={sf.toggleFilter}
+ *   onFilterChange={sf.handleFilterChange}
+ * />
+ * ```
+ */
+export function SortableTableHeader({
+  columns,
+  sortConfig,
+  filters,
+  openFilter,
+  filterRef,
+  onSort,
+  onToggleFilter,
+  onFilterChange,
+  defaultSortKey,
+}: Props) {
+  return (
+    <tr>
+      {columns.map((col) => {
+        // Special handling: columns with no sort/filter
+        if (col.sortable === false && col.filterType === "none") {
+          return (
+            <th key={col.key} style={col.thStyle}>
+              {col.label}
+            </th>
+          );
+        }
+
+        const isActiveSort = sortConfig?.key === col.key;
+        const isDefaultSort = !sortConfig && col.key === defaultSortKey;
+        const hasActiveFilter = col.key in filters;
+
+        return (
+          <th
+            key={col.key}
+            className={[
+              "sortable",
+              isActiveSort ? (sortConfig!.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
+              isDefaultSort ? "sorted-default" : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
+            onClick={col.sortable !== false ? () => onSort(col.key) : undefined}
+            style={col.thStyle}
+          >
+            <span className="th-filter-wrap">
+              {col.label}
+              {(isActiveSort || isDefaultSort) && (
+                <span className="sort-indicator">
+                  {isActiveSort ? (sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
+                </span>
+              )}
+              {col.filterType !== "none" && (
+                <button
+                  className={[
+                    "th-filter-btn",
+                    hasActiveFilter ? "has-filter" : "",
+                    openFilter === col.key ? "active" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleFilter(col.key);
+                  }}
+                  type="button"
+                  aria-label={`Filter ${col.label}`}
+                  data-tooltip="筛选"
+                >
+                  <Filter size={13} />
+                </button>
+              )}
+              {openFilter === col.key && (
+                <div
+                  className="filter-popover"
+                  ref={filterRef as React.RefObject<HTMLDivElement>}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="filter-popover-header">
+                    <span>{col.label}</span>
+                    <button
+                      className="filter-popover-clear"
+                      onClick={() => {
+                        onFilterChange(col.key, null);
+                      }}
+                      type="button"
+                      data-tooltip="清除筛选"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
+                  {col.renderFilterContent ? (
+                    col.renderFilterContent({
+                      column: col.key,
+                      value: filters[col.key],
+                      onChange: (v) => onFilterChange(col.key, v),
+                    })
+                  ) : col.filterType === "select" && col.filterOptions ? (
+                    <select
+                      value={filters[col.key] || ""}
+                      onChange={(e) => onFilterChange(col.key, e.target.value || null)}
+                      autoFocus
+                    >
+                      <option value="">全部</option>
+                      {col.filterOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={filters[col.key] || ""}
+                      onChange={(e) => onFilterChange(col.key, e.target.value)}
+                      placeholder="筛选..."
+                      autoFocus
+                    />
+                  )}
+                </div>
+              )}
+            </span>
+          </th>
+        );
+      })}
+    </tr>
+  );
+}

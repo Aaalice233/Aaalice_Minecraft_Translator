@@ -2,17 +2,16 @@ import { TableVirtuoso } from "react-virtuoso";
 import {
   CheckCircle,
   FileText,
-  Filter,
   Loader2,
   PackageCheck,
   Save,
   Search,
-  X,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { loadLatestTranslationJobMeta, loadTranslationResults, markJobReviewed, saveTranslationEntry } from "../api/tauri";
 import { t } from "../i18n/translations";
 import { useSortFilter } from "../hooks/useSortFilter";
+import { SortableTableHeader } from "../components/SortableTableHeader";
 import { useAppStore } from "../stores/appStore";
 import type { AppLanguage, TranslationJobListItem, TranslationResult } from "../types";
 
@@ -360,89 +359,29 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
                       </table>
                     ),
                   }}
-                  fixedHeaderContent={() => (
-                    <tr>
-                      {([
-                        { key: "modName", label: "Mod 名称" },
-                        { key: "modId", label: "Mod ID" },
-                        { key: "sourceText", label: "原文" },
-                        { key: "targetText", label: "译文" },
-                        { key: "sourceType", label: "来源" },
-                        { key: "actions", label: "操作" },
-                      ] as const).map((col) => {
-                        if (col.key === "actions") {
-                          return (
-                            <th key={col.key} style={{ textAlign: "center", ...sortThStyle }}>
-                              {col.label}
-                            </th>
-                          );
-                        }
-                        const isActiveSort = sf.sortConfig?.key === col.key;
-                        const isDefaultSort = !sf.sortConfig && col.key === "modName";
-                        const hasActiveFilter = col.key in sf.filters;
-                        return (
-                          <th
-                            key={col.key}
-                            className={[
-                              "sortable",
-                              isActiveSort ? (sf.sortConfig!.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
-                              isDefaultSort ? "sorted-default" : "",
-                            ].filter(Boolean).join(" ")}
-                            onClick={() => sf.handleSort(col.key)}
-                            style={sortThStyle}
-                          >
-                            <span className="th-filter-wrap">
-                              {col.label}
-                              {(isActiveSort || isDefaultSort) && (
-                                <span className="sort-indicator">
-                                  {isActiveSort ? (sf.sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
-                                </span>
-                              )}
-                              <button
-                                className={[
-                                  "th-filter-btn",
-                                  hasActiveFilter ? "has-filter" : "",
-                                  sf.openFilter === col.key ? "active" : "",
-                                ].filter(Boolean).join(" ")}
-                                onClick={(e) => { e.stopPropagation(); sf.toggleFilter(col.key); }}
-                                type="button"
-                                aria-label={`Filter ${col.label}`}
-                                data-tooltip={t(language, "tooltip.filter")}
-                              >
-                                <Filter size={13} />
-                              </button>
-                              {sf.openFilter === col.key && (
-                                <div
-                                  className="filter-popover"
-                                  ref={sf.filterRef}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <div className="filter-popover-header">
-                                    <span>{col.label}</span>
-                                    <button
-                                      className="filter-popover-clear"
-                                      onClick={() => { sf.handleFilterChange(col.key, null); }}
-                                      type="button"
-                                      data-tooltip={t(language, "tooltip.clearFilter")}
-                                    >
-                                      <X size={13} />
-                                    </button>
-                                  </div>
-                                  <input
-                                    type="text"
-                                    value={sf.filters[col.key] || ""}
-                                    onChange={(e) => sf.handleFilterChange(col.key, e.target.value)}
-                                    placeholder="筛选..."
-                                    autoFocus
-                                  />
-                                </div>
-                              )}
-                            </span>
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  )}
+                  fixedHeaderContent={() => {
+                    const validateColumns: import("../components/SortableTableHeader").ColumnConfig[] = [
+                      { key: "modName", label: "Mod 名称", filterType: "text", thStyle: sortThStyle },
+                      { key: "modId", label: "Mod ID", filterType: "text", thStyle: sortThStyle },
+                      { key: "sourceText", label: "原文", filterType: "text", thStyle: sortThStyle },
+                      { key: "targetText", label: "译文", filterType: "text", thStyle: sortThStyle },
+                      { key: "sourceType", label: "来源", filterType: "text", thStyle: sortThStyle },
+                      { key: "actions", label: "操作", sortable: false, filterType: "none", thStyle: { textAlign: "center", ...sortThStyle } as React.CSSProperties },
+                    ];
+                    return (
+                      <SortableTableHeader
+                        columns={validateColumns}
+                        sortConfig={sf.sortConfig}
+                        filters={sf.filters}
+                        openFilter={sf.openFilter}
+                        filterRef={sf.filterRef}
+                        onSort={sf.handleSort}
+                        onToggleFilter={sf.toggleFilter}
+                        onFilterChange={sf.handleFilterChange}
+                        defaultSortKey="modName"
+                      />
+                    );
+                  }}
                   itemContent={(index) => {
                     const entry = filteredEntries[index];
                     const rk = rowKey(entry);
@@ -531,7 +470,7 @@ const ValidateRow = React.memo(function ValidateRow({
   else if (sourceTypeLabel === "reviewed") sourceTypeLabel = "已审";
 
   return (
-    <tr>
+    <>
       <td style={{ ...tdStyle, fontWeight: 500 }} title={entry.modName}>
         {entry.modName}
       </td>
@@ -601,6 +540,6 @@ const ValidateRow = React.memo(function ValidateRow({
           )}
         </button>
       </td>
-    </tr>
+    </>
   );
 });
