@@ -527,15 +527,15 @@ p {
 }
 
 .ghost-button {
-  border: 1px solid #ded8cc;
+  border: 1px solid var(--border-input);
   background: var(--bg-surface);
   color: var(--text-primary);
   transition: background 0.15s, border-color 0.15s;
 }
 
 .ghost-button:hover:not(:disabled) {
-  background: #f0ede6;
-  border-color: #ccc6b8;
+  background: var(--bg-muted);
+  border-color: var(--border-input);
 }
 
 .ghost-button.danger:hover:not(:disabled) {
@@ -568,8 +568,8 @@ p {
 }
 
 .icon-button:hover {
-  background: #f0ede6;
-  border-color: #ccc6b8;
+  background: var(--bg-muted);
+  border-color: var(--border-input);
   color: var(--text-primary);
 }
 
@@ -724,7 +724,7 @@ select optgroup option {
 }
 
 .provider-option:hover {
-  background: #f0ede6;
+  background: var(--bg-muted);
 }
 
 .provider-option.selected {
@@ -1076,7 +1076,7 @@ select optgroup option {
 .mod-search-input {
   height: 30px;
   width: 200px;
-  border: 1px solid #ded8cc;
+  border: 1px solid var(--border-input);
   border-radius: 5px;
   background: var(--bg-surface);
   color: var(--text-primary);
@@ -1219,7 +1219,7 @@ th.sorted-default .sort-indicator {
   z-index: 100;
   min-width: 180px;
   background: var(--bg-surface);
-  border: 1px solid #ded8cc;
+  border: 1px solid var(--border-input);
   border-radius: 6px;
   padding: 10px;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
@@ -1317,7 +1317,7 @@ th.sorted-default .sort-indicator {
   user-select: none;
 }
 .copy-cell:hover {
-  background: #f5f3ee;
+  background: var(--bg-muted);
 }
 .copy-cell.mod-name {
   max-width: 400px;
@@ -1596,7 +1596,7 @@ th.sorted-default .sort-indicator {
   position: relative;
   width: 36px;
   height: 20px;
-  background: #ded8cc;
+  background: var(--border-input);
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.2s ease;
@@ -1752,7 +1752,7 @@ th.sorted-default .sort-indicator {
 
   .settings-sidebar {
     border-right: 0;
-    border-bottom: 1px solid #ded8cc;
+    border-bottom: 1px solid var(--border-input);
   }
 }
 
@@ -1791,7 +1791,7 @@ th.sorted-default .sort-indicator {
   max-width: 300px;
   min-width: 140px;
   height: 30px;
-  border: 1px solid #ded8cc;
+  border: 1px solid var(--border-input);
   border-radius: 5px;
   padding: 0 10px;
   font-size: 12px;
@@ -1802,7 +1802,7 @@ th.sorted-default .sort-indicator {
   flex: 1;
   min-height: 0;
   scrollbar-width: thin;
-  scrollbar-color: #c5bfb0 #f5f3ee;
+  scrollbar-color: var(--border) var(--bg-muted);
   overflow: hidden;
 }
 
@@ -1811,11 +1811,11 @@ th.sorted-default .sort-indicator {
 }
 
 .log-panel-body::-webkit-scrollbar-track {
-  background: #f5f3ee;
+  background: var(--bg-muted);
 }
 
 .log-panel-body::-webkit-scrollbar-thumb {
-  background: #c5bfb0;
+  background: var(--border);
   border-radius: 3px;
 }
 
