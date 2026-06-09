@@ -266,8 +266,9 @@ function AppShell() {
   const dbCompleted = useCallback((c: boolean) => setNavCompleted("dashboard", c), [setNavCompleted]);
   const jobsBusy = useCallback((b: boolean) => setNavBusy("jobs", b), [setNavBusy]);
   const jobsCompleted = useCallback((c: boolean) => setNavCompleted("jobs", c), [setNavCompleted]);
-  const animatingRef = useRef(false);
+  const packsBusy = useCallback((b: boolean) => setNavBusy("packages", b), [setNavBusy]);
 
+  const animatingRef = useRef(false);
   const toggleDarkMode = useCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
     if (animatingRef.current || !settings) return;
 
@@ -281,19 +282,16 @@ function AppShell() {
     const updated: Settings = { ...settings, uiDarkMode: next };
 
     animatingRef.current = true;
-
-    // Set direction before transition so CSS selectors apply correctly
     document.documentElement.dataset.vtMode = next ? 'expand' : 'shrink';
 
+    const setTheme = () => { document.documentElement.dataset.theme = next ? "dark" : "light"; };
+
     try {
-      const vt = (document as any).startViewTransition?.(() => {
-        document.documentElement.dataset.theme = next ? "dark" : "light";
-      });
+      const vt = (document as any).startViewTransition?.(setTheme);
       if (vt) {
         await vt.finished;
       } else {
-        // Fallback: no View Transition API support
-        document.documentElement.dataset.theme = next ? "dark" : "light";
+        setTheme();
       }
     } catch {
       // Transition skipped or failed — state update still needed
@@ -305,7 +303,6 @@ function AppShell() {
     saveSettings(updated).catch((err) => console.warn("saveSettings 失败:", err));
   }, [settings, syncedDispatch]);
 
-  const packsBusy = useCallback((b: boolean) => setNavBusy("packages", b), [setNavBusy]);
   const handleSettingsChange = useCallback(
     (s: Settings) => syncedDispatch({ type: "SET_SETTINGS", payload: s }),
     [syncedDispatch],
