@@ -11,7 +11,7 @@ import {
   Search,
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { listTranslationJobs, loadLatestTranslationJobMeta, loadTranslationModSummaries, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
+import { loadLatestTranslationJobMeta, loadTranslationModSummaries, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
 import { t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
 import type { AppLanguage, ModTranslationSummary, TranslationJobListItem, TranslationResult } from "../types";
@@ -41,9 +41,6 @@ export function ValidatePage({ language, onConfirm }: Props) {
   const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
   const [saveMsg, setSaveMsg] = useState<string>("");
 
-  // ── Job selector state ──
-  const [jobList, setJobList] = useState<TranslationJobListItem[]>([]);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const prevTranslationJobId = useRef(translationJobId);
 
@@ -54,13 +51,6 @@ export function ValidatePage({ language, onConfirm }: Props) {
       setDismissed(false);
     }
   }, [translationJobId]);
-
-  // ── Job list for dropdown ──
-  useEffect(() => {
-    listTranslationJobs()
-      .then((jobs) => setJobList(jobs))
-      .catch(() => {/* not critical */});
-  }, [translationJobId, translationStatus]);
 
   // ── Load job meta + mod summaries reactively ──
   // 只在当前会话确有翻译任务（translationJobId 被显式设置）时自动加载；
@@ -77,7 +67,6 @@ export function ValidatePage({ language, onConfirm }: Props) {
     setLoading(true);
     // ⚠️ 清除缓存的 per-mod 数据，防止切换任务后展开同名 modId 时展示旧结果
     resetModCache();
-    setSelectedJobId(null); // 新任务自动加载时清除手动选中
     loadLatestTranslationJobMeta()
       .then(async (j) => {
         if (cancelled) return;
@@ -97,31 +86,9 @@ export function ValidatePage({ language, onConfirm }: Props) {
     return () => { cancelled = true; };
   }, [translationJobId, translationStatus]);
 
-  // ── Switch to a specific job from the list ──
-  function switchToJob(jobId: string) {
-    setSelectedJobId(jobId);
-    setDismissed(false);
-    const found = jobList.find((j) => j.jobId === jobId);
-    if (!found) return;
-    setLoading(true);
-    resetModCache();
-    setJob(found);
-    if (found.status === "completed") {
-      loadTranslationModSummaries(found.jobId)
-        .then((summaries) => {
-          setModSummaries(summaries);
-        })
-        .catch(() => {/* ignore */})
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
-  }
-
   // ── Dismiss / clear view ──
   function handleDismiss() {
     setDismissed(true);
-    setSelectedJobId(null);
     setJob(null);
     setModSummaries([]);
     resetModCache();
@@ -254,40 +221,10 @@ export function ValidatePage({ language, onConfirm }: Props) {
   if (!job) {
     return (
       <section className="page validate-page validate-workspace">
-        <PageHeader language={language}>
-          {jobList.length > 1 && (
-            <JobSelector
-              language={language}
-              jobList={jobList}
-              selectedJobId={selectedJobId}
-              onSelect={switchToJob}
-            />
-          )}
-        </PageHeader>
+        <PageHeader language={language} />
         <div className="empty-state">
           <Search size={32} />
           <p>未找到翻译任务。请先在「翻译任务」页面完成一次翻译。</p>
-          {jobList.length > 0 && (
-            <p style={{ marginTop: 12, color: "var(--text-muted)", fontSize: 13 }}>
-              {t(language, "validate.selectHistoryHint")}
-            </p>
-          )}
-          {jobList.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
-              {jobList.filter((j) => j.status === "completed").map((j) => (
-                <button
-                  key={j.jobId}
-                  className="ghost-button"
-                  onClick={() => switchToJob(j.jobId)}
-                  type="button"
-                  style={{ fontSize: 13, padding: "6px 12px" }}
-                >
-                  {j.jobId} — {t(language, "validate.entries", { count: j.completedEntries })}
-                  {j.completedAt && ` (${new Date(j.completedAt).toLocaleString()})`}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </section>
     );
@@ -298,14 +235,6 @@ export function ValidatePage({ language, onConfirm }: Props) {
     return (
       <section className="page validate-page validate-workspace">
         <PageHeader language={language}>
-          {jobList.length > 1 && (
-            <JobSelector
-              language={language}
-              jobList={jobList}
-              selectedJobId={selectedJobId}
-              onSelect={switchToJob}
-            />
-          )}
           <button className="ghost-button" onClick={handleDismiss} type="button">
             {t(language, "validate.close")}
           </button>
@@ -322,14 +251,6 @@ export function ValidatePage({ language, onConfirm }: Props) {
   return (
     <section className="page validate-page validate-workspace">
       <PageHeader language={language}>
-          {jobList.length > 1 && (
-            <JobSelector
-              language={language}
-              jobList={jobList}
-              selectedJobId={selectedJobId ?? job.jobId}
-              onSelect={switchToJob}
-            />
-          )}
           <button className="ghost-button" onClick={handleDismiss} type="button" style={{ fontSize: 13 }}>
             {t(language, "validate.close")}
           </button>
@@ -569,7 +490,7 @@ const ReviewRow = React.memo(function ReviewRow({
 
 // ── Page Header (reduces duplication across 4 render paths) ────
 
-function PageHeader({ language, children }: { language: AppLanguage; children: React.ReactNode }) {
+function PageHeader({ language, children }: { language: AppLanguage; children?: React.ReactNode }) {
   return (
     <div className="page-header">
       <div>
@@ -583,44 +504,4 @@ function PageHeader({ language, children }: { language: AppLanguage; children: R
   );
 }
 
-// ── Job Selector ────────────────────────────────────────────────
 
-function JobSelector({
-  language,
-  jobList,
-  selectedJobId,
-  onSelect,
-}: {
-  language: AppLanguage;
-  jobList: TranslationJobListItem[];
-  selectedJobId: string | null;
-  onSelect: (jobId: string) => void;
-}) {
-  return (
-    <select
-      value={selectedJobId ?? ""}
-      onChange={(e) => {
-        if (e.target.value) onSelect(e.target.value);
-      }}
-      style={{
-        fontSize: 13,
-        padding: "4px 8px",
-        borderRadius: 6,
-        border: "1px solid var(--border-input)",
-        background: "var(--bg-surface)",
-        color: "var(--text-primary)",
-        maxWidth: 260,
-        cursor: "pointer",
-      }}
-    >
-      <option value="">{t(language, "validate.selectJobPlaceholder")}</option>
-      {jobList
-        .filter((j) => j.status === "completed")
-        .map((j) => (
-          <option key={j.jobId} value={j.jobId}>
-            {j.jobId.slice(-12)} ({t(language, "validate.entries", { count: j.completedEntries })})
-          </option>
-        ))}
-    </select>
-  );
-}
