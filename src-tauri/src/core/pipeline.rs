@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use crate::core::models::*;
-use crate::core::{cfpa, dictionary, jobs, logging, paths, scanner, shield};
+use crate::core::{dictionary, jobs, logging, paths, scanner, shield};
 use crate::core::llm::{LlmClient, TranslateResult, TranslationEntry};
 use tracing::debug;
 
@@ -109,6 +109,9 @@ pub struct PipelineContext<'a> {
     pub entry_progress_tx: &'a mpsc::Sender<EntryProgress>,
     pub scan_summary: Option<ScanSummary>,
     pub dict_db_path: Option<std::path::PathBuf>,
+    /// In-memory dictionary for fast matching (loaded once in DictionaryPhase,
+    /// shared read-only across LLM workers, written back in FinalizePhase).
+    pub memory_dict: Option<std::sync::Arc<std::sync::RwLock<dictionary::MemoryDictionary>>>,
     // Phase-owned data (no lifetime dependency — cloned at phase boundaries)
     pub pending_entries: Vec<(LanguageEntry, String, Option<String>)>,
     pub llm_only_entries: Vec<(LanguageEntry, String)>,
@@ -249,6 +252,12 @@ fn dictionary_phase(
     let dict_db_path = paths::dictionary_db_path(&config.root);
     let dict_conn = dictionary::open(&dict_db_path).map_err(|e| format!("打开词典失败: {e}"))?;
 
+    // MemoryDictionary: load all entries into memory for O(1) lookups
+    let mem_dict = dictionary::MemoryDictionary::load(&dict_conn)
+        .map_err(|e| format!("加载内存词典失败: {e}"))?;
+    let mem_dict = std::sync::Arc::new(std::sync::RwLock::new(mem_dict));
+    ctx.memory_dict = Some(mem_dict.clone());
+
     let mut processed = 0usize;
     let mut batch_results: Vec<jobs::TranslationResult> = Vec::new();
     let mut llm_only_entries: Vec<(LanguageEntry, String)> = Vec::new();
@@ -289,27 +298,24 @@ fn dictionary_phase(
             );
         } else {
             let source_hash = dictionary::hash_text(&entry.text);
-            match dictionary::search_by_hash(&dict_conn, &source_hash, &config.target_language) {
-                Ok(results) => {
-                    let dict_match = if prefer_user_dict {
-                        results.iter().find(|d| d.source_type == "manual")
-                            .or_else(|| results.iter().find(|d| d.source_type != "manual"))
-                    } else {
-                        results.iter().find(|d| d.source_text == entry.text)
-                    };
-                    if let Some(de) = dict_match {
-                        push_dict_entry(
-                            &entry.key, &entry.text, &de.target_text,
-                            &entry.mod_id, file_name, "dictionary", EntryStatus::DictionaryHit,
-                            &mut batch_results, &mut log_buf, &mut entry_progress_buf,
-                        );
-                    } else {
-                        llm_only_entries.push((entry.clone(), file_name.clone()));
-                    }
-                }
-                Err(_) => {
-                    llm_only_entries.push((entry.clone(), file_name.clone()));
-                }
+            // O(1) memory lookup — no SQLite query
+            let results = mem_dict.read().unwrap_or_else(|e| e.into_inner())
+                .search_by_hash(&source_hash, &config.target_language);
+
+            let dict_match = if prefer_user_dict {
+                results.iter().find(|d| d.source_type == "manual")
+                    .or_else(|| results.iter().find(|d| d.source_type != "manual"))
+            } else {
+                results.iter().find(|d| d.source_text == entry.text)
+            };
+            if let Some(de) = dict_match {
+                push_dict_entry(
+                    &entry.key, &entry.text, &de.target_text,
+                    &entry.mod_id, file_name, "dictionary", EntryStatus::DictionaryHit,
+                    &mut batch_results, &mut log_buf, &mut entry_progress_buf,
+                );
+            } else {
+                llm_only_entries.push((entry.clone(), file_name.clone()));
             }
         }
         processed += 1;
@@ -455,7 +461,7 @@ pub struct LlmPhaseResult {
 fn llm_phase(
     ctx: &PipelineContext,
     llm_only_entries: &[(LanguageEntry, String)],
-    dict_db_path: &std::path::Path,
+    memory_dict: &std::sync::Arc<std::sync::RwLock<dictionary::MemoryDictionary>>,
 ) -> Result<LlmPhaseResult, String> {
     let config = ctx.config;
     let job_id = ctx.job_id;
@@ -521,18 +527,8 @@ fn llm_phase(
     let global_failed_count = std::sync::atomic::AtomicUsize::new(0);
     let token_usage_mutex = std::sync::Mutex::new(TokenUsage::default());
 
-    // Open one shared dictionary connection for all workers (SQLite is read-only in workers,
-    // so mutex contention is minimal). Previously each worker opened its own connection.
-    //
-    // NOTE: `shared_dict` lives at least as long as this function. Since `std::thread::scope`
-    // waits for all spawned threads before returning, borrowing it from scoped threads is safe.
-    let shared_dict = match dictionary::open(dict_db_path) {
-        Ok(conn) => std::sync::Arc::new(std::sync::Mutex::new(conn)),
-        Err(e) => {
-            logging::append_job(job_id, format!("打开词典失败: {e}")).ok();
-            return Err(format!("打开词典失败: {e}"));
-        }
-    };
+    // MemoryDictionary is already loaded by dictionary_phase — use it for fuzzy matching.
+    // Arc<RwLock<MemoryDictionary>> is shared read-only across workers (no SQLite overhead).
 
     std::thread::scope(|s| {
         for _ in 0..initial_concurrency {
@@ -562,7 +558,7 @@ fn llm_phase(
                         let batch = &batches[bi];
                         let meta = &key_meta[bi];
 
-                        let (batch_shield_map, entries) = prepare_llm_batch(batch, &config.target_language, &*shared_dict);
+                        let (batch_shield_map, entries) = prepare_llm_batch(batch, &config.target_language, memory_dict);
 
                         for (i, te) in entries.iter().enumerate() {
                             let original_text = batch_shield_map.get(te.key.as_str())
@@ -812,6 +808,13 @@ impl Phase for DictionaryPhase {
     fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
         if ctx.pending_entries.is_empty() {
             ctx.non_llm_count = 0;
+            // Still load an empty MemoryDictionary so downstream phases can reference it
+            let dict_db_path = paths::dictionary_db_path(&ctx.config.root);
+            if let Ok(dict_conn) = dictionary::open(&dict_db_path) {
+                if let Ok(mem_dict) = dictionary::MemoryDictionary::load(&dict_conn) {
+                    ctx.memory_dict = Some(std::sync::Arc::new(std::sync::RwLock::new(mem_dict)));
+                }
+            }
             return Ok(PhaseOutcome::Continue);
         }
         let pending = std::mem::take(&mut ctx.pending_entries);
@@ -840,12 +843,13 @@ struct LlmPhase;
 impl Phase for LlmPhase {
     fn name(&self) -> &'static str { "llm" }
     fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
-        let dict_db_path = ctx.dict_db_path.clone()
-            .unwrap_or_else(|| paths::dictionary_db_path(&ctx.config.root));
+        let memory_dict = ctx.memory_dict.as_ref()
+            .ok_or_else(|| "LLM 阶段需要 MemoryDictionary，但未加载".to_string())?
+            .clone();
         let llm_entries = std::mem::take(&mut ctx.llm_only_entries);
         debug!("LlmPhase::run: {} entries to translate", llm_entries.len());
 
-        let result = llm_phase(ctx, &llm_entries, &dict_db_path)?;
+        let result = llm_phase(ctx, &llm_entries, &memory_dict)?;
         ctx.accumulated_token_usage = result.accumulated_token_usage;
         ctx.llm_count = result.llm_count;
         ctx.failed_count = result.failed_count;
@@ -896,32 +900,36 @@ impl Phase for FinalizePhase {
             "翻译完成: {total}/{total} 条目 (非 LLM: {non_llm_count}, LLM: {llm_count})"
         ));
 
-        // ── 将当前 job 的 LLM/reviewed 结果写入词典 ──
-        let dict_db_path = paths::dictionary_db_path(&ctx.config.root);
-        match dictionary::open(&dict_db_path) {
-            Ok(dict_conn) => {
-                let job_loader = jobs::JobManager::new(ctx.config.root.clone());
-                if let Ok(all_results) = job_loader.load_results(ctx.job_id) {
-                    match dictionary::save_llm_results_to_dictionary(
-                        &dict_conn, &all_results, &ctx.config.target_language,
-                    ) {
-                        Ok((inserted, updated)) => {
-                            if inserted + updated > 0 {
-                                let _ = logging::append_job(ctx.job_id, format!(
-                                    "词典自动更新: 新增 {inserted}, 更新 {updated}"
-                                ));
+        // ── 将 LLM/reviewed 结果写入词典（内存 + SQLite 同步） ──
+        if let Some(mem_dict) = &ctx.memory_dict {
+            let dict_db_path = paths::dictionary_db_path(&ctx.config.root);
+            match dictionary::open(&dict_db_path) {
+                Ok(dict_conn) => {
+                    let job_loader = jobs::JobManager::new(ctx.config.root.clone());
+                    if let Ok(all_results) = job_loader.load_results(ctx.job_id) {
+                        // Use MemoryDictionary.save_llm_results: batch transaction + memory sync
+                        let mut dict = mem_dict.write().unwrap_or_else(|e| e.into_inner());
+                        match dict.save_llm_results(&dict_conn, &all_results, &ctx.config.target_language) {
+                            Ok((inserted, updated)) => {
+                                if inserted + updated > 0 {
+                                    let _ = logging::append_job(ctx.job_id, format!(
+                                        "词典自动更新 (内存+SQLite): 新增 {inserted}, 更新 {updated}"
+                                    ));
+                                }
+                                let _ = logging::append_job(ctx.job_id, "词典写入完成".to_string());
                             }
-                            let _ = logging::append_job(ctx.job_id, "词典写入完成".to_string());
-                        }
-                        Err(e) => {
-                            let _ = logging::append_job(ctx.job_id, format!("词典写入失败 (SQL 错误): {e}"));
+                            Err(e) => {
+                                let _ = logging::append_job(ctx.job_id, format!("词典写入失败 (SQL 错误): {e}"));
+                            }
                         }
                     }
                 }
+                Err(e) => {
+                    let _ = logging::append_job(ctx.job_id, format!("词典写入失败 (非致命): {e}"));
+                }
             }
-            Err(e) => {
-                let _ = logging::append_job(ctx.job_id, format!("词典写入失败 (非致命): {e}"));
-            }
+        } else {
+            let _ = logging::append_job(ctx.job_id, "MemoryDictionary 未加载，跳过词典写入".to_string());
         }
 
         save_job_progress(&ctx.config.root, ctx.job_id, completed, failed_count, jobs::TranslationStatus::Completed);
@@ -1022,14 +1030,13 @@ fn map_translate_result(
     entry
 }
 
-/// Same as map_translate_result but uses HashMap<&str, (&str, &str)> keyed by entry key.
-/// Used by retry_failed_entries where meta is built from TranslationResult keys.
 /// Shared: send Translating status for each entry then prepare the full batch for LLM.
 /// Returns (shield_map, entries) where entries have protected text and dictionary refs populated.
+/// Uses MemoryDictionary for in-memory fuzzy matching (no SQLite overhead).
 fn prepare_llm_batch<'a>(
     batch: &'a [(LanguageEntry, String)],
     target_language: &str,
-    shared_dict: &std::sync::Mutex<rusqlite::Connection>,
+    memory_dict: &std::sync::RwLock<dictionary::MemoryDictionary>,
 ) -> (
     HashMap<String, (String, shield::ShieldResult)>,
     Vec<TranslationEntry>,
@@ -1037,13 +1044,12 @@ fn prepare_llm_batch<'a>(
     let mut batch_refs = Vec::new();
     let mut seen_ref = HashSet::new();
     {
-        let dict_guard = shared_dict.lock().unwrap_or_else(|e| e.into_inner());
+        let dict_guard = memory_dict.read().unwrap_or_else(|e| e.into_inner());
         for (entry, _) in batch {
-            if let Ok(matches) = cfpa::fuzzy_search(&dict_guard, &entry.text, &entry.language, target_language, 5) {
-                for m in &matches {
-                    if seen_ref.insert(m.source_text.clone()) {
-                        batch_refs.push((m.source_text.clone(), m.target_text.clone()));
-                    }
+            let matches = dict_guard.fuzzy_search(&entry.text, &entry.language, target_language, 5);
+            for m in &matches {
+                if seen_ref.insert(m.source_text.clone()) {
+                    batch_refs.push((m.source_text.clone(), m.target_text.clone()));
                 }
             }
         }
@@ -1132,6 +1138,7 @@ pub fn run_pipeline(
         entry_progress_tx: &entry_progress_tx,
         scan_summary: None,
         dict_db_path: None,
+        memory_dict: None,
         pending_entries: Vec::new(),
         llm_only_entries: Vec::new(),
         total: 0,
@@ -1323,6 +1330,69 @@ pub fn retry_failed_entries(
     }
 
     Ok(retried)
+}
+
+/// Translate a single entry using the LLM, with shield protection and cancel support.
+/// Returns the translated text string on success.
+///
+/// - `root` is kept for interface consistency with other pipeline functions.
+/// - When `job_id` is `Some`, registers the task for cancellation support.
+/// - When `cancel` is `Some`, checks cancellation before/during the LLM call.
+pub fn translate_single_entry(
+    root: &std::path::Path,
+    job_id: Option<&str>,
+    key: &str,
+    source_text: &str,
+    _mod_name: &str,
+    mod_id: &str,
+    source_language: &str,
+    target_language: &str,
+    llm_cfg: &LlmConfig,
+    cancel: Option<&CancelToken>,
+) -> Result<String, String> {
+    let _ = root; // unused but kept for interface consistency
+
+    let client = build_llm_client(llm_cfg, 1);
+    client.validate()?;
+
+    if let Some(jid) = job_id {
+        register_translation_task(jid);
+    }
+
+    let sr = shield::protect(source_text);
+
+    let entry = TranslationEntry {
+        key: key.to_string(),
+        text: sr.protected,
+        mod_id: mod_id.to_string(),
+        source_lang: source_language.to_string(),
+        target_lang: target_language.to_string(),
+        references: Vec::new(),
+    };
+
+    let (results, _token) = if let Some(c) = cancel {
+        let check = || c.is_cancelled(job_id.unwrap_or(""));
+        client.translate_batch(&[entry], None, Some(&check))
+    } else {
+        client.translate_batch(&[entry], None, None)
+    };
+
+    if results.is_empty() {
+        return Err("LLM 返回空结果".to_string());
+    }
+
+    let result = results.into_iter().next().unwrap();
+    if result.success {
+        let target = shield::restore(&result.translated_text, &sr.tokens);
+        let valid = shield::validate(&sr.tokens, &target);
+        if valid {
+            Ok(target)
+        } else {
+            Err("翻译结果缺少占位符，可能被 LLM 破坏".to_string())
+        }
+    } else {
+        Err(result.error.unwrap_or_else(|| "LLM 翻译失败".to_string()))
+    }
 }
 
 // ── Tests ────────────────────────────────────────────────────

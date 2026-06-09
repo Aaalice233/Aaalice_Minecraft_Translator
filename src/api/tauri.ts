@@ -212,6 +212,29 @@ export async function retryFailedEntries(
   return tauriInvoke<number>("retry_failed_entries", { jobId, sourceLanguage, targetLanguage });
 }
 
+export async function translateSingleEntry(
+  jobId: string | null,
+  key: string,
+  sourceText: string,
+  modName: string,
+  modId: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+): Promise<string> {
+  if (!isTauriRuntime()) {
+    throw new Error("浏览器预览模式下不可用");
+  }
+  return tauriInvoke<string>("translate_single_entry", {
+    jobId,
+    key,
+    sourceText,
+    modName,
+    modId,
+    sourceLanguage,
+    targetLanguage,
+  });
+}
+
 export async function getTranslationJob(jobId: string): Promise<TranslationJobState | null> {
   if (!isTauriRuntime()) {
     return null;

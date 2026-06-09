@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use rusqlite::{params, Connection, Result as SqlResult, Row};
@@ -579,6 +580,247 @@ pub fn distinct_mod_ids(conn: &Connection) -> SqlResult<Vec<String>> {
         ids.push(row?);
     }
     Ok(ids)
+}
+
+// ── MemoryDictionary: in-memory dictionary for fast pipeline lookups ─────
+
+/// An in-memory dictionary that loads all entries from SQLite at pipeline start,
+/// then provides O(1) hash-based lookups and in-memory fuzzy search.
+///
+/// Writes are synchronised back to both memory and SQLite so the pipeline
+/// never has to re-read from disk during translation.
+pub struct MemoryDictionary {
+    /// source_hash → entries (O(1) exact match)
+    entries: HashMap<String, Vec<DictionaryEntry>>,
+    /// All `cfpa`-type entries pre-sorted for fuzzy search:
+    /// (source_text, target_text, source_lang, target_lang)
+    cfpa_entries: Vec<(String, String, String, String)>,
+    /// Inverted word index: lowercase keyword → indices into cfpa_entries
+    word_index: HashMap<String, Vec<usize>>,
+}
+
+impl MemoryDictionary {
+    /// Load ALL entries from the SQLite dictionary into memory.
+    /// Expected size: ~50k entries (~5–10 MB).
+    pub fn load(conn: &Connection) -> SqlResult<Self> {
+        let mut stmt = conn.prepare(&format!("{SELECT_COLS}"))?;
+        let rows = stmt.query_map([], map_row)?;
+
+        let mut entries: HashMap<String, Vec<DictionaryEntry>> = HashMap::new();
+        let mut cfpa_entries: Vec<(String, String, String, String)> = Vec::new();
+        let mut word_index: HashMap<String, Vec<usize>> = HashMap::new();
+
+        for row in rows {
+            let entry = row?;
+            let hash = hash_text(&entry.source_text);
+            entries.entry(hash).or_default().push(entry.clone());
+
+            if entry.source_type == "cfpa" {
+                let idx = cfpa_entries.len();
+                cfpa_entries.push((
+                    entry.source_text.clone(),
+                    entry.target_text.clone(),
+                    entry.source_lang.clone(),
+                    entry.target_lang.clone(),
+                ));
+                // Index each word of the source text
+                for word in tokenize(&entry.source_text) {
+                    word_index.entry(word).or_default().push(idx);
+                }
+            }
+        }
+
+        tracing::info!(
+            total = entries.len(),
+            cfpa = cfpa_entries.len(),
+            "MemoryDictionary loaded"
+        );
+        Ok(Self { entries, cfpa_entries, word_index })
+    }
+
+    /// O(1) lookup by source hash and target language.
+    /// Returns up to 5 matching entries (cloned owned data — negligible overhead vs. old SQLite query).
+    pub fn search_by_hash(&self, source_hash: &str, target_lang: &str) -> Vec<DictionaryEntry> {
+        self.entries
+            .get(source_hash)
+            .map(|vec| {
+                vec.iter()
+                    .filter(|e| e.target_lang == target_lang)
+                    .take(5)
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// In-memory fuzzy search over cfpa entries.
+    /// Replaces the old SQL-LIKE approach with a word-indexed search:
+    /// 1. Exact match → score 1.0
+    /// 2. Starts-with match → score 0.8
+    /// 3. Word-subset match (via inverted index) → score 0.5
+    pub fn fuzzy_search(
+        &self,
+        text: &str,
+        source_lang: &str,
+        target_lang: &str,
+        limit: usize,
+    ) -> Vec<crate::core::cfpa::CfpaMatch> {
+        let limit = limit.min(20);
+        let query_lower = text.to_lowercase();
+        let query_words: Vec<String> = tokenize(text);
+
+        // Score entries by relevance
+        let mut scored: Vec<(f64, usize)> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        // Phase 1: exact match (score 1.0)
+        for (i, (src, _tgt, sl, tl)) in self.cfpa_entries.iter().enumerate() {
+            if sl != source_lang || tl != target_lang { continue; }
+            if src.to_lowercase() == query_lower {
+                if seen.insert(i) {
+                    scored.push((1.0, i));
+                }
+            }
+        }
+
+        // Phase 2: starts-with (score 0.8)
+        if scored.len() < limit {
+            for (i, (src, _tgt, sl, tl)) in self.cfpa_entries.iter().enumerate() {
+                if sl != source_lang || tl != target_lang { continue; }
+                if seen.contains(&i) { continue; }
+                if src.to_lowercase().starts_with(&query_lower) {
+                    if seen.insert(i) {
+                        scored.push((0.8, i));
+                    }
+                }
+            }
+        }
+
+        // Phase 3: word-level match via inverted index (score 0.5)
+        if scored.len() < limit {
+            let mut word_hits: HashMap<usize, usize> = HashMap::new(); // index → matched word count
+            for word in &query_words {
+                if let Some(indices) = self.word_index.get(word) {
+                    for &idx in indices {
+                        // Check language match
+                        let (_, _, sl, tl) = &self.cfpa_entries[idx];
+                        if sl != source_lang || tl != target_lang { continue; }
+                        if seen.contains(&idx) { continue; }
+                        *word_hits.entry(idx).or_default() += 1;
+                    }
+                }
+            }
+            // Sort by matched-word count descending
+            let mut hits: Vec<(usize, usize)> = word_hits.into_iter().collect();
+            hits.sort_by(|a, b| b.1.cmp(&a.1));
+            for (idx, _count) in hits {
+                if scored.len() >= limit { break; }
+                seen.insert(idx);
+                scored.push((0.5, idx));
+            }
+        }
+
+        // Sort by score descending, build results
+        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        let mut results: Vec<crate::core::cfpa::CfpaMatch> = scored
+            .into_iter()
+            .take(limit)
+            .map(|(sim, i)| {
+                let (src, tgt, _, _) = &self.cfpa_entries[i];
+                crate::core::cfpa::CfpaMatch {
+                    source_text: src.clone(),
+                    target_text: tgt.clone(),
+                    similarity: sim,
+                }
+            })
+            .collect();
+        results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
+        results.truncate(limit);
+        results
+    }
+
+    /// Insert or update a single result in both memory and SQLite.
+    pub fn upsert_result(
+        &mut self,
+        conn: &Connection,
+        result: &crate::core::jobs::TranslationResult,
+        target_lang: &str,
+    ) -> SqlResult<(i64, bool)> {
+        let entry = DictionaryEntry {
+            id: None,
+            source_text: result.source_text.clone(),
+            target_text: result.target_text.clone(),
+            source_lang: String::new(),
+            target_lang: target_lang.to_string(),
+            source_type: result.source_type.clone(),
+            mod_id: Some(result.mod_id.clone()),
+            translation_key: Some(result.key.clone()),
+            context: None,
+            confidence: 1.0,
+            created_at: None,
+            updated_at: None,
+        };
+        let (id, is_new) = upsert(conn, &entry)?;
+
+        // Update in-memory state
+        let hash = hash_text(&result.source_text);
+        let bucket = self.entries.entry(hash).or_default();
+        if let Some(existing) = bucket.iter_mut().find(|e| e.target_lang == target_lang) {
+            existing.target_text = result.target_text.clone();
+            existing.source_type = result.source_type.clone();
+        } else {
+            bucket.push(DictionaryEntry {
+                id: Some(id),
+                source_text: result.source_text.clone(),
+                target_text: result.target_text.clone(),
+                source_lang: String::new(),
+                target_lang: target_lang.to_string(),
+                source_type: result.source_type.clone(),
+                mod_id: Some(result.mod_id.clone()),
+                translation_key: Some(result.key.clone()),
+                context: None,
+                confidence: 1.0,
+                created_at: None,
+                updated_at: None,
+            });
+        }
+
+        Ok((id, is_new))
+    }
+
+    /// Batch-save LLM/reviewed results to both memory and SQLite.
+    /// Uses a single SQLite transaction for performance.
+    pub fn save_llm_results(
+        &mut self,
+        conn: &Connection,
+        results: &[crate::core::jobs::TranslationResult],
+        target_lang: &str,
+    ) -> SqlResult<(usize, usize)> {
+        let mut inserted = 0usize;
+        let mut updated = 0usize;
+
+        // Use an explicit transaction for batch upsert
+        conn.execute_batch("BEGIN IMMEDIATE")?;
+        for r in results {
+            if r.source_type != "llm" && r.source_type != "reviewed" { continue; }
+            if r.target_text.trim().is_empty() { continue; }
+            let (_, is_new) = self.upsert_result(conn, r, target_lang)?;
+            if is_new { inserted += 1; } else { updated += 1; }
+        }
+        conn.execute_batch("COMMIT")?;
+
+        tracing::info!(inserted, updated, "MemoryDictionary batch save");
+        Ok((inserted, updated))
+    }
+}
+
+/// Tokenize text into lowercase keywords (split on space, underscore, slash).
+fn tokenize(text: &str) -> Vec<String> {
+    text.to_lowercase()
+        .split(|c: char| c == ' ' || c == '_' || c == '/' || c == '-' || c == '.')
+        .filter(|w| w.len() > 1)
+        .map(String::from)
+        .collect()
 }
 
 #[cfg(test)]

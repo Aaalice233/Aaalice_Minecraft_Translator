@@ -245,6 +245,21 @@ export interface TranslationResult {
   sourceType: string;
 }
 
+/** Unified entry type for the translation edit panel (shared by ValidatePage and DictionaryPage) */
+export interface EditPanelEntry {
+  /** Unique navigation key: constructed as `${modId}::${key}` for cross-mod uniqueness */
+  navKey: string;
+  key: string;
+  sourceText: string;
+  targetText: string;
+  modId: string;
+  /** Optional: DictionaryPage may not have modName */
+  modName?: string;
+  sourceType: string;
+  id?: number;
+  translationKey?: string;
+}
+
 export interface TranslationJobState {
   jobId: string;
   scanJobId: string;

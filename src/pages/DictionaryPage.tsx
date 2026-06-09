@@ -1,18 +1,22 @@
 import { BookOpen, Download, Search, Upload } from "lucide-react";
 import { TableVirtuoso } from "react-virtuoso";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { SortableTableHeader, type ColumnConfig } from "../components/SortableTableHeader";
+import { TranslationEditPanel, type EditPanelEntry } from "../components/TranslationEditPanel";
 import {
   deleteDictionaryEntry,
   getDictionaryStats,
   importTranslationResultsToDictionary,
   searchDictionary,
+  translateSingleEntry,
   updateDictionaryEntry,
 } from "../api/tauri";
 import { t } from "../i18n/translations";
-import type { AppLanguage, DictionaryEntry, DictionaryStats } from "../types";
+import { getSettings } from "../api/tauri";
+import type { AppLanguage, DictionaryEntry, DictionaryStats, Settings } from "../types";
 
 interface Props {
   language: AppLanguage;
@@ -28,64 +32,28 @@ function typeLabel(st: string, lang: AppLanguage): string {
 
 const DictionaryRow = React.memo(function DictionaryRow({
   entry,
-  isEditing,
-  editText,
-  onEdit,
-  onEditChange,
-  onSave,
-  onCancel,
+  onOpenPanel,
+  highlighted,
   onDelete,
   language,
 }: {
   entry: DictionaryEntry;
-  isEditing: boolean;
-  editText: string;
-  onEdit: (entry: DictionaryEntry) => void;
-  onEditChange: (text: string) => void;
-  onSave: () => void;
-  onCancel: () => void;
+  onOpenPanel?: () => void;
+  highlighted?: boolean;
   onDelete: (id: number) => void;
   language: AppLanguage;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [isEditing]);
-
   return (
     <>
       <td title={entry.sourceText}>{entry.sourceText}</td>
-      <td>
-        {isEditing ? (
-          <div className="inline-edit">
-            <input
-              ref={inputRef}
-              value={editText}
-              onChange={(e) => onEditChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onSave();
-                if (e.key === "Escape") onCancel();
-              }}
-            />
-            <button className="text-button" onClick={onSave} type="button">
-              {t(language, "common.save")}
-            </button>
-            <button className="text-button" onClick={onCancel} type="button">
-              {t(language, "common.cancel")}
-            </button>
-          </div>
-        ) : (
-          <span
-            className="editable-text"
-            onClick={() => onEdit(entry)}
-            title={t(language, "dictionary.clickToEdit")}
-          >
-            {entry.targetText}
-          </span>
-        )}
+      <td
+        style={{ cursor: entry.id != null ? "pointer" : "default" }}
+        onDoubleClick={entry.id != null ? onOpenPanel : undefined}
+        title={entry.id != null ? "双击打开编辑面板" : "只读"}
+      >
+        <span style={{ color: highlighted ? "var(--accent)" : undefined }}>
+          {entry.targetText}
+        </span>
       </td>
       <td>{entry.modId ?? "-"}</td>
       <td className="mono">{entry.translationKey ?? "-"}</td>
@@ -120,14 +88,9 @@ export function DictionaryPage({ language }: Props) {
   const [globalSearch, setGlobalSearch] = useState("");
   const debouncedSearch = useDebouncedValue(globalSearch, 300);
 
-  // Editing state (page-level for TableVirtuoso row recycling)
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editText, setEditText] = useState("");
-  // Stable refs so handleSaveEdit doesn't depend on editText/editingId (defeats React.memo)
-  const editTextRef = useRef(editText);
-  const editingIdRef = useRef(editingId);
-  editTextRef.current = editText;
-  editingIdRef.current = editingId;
+  // Edit panel state
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelKey, setPanelKey] = useState<string | null>(null);
 
   const sf = useSortFilter();
 
@@ -183,29 +146,32 @@ export function DictionaryPage({ language }: Props) {
 
   // ── Edit handlers ──
 
-  const handleEdit = useCallback((entry: DictionaryEntry) => {
-    setEditingId(entry.id ?? null);
-    setEditText(entry.targetText);
-  }, []);
-
-  const handleSaveEdit = useCallback(async () => {
-    const id = editingIdRef.current;
-    if (id === null) return;
+  const handleSave = useCallback(async (entry: EditPanelEntry, newText: string) => {
+    if (entry.id == null) return;
     setError("");
     setMessage("");
     try {
-      await updateDictionaryEntry(id, editTextRef.current);
+      await updateDictionaryEntry(entry.id, newText);
       setMessage(t(language, "dictionary.saved"));
-      setEditingId(null);
       fetchEntries();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      throw err;
     }
   }, [language, fetchEntries]);
 
-  const handleCancelEdit = useCallback(() => {
-    setEditingId(null);
-    setEditText("");
+  const handleLlmTranslate = useCallback(async (entry: EditPanelEntry) => {
+    const settings: Settings = await getSettings();
+    const result = await translateSingleEntry(
+      null, // no jobId for dictionary
+      entry.key,
+      entry.sourceText,
+      entry.modName ?? "",
+      entry.modId,
+      settings.sourceLanguage,
+      settings.targetLanguage,
+    );
+    return result;
   }, []);
 
   const handleDelete = useCallback(
@@ -421,16 +387,18 @@ export function DictionaryPage({ language }: Props) {
               )}
               itemContent={(index) => {
                 const entry = filteredEntries[index];
+                const isHighlighted = panelOpen && panelKey === `dict::${entry.id}`;
                 return (
                   <DictionaryRow
                     key={entry.id ?? index}
                     entry={entry}
-                    isEditing={editingId === entry.id}
-                    editText={editText}
-                    onEdit={handleEdit}
-                    onEditChange={setEditText}
-                    onSave={handleSaveEdit}
-                    onCancel={handleCancelEdit}
+                    onOpenPanel={() => {
+                      if (entry.id != null) {
+                        setPanelKey(`dict::${entry.id}`);
+                        setPanelOpen(true);
+                      }
+                    }}
+                    highlighted={isHighlighted}
                     onDelete={handleDelete}
                     language={language}
                   />
@@ -440,6 +408,39 @@ export function DictionaryPage({ language }: Props) {
           </div>
         </div>
       )}
+
+      {/* ── Edit Panel (via createPortal) ── */}
+      {panelOpen && panelKey && (() => {
+        const entry = entries.find((e) => `dict::${e.id}` === panelKey);
+        if (!entry || entry.id == null) return null;
+        return createPortal(
+          <TranslationEditPanel
+            entries={filteredEntries
+              .filter((e) => e.id != null)
+              .map((e) => ({
+                navKey: `dict::${e.id}`,
+                key: e.translationKey ?? `${e.sourceText}`,
+                sourceText: e.sourceText,
+                targetText: e.targetText,
+                modId: e.modId ?? "",
+                modName: e.modId ?? undefined,
+                sourceType: e.sourceType,
+                id: e.id,
+                translationKey: e.translationKey,
+              }))}
+            initialKey={panelKey}
+            onSave={handleSave}
+            onClose={() => {
+              setPanelOpen(false);
+              fetchEntries();
+            }}
+            onLlmTranslate={handleLlmTranslate}
+            pageType="dictionary"
+            language={language}
+          />,
+          document.body,
+        );
+      })()}
     </section>
   );
 }

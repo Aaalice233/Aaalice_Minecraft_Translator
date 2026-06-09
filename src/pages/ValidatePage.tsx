@@ -3,14 +3,16 @@ import {
   CheckCircle,
   Loader2,
   PackageCheck,
-  Save,
   Search,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { loadLatestTranslationJobMeta, loadTranslationResults, markJobReviewed, saveTranslationEntry } from "../api/tauri";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import { loadLatestTranslationJobMeta, loadTranslationResults, markJobReviewed, saveTranslationEntry, translateSingleEntry } from "../api/tauri";
 import { t } from "../i18n/translations";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { SortableTableHeader } from "../components/SortableTableHeader";
+import { TranslationEditPanel } from "../components/TranslationEditPanel";
+import type { EditPanelEntry } from "../components/TranslationEditPanel";
 import { useAppStore } from "../stores/appStore";
 import type { AppLanguage, TranslationJobListItem, TranslationResult } from "../types";
 
@@ -31,12 +33,13 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
   const [allEntries, setAllEntries] = useState<TranslationResult[]>([]);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  // Track per-row saving state: "modId\x00key\x00modName" -> saving
-  const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
-  const [saveMsg, setSaveMsg] = useState<string>("");
 
   const [filterTerm, setFilterTerm] = useState("");
   const sf = useSortFilter<Record<string, string>>();
+
+  // ── Edit panel state ──
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelKey, setPanelKey] = useState<string | null>(null);
 
   // ── Load job meta + all results reactively ──
   useEffect(() => {
@@ -72,14 +75,12 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
     return () => { cancelled = true; };
   }, [translationJobId, translationStatus]);
 
-  // ── Save a single entry edit back to JSONL ──
+  // ── Auto-save when user leaves an edited textarea ──
   const handleSave = useCallback(async (entry: TranslationResult, newText: string) => {
-    const rk = rowKey(entry);
-    setSavingRows((prev) => new Set(prev).add(rk));
-    setSaveMsg("");
+    if (!job) throw new Error("未找到翻译任务");
+    if (newText === entry.targetText) return;
     try {
-      await saveTranslationEntry(job!.jobId, entry.key, entry.modName, entry.modId, newText);
-      // Update local state
+      await saveTranslationEntry(job.jobId, entry.key, entry.modName, entry.modId, newText);
       setAllEntries((prev) => {
         const idx = prev.findIndex(
           (e) => e.key === entry.key && e.modName === entry.modName && e.modId === entry.modId,
@@ -89,17 +90,25 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
         copy[idx] = { ...prev[idx], targetText: newText };
         return copy;
       });
-      setSaveMsg("已保存");
     } catch (err) {
-      setSaveMsg(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSavingRows((prev) => {
-        const next = new Set(prev);
-        next.delete(rk);
-        return next;
-      });
+      console.warn("auto-save failed:", err);
+      throw err; // re-throw so TranslationEditPanel can show saveError
     }
-  }, [job?.jobId]);
+  }, [job]);
+
+  // ── LLM translate handler for the edit panel ──
+  const handleLlmTranslate = useCallback(async (entry: EditPanelEntry) => {
+    const result = await translateSingleEntry(
+      job?.jobId ?? null,
+      entry.key,
+      entry.sourceText,
+      entry.modName ?? "",
+      entry.modId,
+      job?.sourceLanguage ?? "en_us",
+      job?.targetLanguage ?? "zh_cn",
+    );
+    return result;
+  }, [job?.jobId, job?.sourceLanguage, job?.targetLanguage]);
 
   // ── Filter & sort entries ──
   const filteredEntries = useMemo(() => {
@@ -172,10 +181,6 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
     return result;
   }, [allEntries, filterTerm, sf.filters, sf.sortConfig]);
 
-  // ── Helpers ──
-  function rowKey(entry: TranslationResult) {
-    return `${entry.modId}\x00${entry.key}\x00${entry.modName}`;
-  }
 
   const hasData = job && job.status === "completed" && filteredEntries.length > 0;
 
@@ -298,15 +303,6 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
             {error}
           </div>
         )}
-        {saveMsg && (
-          <div
-            className={`alert ${saveMsg === "已保存" ? "success" : "error"}`}
-            style={{ marginBottom: 12 }}
-          >
-            {saveMsg}
-          </div>
-        )}
-
         {allEntries.length === 0 && (
           <div className="empty-state" style={{ padding: 32 }}>
             <Search size={28} />
@@ -343,12 +339,11 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
                     Table: ({ children, ...rest }) => (
                       <table {...rest}>
                         <colgroup>
-                          <col style={{ width: "14%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "28%" }} />
-                          <col style={{ width: "33%" }} />
-                          <col style={{ width: "8%" }} />
-                          <col style={{ width: "5%" }} />
+                          <col style={{ width: "17%" }} />
+                          <col style={{ width: "15%" }} />
+                          <col style={{ width: "27%" }} />
+                          <col style={{ width: "31%" }} />
+                          <col style={{ width: "10%" }} />
                         </colgroup>
                         {children}
                       </table>
@@ -361,7 +356,6 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
                       { key: "sourceText", label: "原文", filterType: "text", thStyle: sortThStyle },
                       { key: "targetText", label: "译文", filterType: "text", thStyle: sortThStyle },
                       { key: "sourceType", label: "来源", filterType: "text", thStyle: sortThStyle },
-                      { key: "actions", label: "操作", sortable: false, filterType: "none", thStyle: { textAlign: "center", ...sortThStyle } as React.CSSProperties },
                     ];
                     return (
                       <SortableTableHeader
@@ -379,13 +373,15 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
                   }}
                   itemContent={(index) => {
                     const entry = filteredEntries[index];
-                    const rk = rowKey(entry);
-                    const isSaving = savingRows.has(rk);
+                    const isHighlighted = panelOpen && panelKey === `${entry.modId}::${entry.key}`;
                     return (
                       <ValidateRow
                         entry={entry}
-                        isSaving={isSaving}
-                        onSave={handleSave}
+                        onOpenPanel={() => {
+                          setPanelKey(`${entry.modId}::${entry.key}`);
+                          setPanelOpen(true);
+                        }}
+                        highlighted={isHighlighted}
                       />
                     );
                   }}
@@ -393,6 +389,34 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
               )}
             </div>
           </div>
+        )}
+
+        {/* ── Edit Panel (via createPortal) ── */}
+        {panelOpen && panelKey && createPortal(
+          <TranslationEditPanel
+            entries={filteredEntries.map((e) => ({
+              navKey: `${e.modId}::${e.key}`,
+              key: e.key,
+              sourceText: e.sourceText,
+              targetText: e.targetText,
+              modId: e.modId,
+              modName: e.modName,
+              sourceType: e.sourceType,
+            }))}
+            initialKey={panelKey}
+            onSave={async (panelEntry, newText) => {
+              const orig = filteredEntries.find(
+                (e) => e.key === panelEntry.key && e.modName === panelEntry.modName && e.modId === panelEntry.modId,
+              );
+              if (!orig) throw new Error("条目已不在当前列表，无法保存");
+              await handleSave(orig, newText);
+            }}
+            onClose={() => setPanelOpen(false)}
+            onLlmTranslate={handleLlmTranslate}
+            pageType="validate"
+            language={language}
+          />,
+          document.body,
         )}
       </>
     );
@@ -427,35 +451,23 @@ const tdStyle: React.CSSProperties = {
   lineHeight: 1.5,
 };
 
+const highlightedTdStyle: React.CSSProperties = {
+  ...tdStyle,
+  background: "var(--accent-bg)",
+  boxShadow: "inset 3px 0 0 var(--accent)",
+};
+
 // ── Row component ──
 
 const ValidateRow = React.memo(function ValidateRow({
   entry,
-  isSaving,
-  onSave,
+  onOpenPanel,
+  highlighted,
 }: {
   entry: TranslationResult;
-  isSaving: boolean;
-  onSave: (entry: TranslationResult, newText: string) => void;
+  onOpenPanel?: () => void;
+  highlighted?: boolean;
 }) {
-  const [editText, setEditText] = useState(entry.targetText);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const isDirty = editText !== entry.targetText;
-
-  // Reset local state when entry changes
-  useEffect(() => {
-    setEditText(entry.targetText);
-  }, [entry.key, entry.modName, entry.modId, entry.targetText]);
-
-  // Auto-resize textarea
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (ta) {
-      ta.style.height = "auto";
-      ta.style.height = `${Math.max(ta.scrollHeight, 28)}px`;
-    }
-  }, [editText]);
-
   let sourceTypeLabel = entry.sourceType;
   if (sourceTypeLabel === "llm") sourceTypeLabel = "LLM";
   else if (sourceTypeLabel === "dictionary") sourceTypeLabel = "词典";
@@ -464,15 +476,17 @@ const ValidateRow = React.memo(function ValidateRow({
   else if (sourceTypeLabel === "failed") sourceTypeLabel = "失败";
   else if (sourceTypeLabel === "reviewed") sourceTypeLabel = "已审";
 
+  const hStyle = highlighted ? highlightedTdStyle : tdStyle;
+
   return (
     <>
-      <td style={{ ...tdStyle, fontWeight: 500 }} title={entry.modName}>
+      <td style={{ ...hStyle, fontWeight: 500 }} title={entry.modName}>
         {entry.modName}
       </td>
-      <td style={{ ...tdStyle, fontFamily: '"JetBrains Mono", monospace', fontSize: 11 }} title={entry.modId}>
+      <td style={{ ...hStyle, fontFamily: '"JetBrains Mono", monospace', fontSize: 11 }} title={entry.modId}>
         {entry.modId}
       </td>
-      <td style={{ ...tdStyle }} title={entry.sourceText}>
+      <td style={{ ...hStyle }} title={entry.sourceText}>
         <span style={{
           display: "-webkit-box",
           WebkitLineClamp: 3,
@@ -483,57 +497,23 @@ const ValidateRow = React.memo(function ValidateRow({
           {entry.sourceText}
         </span>
       </td>
-      <td style={{ ...tdStyle, padding: "4px 10px" }}>
-        <textarea
-          ref={textareaRef}
-          value={editText}
-          onChange={(e) => setEditText(e.target.value)}
-          style={{
-            width: "100%",
-            minHeight: 40,
-            resize: "vertical",
-            fontFamily: "inherit",
-            fontSize: 12,
-            lineHeight: 1.5,
-            padding: "6px 8px",
-            border: `1px solid ${isDirty ? "var(--accent)" : "var(--border-input)"}`,
-            borderRadius: 4,
-            background: "var(--bg-surface)",
-            color: "var(--text-primary)",
-            outline: "none",
-            boxSizing: "border-box",
-          }}
-          onFocus={(e) => {
-            e.target.style.borderColor = "var(--accent)";
-            e.target.style.boxShadow = "0 0 0 2px var(--accent-bg)";
-          }}
-          onBlur={(e) => {
-            if (!isDirty) {
-              e.target.style.borderColor = "var(--border-input)";
-              e.target.style.boxShadow = "none";
-            }
-          }}
-          rows={2}
-        />
+      <td
+        style={{ ...hStyle, cursor: "pointer" }}
+        onDoubleClick={onOpenPanel}
+        title="双击打开编辑面板"
+      >
+        <span style={{
+          display: "-webkit-box",
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          lineHeight: 1.5,
+        }}>
+          {entry.targetText}
+        </span>
       </td>
-      <td style={{ ...tdStyle, textAlign: "center" }}>
+      <td style={{ ...hStyle, textAlign: "center" }}>
         <span className="badge" style={{ fontSize: 10 }}>{sourceTypeLabel}</span>
-      </td>
-      <td style={{ ...tdStyle, textAlign: "center" }}>
-        <button
-          className="ghost-button"
-          onClick={() => onSave(entry, editText)}
-          disabled={!isDirty || isSaving}
-          type="button"
-          style={{ padding: "4px 8px", fontSize: 12, minWidth: 0 }}
-          data-tooltip="保存修改"
-        >
-          {isSaving ? (
-            <Loader2 size={14} className="spin" />
-          ) : (
-            <Save size={14} />
-          )}
-        </button>
       </td>
     </>
   );

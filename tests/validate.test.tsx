@@ -40,7 +40,7 @@ describe("ValidatePage", () => {
     useAppStore.getState().setTranslationJobId("test-job-001");
     render(<AppProvider><ValidatePage language="zh_cn" onReviewComplete={() => {}} /></AppProvider>);
     expect(await screen.findByText(/5 条已翻译/)).toBeTruthy();
-    expect(await screen.findByText(/test-job-001/)).toBeTruthy();
+    expect(await screen.findByText(/3 个条目/)).toBeTruthy();
   });
 
   it("renders entry data by checking source text in the table", async () => {

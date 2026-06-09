@@ -54,6 +54,7 @@ pub fn run() {
             commands::load_latest_translation_job_meta,
             commands::validate_translation,
             commands::retry_failed_entries,
+            commands::translate_single_entry,
             commands::load_translation_results,
             commands::load_translation_mod_summaries,
             commands::save_translation_entry,

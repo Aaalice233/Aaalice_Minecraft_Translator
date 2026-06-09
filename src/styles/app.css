@@ -2767,6 +2767,236 @@ button.essb-legend-item:hover {
   background: var(--bg-app);
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ── Translation Edit Panel ────────────────────────────────
+   ═══════════════════════════════════════════════════════════ */
+
+.edit-panel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.edit-panel-modal {
+  display: flex;
+  flex-direction: column;
+  width: 80vw;
+  height: 80vh;
+  max-width: 1200px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-input);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
+}
+
+/* ── Header ── */
+
+.edit-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-input);
+  background: var(--bg-muted);
+  flex-shrink: 0;
+}
+
+.edit-panel-header-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.edit-panel-modname {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.edit-panel-modid {
+  color: var(--text-muted);
+}
+
+.edit-panel-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.edit-panel-progress {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+}
+
+.edit-panel-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.edit-panel-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Body ── */
+
+.edit-panel-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.edit-panel-source,
+.edit-panel-target {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  overflow-y: auto;
+}
+
+.edit-panel-source {
+  border-right: 1px solid var(--border-input);
+}
+
+.edit-panel-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.edit-panel-text-content {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.edit-panel-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  border: 1px solid var(--border-input);
+  border-radius: 4px;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.edit-panel-textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.edit-panel-textarea.dirty {
+  border-color: var(--accent);
+}
+
+/* ── Suggestion Bar ── */
+
+.suggestion-bar {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  flex-shrink: 0;
+}
+
+.suggestion-bar.loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.suggestion-bar.error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+[data-theme="dark"] .suggestion-bar.error {
+  background: #3b1010;
+  color: #fca5a5;
+}
+
+.suggestion-bar:not(.loading):not(.error) {
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+}
+
+.suggestion-text {
+  margin-bottom: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.suggestion-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── Bottom Toolbar ── */
+
+.edit-panel-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-input);
+  background: var(--bg-muted);
+  flex-shrink: 0;
+}
+
+.edit-panel-toolbar-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-input);
+  margin: 0 4px;
+}
+
+.edit-panel-toolbar .primary-button.flash-saved {
+  background: var(--accent);
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+
 .splash-overlay.visible {
   opacity: 1;
 }

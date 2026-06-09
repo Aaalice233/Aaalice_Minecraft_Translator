@@ -304,3 +304,64 @@ pub async fn retry_failed_entries(
 
     Ok(retried_success)
 }
+
+#[tauri::command]
+pub async fn translate_single_entry(
+    _app: tauri::AppHandle,
+    job_id: Option<String>,
+    key: String,
+    source_text: String,
+    mod_name: String,
+    mod_id: String,
+    source_language: String,
+    target_language: String,
+) -> Result<String, String> {
+    let root = paths::runtime_root().map_err(|err| err.to_string())?;
+    let log_key = key.clone();
+
+    logging::append_main(format!("单条目翻译开始: key={log_key}, mod={mod_name}"))
+        .map_err(|err| err.to_string())?;
+
+    let settings = settings::load_settings(&root)
+        .map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
+
+    let llm = LlmConfig {
+        base_url: settings.base_url,
+        api_key: settings.api_key,
+        model: settings.model,
+        temperature: settings.temperature,
+        max_tokens: settings.max_tokens,
+        concurrency: settings.concurrency as usize,
+        batch_size: settings.batch_size as usize,
+        timeout_secs: settings.timeout_secs as u64,
+        retry_count: settings.retry_count as u32,
+        rate_limit_rpm: settings.rate_limit_rpm,
+        prefer_user_dict: settings.prefer_user_dictionary,
+        system_prompt: if settings.system_prompt.is_empty() {
+            crate::core::models::DEFAULT_SYSTEM_PROMPT.to_string()
+        } else {
+            settings.system_prompt
+        },
+    };
+
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        pipeline::translate_single_entry(
+            &root,
+            job_id.as_deref(),
+            &key,
+            &source_text,
+            &mod_name,
+            &mod_id,
+            &source_language,
+            &target_language,
+            &llm,
+            Some(&*pipeline::GLOBAL_CANCEL),
+        )
+    })
+    .await
+    .map_err(|err| format!("翻译线程崩溃: {err}"))??;
+
+    logging::append_main(format!("单条目翻译完成: key={log_key}, 长度={}", result.len())).ok();
+
+    Ok(result)
+}
