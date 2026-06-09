@@ -263,23 +263,6 @@ impl JobManager {
         read_latest_job_file::<TranslationJobListItem>(self.list_job_files()?, "元数据")
     }
 
-    /// List all translation jobs on disk, sorted by mtime descending (newest first).
-    /// Returns lightweight `TranslationJobListItem` (no `entries` list).
-    pub fn list_all(&self) -> Result<Vec<TranslationJobListItem>, String> {
-        let entries = self.list_job_files()?;
-        let mut jobs = Vec::with_capacity(entries.len());
-
-        for entry in entries {
-            let content = std::fs::read_to_string(entry.path())
-                .map_err(|e| format!("读取 job 文件失败: {e}"))?;
-            if let Ok(job) = serde_json::from_str::<TranslationJobListItem>(&content) {
-                jobs.push(job);
-            }
-        }
-
-        Ok(jobs)
-    }
-
     /// Internal: list translation job files sorted by mtime descending.
     fn list_job_files(&self) -> Result<Vec<std::fs::DirEntry>, String> {
         let jobs_dir = paths::jobs_dir(&self.root);

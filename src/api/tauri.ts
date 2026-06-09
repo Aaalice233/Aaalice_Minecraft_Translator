@@ -75,31 +75,7 @@ export async function scanInstance(
   return tauriInvoke<ScanSummary>("scan_instance", { path, sourceLanguage, targetLanguage });
 }
 
-/** Clear all cached scan and translation job files, forcing a fresh scan next time. */
-export async function clearJobsCache(): Promise<void> {
-  if (!isTauriRuntime()) return;
-  return tauriInvoke<void>("clear_jobs_cache");
-}
 
-export interface CleanupJobsResult {
-  deletedStateFiles: number;
-  deletedResultsFiles: number;
-  deletedDoublePrefixFiles: number;
-  keptJobs: string[];
-  freedBytes: number;
-}
-
-/**
- * Clean up old job files, keeping the N most recent complete jobs.
- * Deletes double-prefix legacy files, orphan results, and old state files.
- * @param keepCount Number of most recent complete jobs to retain (default 5).
- */
-export async function cleanupOldJobs(keepCount?: number): Promise<CleanupJobsResult> {
-  if (!isTauriRuntime()) {
-    return { deletedStateFiles: 0, deletedResultsFiles: 0, deletedDoublePrefixFiles: 0, keptJobs: [], freedBytes: 0 };
-  }
-  return tauriInvoke<CleanupJobsResult>("cleanup_old_jobs", { keepCount });
-}
 
 export async function cancelScan(): Promise<void> {
   if (!isTauriRuntime()) return;
@@ -264,12 +240,7 @@ export async function saveTranslationEntry(
   return tauriInvoke<void>("save_translation_entry", { jobId, key, modName, modId, targetText });
 }
 
-export async function listTranslationJobs(): Promise<TranslationJobListItem[]> {
-  if (!isTauriRuntime()) {
-    return [];
-  }
-  return tauriInvoke<TranslationJobListItem[]>("list_translation_jobs");
-}
+
 
 export async function validateTranslation(jobId: string): Promise<ValidationReport> {
   if (!isTauriRuntime()) {

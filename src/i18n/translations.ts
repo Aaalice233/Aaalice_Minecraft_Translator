@@ -277,9 +277,7 @@ export type TranslationKey =
   | "validate.description"
   | "validate.restoreView"
   | "validate.dismissedMessage"
-  | "validate.selectHistoryHint"
   | "validate.close"
-  | "validate.selectJobPlaceholder"
   | "validate.entries";
 
 type TranslationMap = Record<TranslationKey, string>;
@@ -592,9 +590,7 @@ const zhCn: TranslationMap = {
   "validate.description": "逐条审核 LLM 翻译结果，确认后可进入打包阶段",
   "validate.restoreView": "恢复任务视图",
   "validate.dismissedMessage": "已关闭当前任务视图。启动新的翻译后视图将自动恢复，或点击「恢复任务视图」按钮。",
-  "validate.selectHistoryHint": "或在下方选择一个历史任务：",
   "validate.close": "✕ 关闭",
-  "validate.selectJobPlaceholder": "选择历史任务...",
   "validate.entries": "{count} 条",
 };
 
@@ -811,9 +807,7 @@ const enUs: TranslationMap = {
   "validate.description": "Review LLM translation results entry by entry, then proceed to packaging",
   "validate.restoreView": "Restore View",
   "validate.dismissedMessage": "View dismissed. Starting a new translation will restore this view, or click the 'Restore View' button.",
-  "validate.selectHistoryHint": "Or select a historical task below:",
   "validate.close": "✕ Close",
-  "validate.selectJobPlaceholder": "Select historical task...",
   "validate.entries": "{count} entries",
 };
 
