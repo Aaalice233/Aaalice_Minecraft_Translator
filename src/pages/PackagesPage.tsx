@@ -18,7 +18,6 @@ import {
   copyFile,
   copyPackToInstance,
   generatePackFromJob,
-  generateTranslationPack,
   loadLatestTranslationJobMeta,
 } from "../api/tauri";
 import { AnimatedCount } from "../components/AnimatedCount";
@@ -72,46 +71,6 @@ export const PackagesPage = React.memo(function PackagesPage({
   // Handlers (useCallback — must be BEFORE effects that use them)
   // ═══════════════════════════════════════════════════════════
 
-  const generateFromScan = useCallback(
-    async (dryRun: boolean) => {
-      if (!scanSummary) return;
-      setLoading(true);
-      setError("");
-      setCopyResult(null);
-      setPackResult(null);
-      try {
-        const entries = scanSummary.mods.flatMap((mod) => {
-          const targetMap = new Map(
-            mod.entries
-              .filter((e) => e.language === scanSummary.targetLanguage)
-              .map((e) => [e.key, e.text]),
-          );
-          const srcLang = mod.resolvedSourceLanguage || scanSummary.sourceLanguage;
-          return mod.entries
-            .filter((e) => e.language === srcLang)
-            .map((e) => ({
-              modId: e.modId,
-              key: e.key,
-              text: targetMap.get(e.key) || e.text,
-              sourceText: e.text,
-            }));
-        });
-        const result = await generateTranslationPack(
-          entries,
-          scanSummary.targetLanguage,
-          dryRun,
-        );
-        setPackResult(result);
-      } catch (err) {
-        setError(toErrorMessage(err));
-        setPackResult(null);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [scanSummary],
-  );
-
   const generateFromJob = useCallback(
     async (dryRun: boolean) => {
       if (!translationJob) return;
@@ -141,10 +100,8 @@ export const PackagesPage = React.memo(function PackagesPage({
   const handleRegenerate = useCallback(() => {
     if (translationJob && translationJob.completedEntries > 0) {
       generateFromJob(false);
-    } else if (scanSummary && scanSummary.actualPendingEntries > 0) {
-      generateFromScan(false);
     }
-  }, [translationJob, scanSummary, generateFromJob, generateFromScan]);
+  }, [translationJob, generateFromJob]);
 
   const handleCopyToInstance = useCallback(async () => {
     if (!packResult?.zipPath) return;
@@ -231,19 +188,14 @@ export const PackagesPage = React.memo(function PackagesPage({
     return () => { cancelled = true; };
   }, [translationJobId]);
 
-  // 2. Auto-pre-generate when job or scan becomes available
+  // 2. Auto-pre-generate when a completed translation job becomes available
   useEffect(() => {
-    if (didAutoGenerate || loading || packResult) return;
-    if (translationJob && translationJob.completedEntries > 0) {
+    if (didAutoGenerate || loading || packResult || !translationJob) return;
+    if (translationJob.completedEntries > 0) {
       setDidAutoGenerate(true);
       generateFromJob(false);
-    } else if (scanSummary && scanSummary.actualPendingEntries > 0) {
-      setDidAutoGenerate(true);
-      generateFromScan(false);
     }
-    // Intentionally stable deps — runs once per lifecycle after deps resolve
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [translationJob, scanSummary]);
+  }, [translationJob, generateFromJob]);
 
   // 3. Sync busy state to sidebar
   useEffect(() => {
@@ -291,8 +243,7 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const canRegenerate =
     !loading &&
-    ((translationJob?.completedEntries ?? 0) > 0 ||
-      (scanSummary?.actualPendingEntries ?? 0) > 0);
+    (translationJob?.completedEntries ?? 0) > 0;
 
   // ═══════════════════════════════════════════════════════════
   // Render

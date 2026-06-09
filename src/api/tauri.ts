@@ -249,20 +249,6 @@ export async function validateTranslation(jobId: string): Promise<ValidationRepo
   return tauriInvoke<ValidationReport>("validate_translation", { jobId });
 }
 
-export async function generateTranslationPack(
-  entries: PackEntry[],
-  targetLanguage: string,
-  dryRun: boolean,
-  packFormat?: number,
-): Promise<PackResult> {
-  if (!isTauriRuntime()) {
-    return { outputDir: "", zipPath: "", modCount: 0, entryCount: 0, conflicts: [] };
-  }
-  return tauriInvoke<PackResult>("generate_translation_pack", {
-    entries, targetLanguage, dryRun, packFormat: packFormat ?? null,
-  });
-}
-
 export async function copyPackToInstance(
   packZipPath: string,
   instancePath: string,
