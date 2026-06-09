@@ -10,7 +10,7 @@ import type { PageNavStatus, ScanSummary, Settings } from "../types";
 
 export type PageKey =
   | "dashboard" | "jobs" | "validate" | "dictionary"
-  | "packages" | "ftb" | "hardcoded" | "settings" | "logs";
+  | "packages" | "settings" | "logs";
 
 export type TranslationPageStatus = "idle" | "running" | "completed" | "canceled" | "failed";
 

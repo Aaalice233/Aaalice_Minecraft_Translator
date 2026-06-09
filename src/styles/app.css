@@ -214,6 +214,15 @@ select {
   margin: 0;
 }
 
+.sidebar.collapsed .status-dot {
+  font-size: 0;
+  line-height: 0;
+}
+
+.sidebar.collapsed .status-dot::before {
+  margin-right: 0;
+}
+
 .nav-list {
   display: flex;
   flex-direction: column;
@@ -423,10 +432,6 @@ select {
   z-index: 1;
   overflow-y: auto;
   overflow-x: hidden;
-}
-
-.page-layer.exiting {
-  z-index: 2;
 }
 
 .page {

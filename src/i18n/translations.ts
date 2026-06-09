@@ -11,8 +11,6 @@ export type TranslationKey =
   | "nav.jobs"
   | "nav.dictionary"
   | "nav.packages"
-  | "nav.ftb"
-  | "nav.hardcoded"
   | "nav.validate"
   | "nav.settings"
   | "nav.logs"
@@ -241,9 +239,6 @@ export type TranslationKey =
   | "dashboard.cancel"
   | "dashboard.cancelling"
   | "dashboard.cancelledMessage"
-  | "placeholder.disabled"
-  | "placeholder.subtitle"
-  | "placeholder.empty"
   | "tooltip.scan"
   | "tooltip.cancelScan"
   | "tooltip.pickInstance"
@@ -322,8 +317,6 @@ const zhCn: TranslationMap = {
   "nav.jobs": "翻译",
   "nav.validate": "校验",
   "nav.packages": "打包",
-  "nav.ftb": "FTB",
-  "nav.hardcoded": "硬编码",
   "nav.dictionary": "词典",
   "nav.settings": "设置",
   "nav.logs": "调试",
@@ -552,9 +545,6 @@ const zhCn: TranslationMap = {
   "logs.instance": "实例：{path}",
   "logs.warning": "warning：{count}",
   "logs.empty": "尚未执行扫描任务。",
-  "placeholder.disabled": "未启用",
-  "placeholder.subtitle": "第一阶段只保留入口；功能会在后续阶段接入主链路。",
-  "placeholder.empty": "当前阶段不执行此模块的自动处理。",
   "tooltip.scan": "开始扫描模组的语言文件",
   "tooltip.cancelScan": "取消正在进行的扫描",
   "tooltip.pickInstance": "选择 Minecraft 实例目录",
@@ -602,8 +592,6 @@ const enUs: TranslationMap = {
   "nav.jobs": "Translate",
   "nav.validate": "Validate",
   "nav.packages": "Pack",
-  "nav.ftb": "FTB",
-  "nav.hardcoded": "Hardcoded",
   "nav.dictionary": "Dictionary",
   "nav.settings": "Settings",
   "nav.logs": "Debug",
@@ -767,9 +755,6 @@ const enUs: TranslationMap = {
   "jobs.sourceType.llm": "LLM",
   "jobs.sourceType.skipped": "Skipped",
   "jobs.sourceType.failed": "Failed",
-  "placeholder.disabled": "Disabled",
-  "placeholder.subtitle": "Phase 1 keeps this entry visible; the workflow will be connected later.",
-  "placeholder.empty": "This module does not run automatic processing in the current phase.",
   "tooltip.scan": "Start scanning mod language files",
   "tooltip.cancelScan": "Cancel the current scan",
   "tooltip.pickInstance": "Select Minecraft instance directory",
@@ -817,8 +802,6 @@ const jaJp: TranslationMap = {
   "nav.jobs": "翻訳",
   "nav.validate": "検証",
   "nav.packages": "パック",
-  "nav.ftb": "FTB",
-  "nav.hardcoded": "ハードコード",
   "nav.dictionary": "辞書",
   "nav.settings": "設定",
   "nav.logs": "デバッグ",
@@ -939,9 +922,6 @@ const jaJp: TranslationMap = {
   "logs.instance": "インスタンス：{path}",
   "logs.warning": "warning：{count}",
   "logs.empty": "まだスキャンジョブは実行されていません。",
-  "placeholder.disabled": "無効",
-  "placeholder.subtitle": "フェーズ1では入口のみ表示します。機能は後続フェーズで主フローに接続します。",
-  "placeholder.empty": "現在のフェーズではこのモジュールの自動処理は実行しません。",
   "tooltip.scan": "Mod の言語ファイルをスキャンします",
   "tooltip.cancelScan": "進行中のスキャンをキャンセル",
   "tooltip.pickInstance": "Minecraft インスタンスディレクトリを選択",
@@ -989,8 +969,6 @@ const koKr: TranslationMap = {
   "nav.jobs": "번역",
   "nav.validate": "검증",
   "nav.packages": "패킹",
-  "nav.ftb": "FTB",
-  "nav.hardcoded": "하드코딩",
   "nav.dictionary": "사전",
   "nav.settings": "설정",
   "nav.logs": "디버그",
@@ -1111,9 +1089,6 @@ const koKr: TranslationMap = {
   "logs.instance": "인스턴스: {path}",
   "logs.warning": "warning: {count}",
   "logs.empty": "아직 스캔 작업이 실행되지 않았습니다.",
-  "placeholder.disabled": "비활성화",
-  "placeholder.subtitle": "1단계에서는 진입점만 표시하며 기능은 이후 단계에서 주 흐름에 연결됩니다.",
-  "placeholder.empty": "현재 단계에서는 이 모듈의 자동 처리를 실행하지 않습니다.",
   "tooltip.scan": "모드 언어 파일 스캔 시작",
   "tooltip.cancelScan": "진행 중인 스캔 취소",
   "tooltip.pickInstance": "Minecraft 인스턴스 디렉토리 선택",
@@ -1163,8 +1138,6 @@ const ruRu: TranslationMap = {
   "nav.jobs": "Перевод",
   "nav.validate": "Проверка",
   "nav.packages": "Упаковка",
-  "nav.ftb": "FTB",
-  "nav.hardcoded": "Хардкод",
   "nav.dictionary": "Словарь",
   "nav.settings": "Настройки",
   "nav.logs": "Отладка",
@@ -1371,9 +1344,6 @@ const ruRu: TranslationMap = {
   "logs.instance": "Экземпляр: {path}",
   "logs.warning": "warning: {count}",
   "logs.empty": "Сканирование еще не выполнялось.",
-  "placeholder.disabled": "Отключено",
-  "placeholder.subtitle": "Фаза 1 держит модуль видимым; интеграция позже.",
-  "placeholder.empty": "Модуль не запускает автообработку в текущей фазе.",
   "tooltip.scan": "Начать сканирование языковых файлов модов",
   "tooltip.cancelScan": "Отменить текущее сканирование",
   "tooltip.pickInstance": "Выбрать директорию экземпляра Minecraft",

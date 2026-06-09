@@ -5,9 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   FileText,
-  HardHat,
   Home,
-  ListChecks,
   Loader2,
   Moon,
   PackageCheck,
@@ -22,7 +20,6 @@ import { DictionaryPage } from "../pages/DictionaryPage";
 import { JobsPage } from "../pages/JobsPage";
 import { LogsPage } from "../pages/LogsPage";
 import { PackagesPage } from "../pages/PackagesPage";
-import { PlaceholderPage } from "../pages/PlaceholderPage";
 import { SplashScreen } from "../components/SplashScreen";
 import { applyFont, SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
@@ -50,8 +47,6 @@ const navItems: NavItem[] = [
   { key: "jobs", labelKey: "nav.jobs", icon: FileText },
   { key: "validate", labelKey: "nav.validate", icon: PackageCheck },
   { key: "packages", labelKey: "nav.packages", icon: Boxes },
-  { key: "ftb", labelKey: "nav.ftb", icon: ListChecks, disabled: true },
-  { key: "hardcoded", labelKey: "nav.hardcoded", icon: HardHat, disabled: true },
   { key: "dictionary", labelKey: "nav.dictionary", icon: BookOpen },
   { key: "settings", labelKey: "nav.settings", icon: SettingsIcon },
   { key: "logs", labelKey: "nav.logs", icon: Home },
@@ -59,7 +54,7 @@ const navItems: NavItem[] = [
 
 const ALL_PAGE_KEYS: PageKey[] = [
   "dashboard", "settings", "logs", "dictionary",
-  "jobs", "validate", "packages", "ftb", "hardcoded",
+  "jobs", "validate", "packages",
 ];
 
 export function App() {
@@ -72,7 +67,6 @@ export function App() {
 
 function AppShell() {
   const [activePage, setActivePage] = useState<PageKey>("dashboard");
-  const [exitingPage, setExitingPage] = useState<PageKey | null>(null);
   const { state, dispatch } = useAppState();
   const { settings, scanSummary, navStates } = state;
   const language = normalizeAppLanguage(settings?.appLanguage);
@@ -163,32 +157,6 @@ function AppShell() {
     return () => document.removeEventListener("mouseover", handler);
   }, []);
 
-  const [mountedPages, setMountedPages] = useState<Set<PageKey>>(() => new Set(["dashboard"]));
-
-  useEffect(() => {
-    setMountedPages((prev) => {
-      if (prev.has(activePage)) return prev;
-      const next = new Set(prev);
-      next.add(activePage);
-      return next;
-    });
-  }, [activePage]);
-
-  // 退出动画完成后卸载旧页面（释放 DOM 和 React 内存）
-  useEffect(() => {
-    if (!exitingPage) return;
-    const timer = setTimeout(() => {
-      setMountedPages((prev) => {
-        if (!prev.has(exitingPage)) return prev;
-        const next = new Set(prev);
-        next.delete(exitingPage);
-        return next;
-      });
-      setExitingPage(null);
-    }, 150); // 与 CSS transition 持续时间匹配
-    return () => clearTimeout(timer);
-  }, [exitingPage]);
-
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const prevWidthRef = useRef(DEFAULT_SIDEBAR_WIDTH);
@@ -278,8 +246,6 @@ function AppShell() {
   );
 
   function renderPage(page: PageKey) {
-    if (!mountedPages.has(page)) return null;
-
     switch (page) {
       case "dashboard":
         return <DashboardPage settings={settings!} onSettingsChange={handleSettingsChange} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
@@ -296,7 +262,8 @@ function AppShell() {
       case "packages":
         return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
       default:
-        return <PlaceholderPage pageKey={page} language={language} />;
+        const _exhaustive: never = page;
+        return _exhaustive;
     }
   }
 
@@ -373,7 +340,6 @@ function AppShell() {
                 key={item.key}
                 disabled={item.disabled}
                 onClick={() => {
-                  setExitingPage(activePage);
                   setActivePage(item.key);
                 }}
                 type="button"
@@ -405,7 +371,7 @@ function AppShell() {
             </button>
             <span>v0.1.0</span>
           </div>
-          <span className="status-dot">{t(language, "app.ready")}</span>
+          <span className="status-dot" data-tooltip={t(language, "app.ready")} data-tooltip-direction="up">{t(language, "app.ready")}</span>
         </div>
       </aside>
 
@@ -415,7 +381,7 @@ function AppShell() {
           {ALL_PAGE_KEYS.map((page) => (
               <div
                 key={page}
-                className={`page-layer${activePage === page ? " active" : ""}${exitingPage === page ? " exiting" : ""}`}
+                className={`page-layer${activePage === page ? " active" : ""}`}
               >
                 {renderPage(page)}
               </div>
