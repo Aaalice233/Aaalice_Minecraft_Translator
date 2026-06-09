@@ -110,6 +110,13 @@ export interface ScanProgressEvent {
   stageStatus: "running" | "completed" | "failed";
 }
 
+export interface ScanDiffResult {
+  newSummary: ScanSummary;
+  newMods: string[];
+  newModCount: number;
+  oldModCount: number;
+}
+
 export interface ScanSummary {
   jobId: string;
   instancePath: string;
@@ -124,6 +131,8 @@ export interface ScanSummary {
   totalPendingEntries: number;
   resourcePackCoveredEntries: number;
   actualPendingEntries: number;
+  dictionaryCacheHits?: number;
+  dictionaryCacheTotal?: number;
   warnings: ScanWarning[];
   cancelled: boolean;
 }
@@ -216,6 +225,7 @@ export type TranslationStatus =
   | "running"
   | "paused"
   | "completed"
+  | "reviewed"
   | "failed"
   | "cancelled";
 
@@ -247,6 +257,8 @@ export interface TranslationJobState {
   tokenUsage: TokenUsage;
   createdAt: string;
   completedAt?: string;
+  reviewed?: boolean | null;
+  reviewedAt?: string;
 }
 
 /** Per-module translation result summary (entry count only, no full entries). */
@@ -266,6 +278,9 @@ export interface TranslationJobListItem {
   failedEntries: number;
   createdAt: string;
   completedAt?: string;
+  /** null/undefined = 旧版数据（向后兼容），true = 已校对，false = 未校对 */
+  reviewed?: boolean | null;
+  reviewedAt?: string;
 }
 
 // ── SPLASH / Warmup types ─────────────────────────────────────────

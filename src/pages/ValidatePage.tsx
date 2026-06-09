@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { loadLatestTranslationJobMeta, loadTranslationResults, saveTranslationEntry } from "../api/tauri";
+import { loadLatestTranslationJobMeta, loadTranslationResults, markJobReviewed, saveTranslationEntry } from "../api/tauri";
 import { t } from "../i18n/translations";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { useAppStore } from "../stores/appStore";
@@ -18,12 +18,12 @@ import type { AppLanguage, TranslationJobListItem, TranslationResult } from "../
 
 interface Props {
   language: AppLanguage;
-  onConfirm: () => void;
+  onReviewComplete: () => void;
 }
 
 // ── Component ────────────────────────────────────────────────────
 
-export function ValidatePage({ language, onConfirm }: Props) {
+export function ValidatePage({ language, onReviewComplete }: Props) {
   const translationJobId = useAppStore((s) => s.translationJobId);
   const translationStatus = useAppStore((s) => s.translationStatus);
 
@@ -32,22 +32,13 @@ export function ValidatePage({ language, onConfirm }: Props) {
   const [loading, setLoading] = useState(true);
   const [allEntries, setAllEntries] = useState<TranslationResult[]>([]);
   const [error, setError] = useState("");
-  const [dismissed, setDismissed] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   // Track per-row saving state: "modId\x00key\x00modName" -> saving
   const [savingRows, setSavingRows] = useState<Set<string>>(new Set());
   const [saveMsg, setSaveMsg] = useState<string>("");
 
-  const prevTranslationJobId = useRef(translationJobId);
   const [filterTerm, setFilterTerm] = useState("");
   const sf = useSortFilter<Record<string, string>>();
-
-  // ── Auto-recover: 新翻译开始时自动重置 dismissed ──
-  useEffect(() => {
-    if (translationJobId && translationJobId !== prevTranslationJobId.current) {
-      prevTranslationJobId.current = translationJobId;
-      setDismissed(false);
-    }
-  }, [translationJobId]);
 
   // ── Load job meta + all results reactively ──
   useEffect(() => {
@@ -82,15 +73,6 @@ export function ValidatePage({ language, onConfirm }: Props) {
     load();
     return () => { cancelled = true; };
   }, [translationJobId, translationStatus]);
-
-  // ── Dismiss / clear view ──
-  function handleDismiss() {
-    setDismissed(true);
-    setJob(null);
-    setAllEntries([]);
-    setError("");
-    setSaveMsg("");
-  }
 
   // ── Save a single entry edit back to JSONL ──
   const handleSave = useCallback(async (entry: TranslationResult, newText: string) => {
@@ -201,6 +183,24 @@ export function ValidatePage({ language, onConfirm }: Props) {
 
   // ── Render helpers ──
 
+  // ── 校对完成处理 ──
+  async function handleReviewComplete() {
+    if (!job || submitting) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await markJobReviewed(job.jobId);
+      onReviewComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  // reviewed=true → 已校对; reviewed=null/undefined → 旧数据向后兼容视为已校对; reviewed=false → 未校对
+  const isReviewed = job?.reviewed === true || (job?.status === "reviewed") || (job?.reviewed == null && job?.status === "completed");
+
   function renderContent() {
     if (loading) {
       return (
@@ -208,30 +208,6 @@ export function ValidatePage({ language, onConfirm }: Props) {
           <Loader2 size={24} className="spin" />
           <p>加载中...</p>
         </div>
-      );
-    }
-
-    if (dismissed) {
-      return (
-        <>
-          {job && (
-            <div className="page-header">
-              <div>
-                <h1>{t(language, "validate.title")}</h1>
-                <p>{t(language, "validate.description")}</p>
-              </div>
-              <div className="page-header-button">
-                <button className="ghost-button" onClick={() => setDismissed(false)} type="button" style={{ fontSize: 13 }}>
-                  {t(language, "validate.restoreView")}
-                </button>
-              </div>
-            </div>
-          )}
-          <div className="empty-state">
-            <Search size={32} />
-            <p>{t(language, "validate.dismissedMessage")}</p>
-          </div>
-        </>
       );
     }
 
@@ -252,18 +228,14 @@ export function ValidatePage({ language, onConfirm }: Props) {
       );
     }
 
-    if (job.status !== "completed") {
+    const jobIsFinished = job.status === "completed" || job.status === "reviewed" || job.status === "failed";
+    if (!jobIsFinished) {
       return (
         <>
           <div className="page-header">
             <div>
               <h1>{t(language, "validate.title")}</h1>
               <p>{t(language, "validate.description")}</p>
-            </div>
-            <div className="page-header-button">
-              <button className="ghost-button" onClick={handleDismiss} type="button">
-                {t(language, "validate.close")}
-              </button>
             </div>
           </div>
           <div className="empty-state">
@@ -282,13 +254,25 @@ export function ValidatePage({ language, onConfirm }: Props) {
             <p>{t(language, "validate.description")}</p>
           </div>
           <div className="page-header-button">
-            <button className="ghost-button" onClick={handleDismiss} type="button" style={{ fontSize: 13 }}>
-              {t(language, "validate.close")}
-            </button>
-            {allEntries.length > 0 && (
-              <button className="primary-button" onClick={onConfirm} type="button">
-                <PackageCheck size={18} />
-                进入打包
+            {isReviewed && (
+              <span className="badge success" style={{ fontSize: 12, marginRight: 8 }}>
+                <CheckCircle size={14} style={{ marginRight: 4 }} />
+                已校对
+              </span>
+            )}
+            {!isReviewed && allEntries.length > 0 && (
+              <button
+                className="primary-button"
+                onClick={handleReviewComplete}
+                disabled={submitting}
+                type="button"
+              >
+                {submitting ? (
+                  <Loader2 size={18} className="spin" />
+                ) : (
+                  <PackageCheck size={18} />
+                )}
+                校对完成
               </button>
             )}
           </div>
@@ -365,10 +349,10 @@ export function ValidatePage({ language, onConfirm }: Props) {
                     Table: ({ children, ...rest }) => (
                       <table {...rest}>
                         <colgroup>
-                          <col style={{ width: "16%" }} />
-                          <col style={{ width: "16%" }} />
-                          <col style={{ width: "25%" }} />
-                          <col style={{ width: "30%" }} />
+                          <col style={{ width: "14%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "28%" }} />
+                          <col style={{ width: "33%" }} />
                           <col style={{ width: "8%" }} />
                           <col style={{ width: "5%" }} />
                         </colgroup>
@@ -503,13 +487,10 @@ const sortThStyle: React.CSSProperties = {
 };
 
 const tdStyle: React.CSSProperties = {
-  padding: "6px 10px",
-  verticalAlign: "middle",
+  padding: "8px 12px",
+  verticalAlign: "top",
   borderBottom: "1px solid var(--bg-muted)",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  maxWidth: "0",  // Required for text-overflow in flex/grid contexts
+  lineHeight: 1.5,
 };
 
 // ── Row component ──
@@ -558,23 +539,29 @@ const ValidateRow = React.memo(function ValidateRow({
         {entry.modId}
       </td>
       <td style={{ ...tdStyle }} title={entry.sourceText}>
-        <span style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{
+          display: "-webkit-box",
+          WebkitLineClamp: 3,
+          WebkitBoxOrient: "vertical",
+          overflow: "hidden",
+          lineHeight: 1.5,
+        }}>
           {entry.sourceText}
         </span>
       </td>
-      <td style={{ ...tdStyle, padding: "4px 10px", whiteSpace: "normal" }}>
+      <td style={{ ...tdStyle, padding: "4px 10px" }}>
         <textarea
           ref={textareaRef}
           value={editText}
           onChange={(e) => setEditText(e.target.value)}
           style={{
             width: "100%",
-            minHeight: 28,
+            minHeight: 40,
             resize: "vertical",
             fontFamily: "inherit",
             fontSize: 12,
-            lineHeight: 1.4,
-            padding: "4px 6px",
+            lineHeight: 1.5,
+            padding: "6px 8px",
             border: `1px solid ${isDirty ? "var(--accent)" : "var(--border-input)"}`,
             borderRadius: 4,
             background: "var(--bg-surface)",
@@ -592,7 +579,7 @@ const ValidateRow = React.memo(function ValidateRow({
               e.target.style.boxShadow = "none";
             }
           }}
-          rows={1}
+          rows={2}
         />
       </td>
       <td style={{ ...tdStyle, textAlign: "center" }}>

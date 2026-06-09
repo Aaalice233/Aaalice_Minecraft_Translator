@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
@@ -8,7 +9,7 @@ use tauri_plugin_dialog::DialogExt;
 use tracing::info;
 
 use crate::core::{
-    models::{InstanceValidation, ScanProgress, ScanSummary},
+    models::{InstanceValidation, ScanDiffResult, ScanProgress, ScanSummary},
     paths, scanner, settings,
 };
 
@@ -152,4 +153,61 @@ pub fn pick_instance_folder(app: tauri::AppHandle, locale: Option<String>) -> Re
         }
         None => Ok(None),
     }
+}
+
+/// Compare a fresh scan against the previous scan to detect new mods.
+/// Returns diff information so the frontend can prompt the user for incremental translation.
+#[tauri::command]
+pub async fn scan_and_diff(
+    app: tauri::AppHandle,
+    path: String,
+    source_language: String,
+    target_language: String,
+) -> Result<ScanDiffResult, String> {
+    info!("scan_and_diff: path={}, source={}, target={}", path, source_language, target_language);
+
+    // 1. Load the most recent previous scan
+    let root = paths::runtime_root().map_err(|e| e.to_string())?;
+    let old_summary = {
+        let mgr = crate::core::jobs::JobManager::new(root.clone());
+        match mgr.load_latest() {
+            Ok(Some(job)) => {
+                // Load the scan that this job was based on
+                let scan_path = paths::job_state_path(&root, &job.scan_job_id);
+                if scan_path.is_file() {
+                    let content = std::fs::read_to_string(&scan_path)
+                        .map_err(|e| format!("读取旧扫描结果失败: {e}"))?;
+                    serde_json::from_str::<ScanSummary>(&content).ok()
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+
+    // 2. Run a fresh scan
+    let new_summary = scan_instance(app.clone(), path, source_language, target_language).await?;
+
+    // 3. Detect new mods
+    let old_mod_ids: HashSet<&str> = old_summary
+        .as_ref()
+        .map(|s| s.mods.iter().map(|m| m.mod_id.as_str()).collect())
+        .unwrap_or_default();
+    let new_mods: Vec<String> = new_summary
+        .mods
+        .iter()
+        .filter(|m| !old_mod_ids.contains(m.mod_id.as_str()))
+        .map(|m| m.mod_id.clone())
+        .collect();
+
+    let old_mod_count = old_summary.map(|s| s.mods.len()).unwrap_or(0);
+
+    let new_mod_count = new_mods.len();
+    Ok(ScanDiffResult {
+        new_summary,
+        new_mods,
+        new_mod_count,
+        old_mod_count,
+    })
 }

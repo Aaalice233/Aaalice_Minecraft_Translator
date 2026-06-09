@@ -28,6 +28,7 @@ pub fn run() {
             commands::save_settings,
             commands::validate_instance,
             commands::scan_instance,
+            commands::scan_and_diff,
             commands::cancel_scan,
             commands::pick_instance_folder,
             commands::open_path,
@@ -42,6 +43,7 @@ pub fn run() {
             commands::export_dictionary,
             commands::import_dictionary,
             commands::get_dictionary_stats,
+            commands::import_translation_results_to_dictionary,
             // P4: Pack
             commands::copy_pack_to_instance,
             // Translation
@@ -55,6 +57,7 @@ pub fn run() {
             commands::load_translation_results,
             commands::load_translation_mod_summaries,
             commands::save_translation_entry,
+            commands::mark_job_reviewed,
             commands::generate_pack_from_job,
             // Warmup
             commands::run_warmup,

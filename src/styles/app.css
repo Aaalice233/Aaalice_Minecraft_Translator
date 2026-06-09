@@ -2198,11 +2198,16 @@ th.sorted-default .sort-indicator {
 }
 
 .log-panel-body td {
-  padding: 6px 10px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--bg-muted);
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+/* Validate page table: override log-panel-body for editable review rows */
+.validate-page .log-panel-body td {
+  overflow: visible;
+  white-space: normal;
 }
 
 
@@ -2215,7 +2220,7 @@ th.sorted-default .sort-indicator {
 /* Virtual scrolling: browser skips rendering off-screen rows */
 .log-panel-body tbody tr {
   content-visibility: auto;
-  contain-intrinsic-size: 30px;
+  contain-intrinsic-size: 52px;
 }
 
 /* Dashboard mod table: same virtual-scroll optimization */
@@ -2675,11 +2680,13 @@ button.essb-legend-item:hover {
 }
 
 /* ── Job info bar ── */
-.validate-workspace .job-info-bar {
+.validate-workspace .job-info-bar,
+.validate-page .job-info-bar {
   display: flex;
-  gap: 16px;
+  gap: 20px;
   align-items: center;
-  padding: 10px 16px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 6px;

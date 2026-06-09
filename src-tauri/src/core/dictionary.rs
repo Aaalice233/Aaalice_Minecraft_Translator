@@ -314,6 +314,50 @@ pub fn search_by_hash(
     Ok(results)
 }
 
+/// Batch count how many entries have dictionary hits.
+/// Uses batched `IN (...)` queries for performance — groups entries into batches of 100.
+/// Returns (hits, total) when checked against target_lang.
+pub fn count_hits_batch(
+    conn: &Connection,
+    entries: &[String],
+    target_lang: &str,
+) -> SqlResult<(usize, usize)> {
+    let total = entries.len();
+    if total == 0 {
+        return Ok((0, 0));
+    }
+
+    let mut hits = 0usize;
+    let batch_size = 100;
+
+    for chunk in entries.chunks(batch_size) {
+        let hashes: Vec<String> = chunk.iter().map(|s| hash_text(s)).collect();
+        // Build: WHERE target_lang = ?N AND source_hash IN (?1, ?2, ...)
+        let placeholders: Vec<String> = (0..hashes.len())
+            .map(|i| format!("?{}", i + 2)) // ?2 onward for hashes, ?1 for target_lang
+            .collect();
+        // Use COUNT(DISTINCT source_hash) since same hash may be duplicated across entries
+        let sql = format!(
+            "SELECT COUNT(DISTINCT source_hash) FROM dictionary_entries \
+             WHERE target_lang = ?1 AND source_hash IN ({})",
+            placeholders.join(",")
+        );
+
+        let mut stmt = conn.prepare(&sql)?;
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(hashes.len() + 1);
+        param_values.push(Box::new(target_lang.to_string()));
+        for h in &hashes {
+            param_values.push(Box::new(h.clone()));
+        }
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+        let count: i64 = stmt.query_row(param_refs.as_slice(), |row| row.get(0))?;
+        hits += count as usize;
+    }
+
+    tracing::debug!(hits, total, target_lang, "词典批量缓存命中检测");
+    Ok((hits, total))
+}
+
 /// Get a single entry by ID.
 pub fn get_by_id(conn: &Connection, id: i64) -> SqlResult<Option<DictionaryEntry>> {
     tracing::debug!(entry_id = id, "查询词典条目");

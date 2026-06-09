@@ -6,3 +6,19 @@ if (typeof globalThis.ResizeObserver === "undefined") {
     disconnect() {}
   };
 }
+
+// localStorage polyfill for Zustand persist middleware
+if (typeof globalThis.localStorage === "undefined" || !globalThis.localStorage) {
+  const store: Record<string, string> = {};
+  Object.defineProperty(globalThis, "localStorage", {
+    value: {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => { store[key] = value; },
+      removeItem: (key: string) => { delete store[key]; },
+      clear: () => { Object.keys(store).forEach(k => delete store[k]); },
+      length: 0,
+      key: () => null,
+    },
+    configurable: true,
+  });
+}

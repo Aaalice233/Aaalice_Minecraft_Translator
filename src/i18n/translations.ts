@@ -276,9 +276,6 @@ export type TranslationKey =
   | "summary.failed"
   | "validate.title"
   | "validate.description"
-  | "validate.restoreView"
-  | "validate.dismissedMessage"
-  | "validate.close"
   | "validate.entries";
 
 type TranslationMap = Record<TranslationKey, string>;
@@ -589,10 +586,7 @@ const zhCn: TranslationMap = {
   "summary.llm": "LLM {count}",
   "summary.failed": "失败 {count}",
   "validate.title": "校对工作台",
-  "validate.description": "逐条审核 LLM 翻译结果，确认后可进入打包阶段",
-  "validate.restoreView": "恢复任务视图",
-  "validate.dismissedMessage": "已关闭当前任务视图。启动新的翻译后视图将自动恢复，或点击「恢复任务视图」按钮。",
-  "validate.close": "✕ 关闭",
+  "validate.description": "逐条审核 LLM 翻译结果，校对完成后可进入打包阶段",
   "validate.entries": "{count} 条",
 };
 
@@ -807,9 +801,6 @@ const enUs: TranslationMap = {
   "summary.failed": "Failed {count}",
   "validate.title": "Validate Translations",
   "validate.description": "Review LLM translation results entry by entry, then proceed to packaging",
-  "validate.restoreView": "Restore View",
-  "validate.dismissedMessage": "View dismissed. Starting a new translation will restore this view, or click the 'Restore View' button.",
-  "validate.close": "✕ Close",
   "validate.entries": "{count} entries",
 };
 

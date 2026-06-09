@@ -34,6 +34,7 @@ mod types {
         Running,
         Paused,
         Completed,
+        Reviewed,
         Failed,
         Cancelled,
     }
@@ -76,6 +77,10 @@ mod types {
         pub token_usage: TokenUsage,
         pub created_at: String,
         pub completed_at: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub reviewed: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub reviewed_at: Option<String>,
     }
 
     /// Lightweight job summary returned by `list_all()`, excluding the full `entries` list.
@@ -91,6 +96,10 @@ mod types {
         pub failed_entries: usize,
         pub created_at: String,
         pub completed_at: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub reviewed: Option<bool>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub reviewed_at: Option<String>,
     }
 
     /// Per-module translation result summary (entry count only, no full entries).
@@ -160,6 +169,8 @@ impl JobManager {
             token_usage: TokenUsage::default(),
             created_at: now_rfc3339(),
             completed_at: None,
+            reviewed: Some(false),
+            reviewed_at: None,
         };
 
         // Write initial state before returning so the file exists even if
@@ -573,6 +584,8 @@ mod tests {
             total_pending_entries: 2,
             resource_pack_covered_entries: 0,
             actual_pending_entries: 2,
+            dictionary_cache_hits: 0,
+            dictionary_cache_total: 0,
             warnings: vec![],
             cancelled: false,
         };

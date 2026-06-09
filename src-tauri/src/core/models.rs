@@ -263,6 +263,12 @@ pub struct ScanSummary {
     pub resource_pack_covered_entries: usize,
     /// Entries needing actual translation (excludes existing target-language entries).
     pub actual_pending_entries: usize,
+    /// Number of entries found in dictionary cache during scanning.
+    #[serde(default)]
+    pub dictionary_cache_hits: usize,
+    /// Total entries checked against dictionary cache.
+    #[serde(default)]
+    pub dictionary_cache_total: usize,
     pub warnings: Vec<ScanWarning>,
     #[serde(default)]
     pub cancelled: bool,
@@ -492,6 +498,17 @@ pub struct WarmupProgress {
     pub message: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+}
+
+/// Result of comparing a new scan against the previous scan.
+/// Used for incremental re-scan detection.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanDiffResult {
+    pub new_summary: ScanSummary,
+    pub new_mods: Vec<String>,
+    pub new_mod_count: usize,
+    pub old_mod_count: usize,
 }
 
 pub static TOTAL_TOKEN_USAGE_PROMPT: AtomicU64 = AtomicU64::new(0);

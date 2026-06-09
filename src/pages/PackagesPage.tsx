@@ -38,6 +38,7 @@ interface Props {
   scanSummary?: ScanSummary | null;
   settings?: { instancePath: string };
   onBusyChange?: (busy: boolean) => void;
+  onPackComplete?: (done: boolean) => void;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -49,6 +50,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   scanSummary,
   settings: _settings,
   onBusyChange,
+  onPackComplete,
 }: Props) {
   const settings = _settings!;
 
@@ -65,6 +67,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
   const [didAutoGenerate, setDidAutoGenerate] = useState(false);
   const [updateDictionary, setUpdateDictionary] = useState(false);
+  const [reviewRequired, setReviewRequired] = useState(false);
 
   const animFrameRef = useRef<number>(0);
 
@@ -169,35 +172,43 @@ export const PackagesPage = React.memo(function PackagesPage({
   // Effects
   // ═══════════════════════════════════════════════════════════
 
-  // 1. Auto-load latest completed translation job.
+  // 1. Auto-load latest completed/reviewed translation job.
   // 只在当前会话确有翻译任务（translationJobId 被显式设置）时自动加载，
   // 防止旧会话遗留的 translate_*.json 显示为已完成翻译。
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
     if (!translationJobId) {
       setTranslationJob(null);
+      setReviewRequired(false);
       return;
     }
     let cancelled = false;
     loadLatestTranslationJobMeta()
       .then((job) => {
         if (cancelled || !job) return;
-        if (job.status === "completed" && job.completedEntries > 0) {
+        const isFinished = (job.status === "completed" || job.status === "reviewed")
+          && job.completedEntries > 0;
+        if (isFinished) {
           setTranslationJob(job);
+          // reviewed === false → 需要校对（新 job）
+          // reviewed === null/undefined → 旧数据向后兼容视为已校对
+          // reviewed === true → 已校对
+          setReviewRequired(job.reviewed === false);
         }
       })
       .catch((err) => console.warn("加载最新翻译任务失败:", err));
     return () => { cancelled = true; };
   }, [translationJobId]);
 
-  // 2. Auto-pre-generate when a completed translation job becomes available
+  // 2. Auto-pre-generate when a reviewed translation job becomes available
   useEffect(() => {
     if (didAutoGenerate || loading || packResult || !translationJob) return;
+    if (reviewRequired) return;  // 未校对不自动生成
     if (translationJob.completedEntries > 0) {
       setDidAutoGenerate(true);
       generateFromJob(false);
     }
-  }, [translationJob, generateFromJob]);
+  }, [translationJob, reviewRequired, generateFromJob]);
 
   // 3. Sync busy state to sidebar
   useEffect(() => {
@@ -226,13 +237,16 @@ export const PackagesPage = React.memo(function PackagesPage({
   useEffect(() => {
     if (packResult && !loading) {
       setAnimationProgress(100);
-      const timer = setTimeout(() => setPackComplete(true), 1200);
+      const timer = setTimeout(() => {
+        setPackComplete(true);
+        onPackComplete?.(true);
+      }, 1200);
       return () => clearTimeout(timer);
     }
     if (!loading) {
       setPackComplete(false);
     }
-  }, [packResult, loading]);
+  }, [packResult, loading, onPackComplete]);
 
   // ═══════════════════════════════════════════════════════════
   // Derived state
@@ -245,6 +259,7 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const canRegenerate =
     !loading &&
+    !reviewRequired &&
     (translationJob?.completedEntries ?? 0) > 0;
 
   // ═══════════════════════════════════════════════════════════
@@ -322,6 +337,11 @@ export const PackagesPage = React.memo(function PackagesPage({
           </div>
         )}
 
+        {reviewRequired && (
+          <div className="alert warning compact" style={{ marginTop: 10 }}>
+            ⚠️ 当前翻译任务尚未完成校对。请前往「校对」页面完成校对后再打包。
+          </div>
+        )}
         {languageMismatch && (
           <div className="alert warning compact" style={{ marginTop: 10 }}>
             ⚠️ 当前设置的目标语言 ({scanSummary?.targetLanguage})

@@ -2,7 +2,7 @@ import { AlertTriangle, Filter, FolderOpen, Loader2, Package, RefreshCcw, ScanLi
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useSortFilter } from "../hooks/useSortFilter";
-import { cancelScan, saveSettings, scanInstance } from "../api/tauri";
+import { cancelScan, saveSettings, scanAndDiff, scanInstance } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
 import { CompletionSummary } from "../components/CompletionSummary";
@@ -105,6 +105,7 @@ export const DashboardPage = React.memo(function DashboardPage({
   const [scanProgress, setScanProgress] = useState<ScanProgressEvent | null>(null);
   const [error, setError] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [diffResult, setDiffResult] = useState<{ newModCount: number; newMods: string[]; pendingEntries: number } | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const setScanElapsedMs = useAppStore((s) => s.setScanElapsedMs);
   const scanElapsedMs = useAppStore((s) => s.scanElapsedMs);
@@ -311,6 +312,51 @@ export const DashboardPage = React.memo(function DashboardPage({
     }
   }
 
+  /** 重新扫描：检测新模组，弹窗让用户确认补翻 */
+  async function handleRescan() {
+    if (!("__TAURI_INTERNALS__" in window)) {
+      handleScan();
+      return;
+    }
+    startTimeRef.current = performance.now();
+    setScanElapsedMs(null);
+    setIsScanning(true);
+    setError("");
+    setDiffResult(null);
+    try {
+      const nextSettings = { ...settings, instancePath };
+      onSettingsChange?.(nextSettings);
+      await saveSettings(nextSettings);
+      const result = await scanAndDiff(
+        instancePath,
+        nextSettings.sourceLanguage,
+        nextSettings.targetLanguage,
+      );
+      onScanSummaryChange?.(result.newSummary);
+      if (!result.newSummary.cancelled) {
+        const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
+        setScanElapsedMs(elapsed);
+        if (result.newModCount > 0) {
+          // 使用后端计算的 actualPendingEntries 作为待翻译条目数
+          const pendingEntries = result.newSummary.actualPendingEntries;
+          setDiffResult({
+            newModCount: result.newModCount,
+            newMods: result.newMods,
+            pendingEntries,
+          });
+        }
+      } else {
+        setScanElapsedMs(null);
+      }
+    } catch (scanError) {
+      setScanElapsedMs(null);
+      setError(scanError instanceof Error ? scanError.message : String(scanError));
+    } finally {
+      setIsScanning(false);
+      startTimeRef.current = null;
+    }
+  }
+
   // Sync debounced search text into filters (avoids per-keystroke re-render of full table)
   useEffect(() => {
     sf.handleFilterChange("fileName", debouncedSearch);
@@ -450,7 +496,7 @@ export const DashboardPage = React.memo(function DashboardPage({
         <FolderOpen size={17} />
         {t(language, "dashboard.pickInstance")}
         </button>
-        <button className="ghost-button" disabled={isScanning} onClick={handleScan} type="button" data-tooltip={t(language, "tooltip.rescan")}>
+        <button className="ghost-button" disabled={isScanning} onClick={handleRescan} type="button" data-tooltip={t(language, "tooltip.rescan")}>
           <RefreshCcw size={17} />
           {t(language, "dashboard.rescan")}
         </button>
@@ -514,6 +560,37 @@ export const DashboardPage = React.memo(function DashboardPage({
         </div>
       )}
 
+      {/* ── 增量扫描结果弹窗 ── */}
+      {diffResult && diffResult.newModCount > 0 && (
+        <div className="alert info" style={{ marginTop: 12 }}>
+          <Zap size={17} />
+          <div style={{ flex: 1 }}>
+            <strong>发现 {diffResult.newModCount} 个新模组</strong>
+            <p style={{ margin: "4px 0", fontSize: 13, color: "var(--text-muted)" }}>
+              共 {diffResult.pendingEntries} 条待翻译条目：
+            </p>
+            <ul style={{ margin: "4px 0 0 0", paddingLeft: 20, fontSize: 12 }}>
+              {diffResult.newMods.slice(0, 10).map((id) => (
+                <li key={id}>{id}</li>
+              ))}
+              {diffResult.newMods.length > 10 && (
+                <li style={{ color: "var(--text-muted)" }}>...还有 {diffResult.newMods.length - 10} 个</li>
+              )}
+            </ul>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", whiteSpace: "nowrap" }}>
+            <button
+              className="ghost-button"
+              onClick={() => setDiffResult(null)}
+              type="button"
+              style={{ fontSize: 13 }}
+            >
+              知道了
+            </button>
+          </div>
+        </div>
+      )}
+
       {scanSummary && scanSummary.warnings.length > 0 && (
         <CollapsibleWarnings warnings={scanSummary.warnings} language={language} />
       )}
@@ -526,6 +603,15 @@ export const DashboardPage = React.memo(function DashboardPage({
             {stat.hint && <span className="stat-hint">{stat.hint}</span>}
           </article>
         ))}
+        {scanSummary && scanSummary.dictionaryCacheTotal != null && scanSummary.dictionaryCacheTotal > 0 && (
+          <article className="stat-card" key="dict-cache">
+            <span className="stat-label">词典缓存</span>
+            <span className="stat-value">
+              {scanSummary.dictionaryCacheHits}/{scanSummary.dictionaryCacheTotal}
+            </span>
+            <span className="stat-hint">命中/检查</span>
+          </article>
+        )}
       </div>
 
       <div className="resource-section">

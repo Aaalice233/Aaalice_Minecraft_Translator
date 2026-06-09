@@ -2,7 +2,7 @@ import { AlertTriangle, BookOpen, Bot, CheckCircle, FileText, Filter, Play, Refr
 import { TableVirtuoso } from "react-virtuoso";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSortFilter } from "../hooks/useSortFilter";
-import { cancelTranslation, loadLatestTranslationJobMeta, retryFailedEntries, startTranslation } from "../api/tauri";
+import { cancelTranslation, loadLatestTranslationJobMeta, loadTranslationResults, retryFailedEntries, startTranslation } from "../api/tauri";
 import { MOCK_TRANSLATION_ENTRIES } from "../mocks/browser-translation-log";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
@@ -271,6 +271,33 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
   }, []);
 
+  // ── 页面挂载时加载已有翻译结果（页面切换后日志不丢失） ──
+  useEffect(() => {
+    if (!("__TAURI_INTERNALS__" in window)) return;
+    const translationJobId = useAppStore.getState().translationJobId;
+    if (!translationJobId || isRunning) return;
+    let cancelled = false;
+    loadLatestTranslationJobMeta().then((job) => {
+      if (cancelled || !job) return;
+      if (logRef.current.length > 0) return; // 已经有日志（来自事件）
+      loadTranslationResults(job.jobId).then((results) => {
+        if (cancelled) return;
+        const entries: TranslateLogEntry[] = results.map((r) => ({
+          key: r.key,
+          sourceText: r.sourceText,
+          targetText: r.targetText,
+          modName: r.modName,
+          sourceType: r.sourceType,
+        }));
+        if (entries.length > 0) {
+          logRef.current = entries;
+          setLogVersion((v) => v + 1);
+        }
+      });
+    });
+    return () => { cancelled = true; };
+  }, [isRunning]);
+
   useTauriEvent<TranslateProgress>("translate-progress", (progress) => {
     if (cancelledRef.current) return;
     setTranslateProgress(progress);
@@ -368,6 +395,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       await retryFailedEntries(retryJobId, srcLang, tgtLang);
       if (cancelledRef.current) return;
       setStatus("completed");
+      onCompleteChange?.(true);
       const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
       setTranslateElapsedMs(elapsed);
     } catch (err) {

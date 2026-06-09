@@ -197,7 +197,9 @@ function AppShell() {
   const dbCompleted = useCallback((c: boolean) => setNavCompleted("dashboard", c), [setNavCompleted]);
   const jobsBusy = useCallback((b: boolean) => setNavBusy("jobs", b), [setNavBusy]);
   const jobsCompleted = useCallback((c: boolean) => setNavCompleted("jobs", c), [setNavCompleted]);
+  const validateCompleted = useCallback((c: boolean) => setNavCompleted("validate", c), [setNavCompleted]);
   const packsBusy = useCallback((b: boolean) => setNavBusy("packages", b), [setNavBusy]);
+  const packsCompleted = useCallback((c: boolean) => setNavCompleted("packages", c), [setNavCompleted]);
 
   const animatingRef = useRef(false);
   const toggleDarkMode = useCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -258,9 +260,9 @@ function AppShell() {
       case "jobs":
         return <JobsPage isActive={activePage === page} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
       case "validate":
-        return <ValidatePage language={language} onConfirm={() => setActivePage("packages")} />;
+        return <ValidatePage language={language} onReviewComplete={() => { setActivePage("packages"); validateCompleted(true); }} />;
       case "packages":
-        return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} />;
+        return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} onPackComplete={packsCompleted} />;
       default:
         const _exhaustive: never = page;
         return _exhaustive;

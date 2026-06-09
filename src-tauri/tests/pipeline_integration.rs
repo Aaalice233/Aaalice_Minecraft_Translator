@@ -38,6 +38,7 @@ fn create_scan_summary(job_id: &str) -> ScanSummary {
         source_language: "en_us".into(), target_language: "zh_cn".into(),
         total_language_files: 1, total_source_entries: 3, total_target_entries: 0,
         total_pending_entries: 3, resource_pack_covered_entries: 0, actual_pending_entries: 3,
+        dictionary_cache_hits: 0, dictionary_cache_total: 0,
         warnings: vec![], cancelled: false,
     }
 }
@@ -127,6 +128,7 @@ fn job_state_persistence_works() {
         token_usage: TokenUsage::default(),
         created_at: "2026-01-01T00:00:00Z".into(),
         completed_at: Some("2026-01-01T01:00:00Z".into()),
+        reviewed: None, reviewed_at: None,
     };
     let manager = jobs::JobManager::new(root.to_path_buf());
     assert!(manager.save(&job_state).is_ok());

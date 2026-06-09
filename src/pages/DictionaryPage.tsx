@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   deleteDictionaryEntry,
   getDictionaryStats,
+  importTranslationResultsToDictionary,
   searchDictionary,
   updateDictionaryEntry,
 } from "../api/tauri";
@@ -23,6 +24,7 @@ export function DictionaryPage({ language }: Props) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [importing, setImporting] = useState(false);
 
   const fetchEntries = async () => {
     setLoading(true);
@@ -58,6 +60,22 @@ export function DictionaryPage({ language }: Props) {
   useEffect(() => {
     fetchStats();
   }, []);
+
+  const handleImport = async () => {
+    setImporting(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await importTranslationResultsToDictionary();
+      setMessage(`已导入 ${result.imported} 条，跳过 ${result.skipped} 条` + (result.conflicts.length > 0 ? `，${result.conflicts.length} 条冲突` : ""));
+      fetchEntries();
+      fetchStats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleSearch = () => fetchEntries();
 
@@ -109,6 +127,16 @@ export function DictionaryPage({ language }: Props) {
           </p>
         </div>
         <div className="page-header-button">
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={!isTauriRuntime() || importing}
+            onClick={handleImport}
+            data-tooltip="从已有翻译导入词典"
+          >
+            <Download size={17} />
+            {importing ? "导入中..." : "导入已有翻译"}
+          </button>
           <button className="ghost-button" type="button" disabled={!isTauriRuntime()} data-tooltip={t(language, "tooltip.export")}>
             <Download size={17} />
             {t(language, "dictionary.export")}

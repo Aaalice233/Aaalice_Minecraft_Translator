@@ -1,4 +1,4 @@
-import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
+import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanDiffResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
 
@@ -76,6 +76,17 @@ export async function scanInstance(
 }
 
 
+
+export async function scanAndDiff(
+  path: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+): Promise<ScanDiffResult> {
+  if (!isTauriRuntime()) {
+    throw new Error("浏览器预览模式下不可用");
+  }
+  return tauriInvoke<ScanDiffResult>("scan_and_diff", { path, sourceLanguage, targetLanguage });
+}
 
 export async function cancelScan(): Promise<void> {
   if (!isTauriRuntime()) return;
@@ -156,6 +167,14 @@ export async function getDictionaryStats(): Promise<DictionaryStats> {
     return { total: 0, modIds: [] };
   }
   return tauriInvoke<DictionaryStats>("get_dictionary_stats");
+}
+
+/** Import existing translation results into the dictionary (migration). */
+export async function importTranslationResultsToDictionary(): Promise<ImportResult> {
+  if (!isTauriRuntime()) {
+    return { imported: 0, skipped: 0, conflicts: [] };
+  }
+  return tauriInvoke<ImportResult>("import_translation_results_to_dictionary");
 }
 
 // ── P4: Pack API ──────────────────────────────────────────────────
@@ -247,6 +266,12 @@ export async function validateTranslation(jobId: string): Promise<ValidationRepo
     return { totalEntries: 0, passed: 0, failed: 0, missing: 0, placeholderIssues: [], formatIssues: [] };
   }
   return tauriInvoke<ValidationReport>("validate_translation", { jobId });
+}
+
+/** Mark a translation job as reviewed (校对完成). */
+export async function markJobReviewed(jobId: string): Promise<void> {
+  if (!isTauriRuntime()) return;
+  return tauriInvoke<void>("mark_job_reviewed", { jobId });
 }
 
 export async function copyPackToInstance(

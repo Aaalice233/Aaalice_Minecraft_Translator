@@ -896,6 +896,34 @@ impl Phase for FinalizePhase {
             "翻译完成: {total}/{total} 条目 (非 LLM: {non_llm_count}, LLM: {llm_count})"
         ));
 
+        // ── 将当前 job 的 LLM/reviewed 结果写入词典 ──
+        let dict_db_path = paths::dictionary_db_path(&ctx.config.root);
+        match dictionary::open(&dict_db_path) {
+            Ok(dict_conn) => {
+                let job_loader = jobs::JobManager::new(ctx.config.root.clone());
+                if let Ok(all_results) = job_loader.load_results(ctx.job_id) {
+                    match dictionary::save_llm_results_to_dictionary(
+                        &dict_conn, &all_results, &ctx.config.target_language,
+                    ) {
+                        Ok((inserted, updated)) => {
+                            if inserted + updated > 0 {
+                                let _ = logging::append_job(ctx.job_id, format!(
+                                    "词典自动更新: 新增 {inserted}, 更新 {updated}"
+                                ));
+                            }
+                            let _ = logging::append_job(ctx.job_id, "词典写入完成".to_string());
+                        }
+                        Err(e) => {
+                            let _ = logging::append_job(ctx.job_id, format!("词典写入失败 (SQL 错误): {e}"));
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                let _ = logging::append_job(ctx.job_id, format!("词典写入失败 (非致命): {e}"));
+            }
+        }
+
         save_job_progress(&ctx.config.root, ctx.job_id, completed, failed_count, jobs::TranslationStatus::Completed);
         Ok(PhaseOutcome::StopAndReturn(PipelineResult {
             completed, non_llm_count, llm_count,
@@ -1369,6 +1397,8 @@ mod tests {
             total_pending_entries: 0,
             resource_pack_covered_entries: 0,
             actual_pending_entries: 0,
+            dictionary_cache_hits: 0,
+            dictionary_cache_total: 0,
             warnings: vec![],
             cancelled: false,
         };

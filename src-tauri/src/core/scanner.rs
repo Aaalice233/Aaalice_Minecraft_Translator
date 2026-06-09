@@ -278,6 +278,43 @@ pub fn scan_instance(
 
     let cancelled = cancel();
 
+    // ── 词典缓存命中检测 ──
+    // 统计所有待翻译条目在词典中的命中情况，不阻塞扫描流程。
+    // 如果运行时根路径解析失败则静默跳过（仅影响统计展示）。
+    let (dictionary_cache_hits, dictionary_cache_total) = if !cancelled {
+        match crate::core::paths::runtime_root() {
+            Ok(root) => {
+                let dict_db_path = crate::core::paths::dictionary_db_path(&root);
+                match dictionary::open(&dict_db_path) {
+                    Ok(dict_conn) => {
+                        let entries_to_check: Vec<String> = mods.iter()
+                            .filter(|m| !m.has_target_language)
+                            .flat_map(|m| {
+                                let src_lang = &m.resolved_source_language;
+                                m.entries.iter()
+                                    .filter(move |e| e.language == *src_lang)
+                                    .map(|e| e.text.clone())
+                            })
+                            .collect();
+                        // 使用批量查询避免单条目逐一查询的性能开销
+                        dictionary::count_hits_batch(&dict_conn, &entries_to_check, &target_language)
+                            .unwrap_or_else(|e| {
+                                tracing::warn!("词典缓存命中检测失败: {e}");
+                                (0, entries_to_check.len())
+                            })
+                    }
+                    Err(e) => {
+                        tracing::warn!("打开词典失败 (缓存检测跳过): {e}");
+                        (0, 0)
+                    }
+                }
+            }
+            Err(_) => (0, 0),
+        }
+    } else {
+        (0, 0)
+    };
+
     Ok(ScanSummary {
         job_id,
         instance_path: display_path(instance_path),
@@ -292,6 +329,8 @@ pub fn scan_instance(
         total_pending_entries,
         resource_pack_covered_entries,
         actual_pending_entries,
+        dictionary_cache_hits,
+        dictionary_cache_total,
         warnings,
         cancelled,
     })
