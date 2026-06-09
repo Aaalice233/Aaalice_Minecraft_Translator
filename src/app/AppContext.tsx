@@ -9,8 +9,7 @@ type AppAction =
   | { type: "SET_SCAN_SUMMARY"; payload: ScanSummary | null }
   | { type: "SET_NAV_STATE"; payload: { key: PageKey; status: PageNavStatus } }
   | { type: "SET_TRANSLATION_STATUS"; payload: { status: TranslationPageStatus; result?: number | null; error?: string } }
-  | { type: "SET_TRANSLATION_JOB_ID"; payload: string | null }
-  | { type: "SET_PACKAGES_JOB_ID"; payload: string | null };
+  | { type: "SET_TRANSLATION_JOB_ID"; payload: string | null };
 
 interface AppContextState {
   settings: Settings | null;
@@ -20,7 +19,6 @@ interface AppContextState {
   translationStatus: TranslationPageStatus;
   translationResult: number | null;
   translationError: string;
-  packagesJobId: string | null;
 }
 
 function dispatchToStore(action: AppAction) {
@@ -41,9 +39,6 @@ function dispatchToStore(action: AppAction) {
     case "SET_TRANSLATION_JOB_ID":
       s.setTranslationJobId(action.payload);
       break;
-    case "SET_PACKAGES_JOB_ID":
-      s.setPackagesJobId(action.payload);
-      break;
   }
 }
 
@@ -62,7 +57,6 @@ function useStoreSnapshot() {
   const translationStatus = useAppStore((s) => s.translationStatus);
   const translationResult = useAppStore((s) => s.translationResult);
   const translationError = useAppStore((s) => s.translationError);
-  const packagesJobId = useAppStore((s) => s.packagesJobId);
 
   return {
     settings,
@@ -72,7 +66,6 @@ function useStoreSnapshot() {
     translationStatus,
     translationResult,
     translationError,
-    packagesJobId,
   };
 }
 

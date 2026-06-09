@@ -19,12 +19,11 @@ import {
   copyPackToInstance,
   generatePackFromJob,
   generateTranslationPack,
-  listTranslationJobs,
+  loadLatestTranslationJobMeta,
 } from "../api/tauri";
 import { AnimatedCount } from "../components/AnimatedCount";
 import { PackingAnimation } from "../components/PackingAnimation";
 import { toErrorMessage } from "../utils";
-import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
 import type {
   AppLanguage,
@@ -51,7 +50,6 @@ export const PackagesPage = React.memo(function PackagesPage({
   settings: _settings,
   onBusyChange,
 }: Props) {
-  const { state, dispatch } = useAppState();
   const settings = _settings!;
 
   // ── State ──────────────────────────────────────────────────
@@ -63,8 +61,6 @@ export const PackagesPage = React.memo(function PackagesPage({
   const [packComplete, setPackComplete] = useState(false);
 
   const [translationJob, setTranslationJob] = useState<TranslationJobListItem | null>(null);
-  const [loadingJob, setLoadingJob] = useState(true);
-  const [allTranslationJobs, setAllTranslationJobs] = useState<TranslationJobListItem[]>([]);
 
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
   const [didAutoGenerate, setDidAutoGenerate] = useState(false);
@@ -198,22 +194,6 @@ export const PackagesPage = React.memo(function PackagesPage({
     }
   }, [packResult?.zipPath]);
 
-  const handleJobSelect = useCallback(
-    (jobId: string) => {
-      const job = allTranslationJobs.find((j) => j.jobId === jobId);
-      if (job) {
-        setTranslationJob(job);
-        setPackResult(null);
-        setCopyResult(null);
-        setError("");
-        setDidAutoGenerate(false);
-        setExpandedMods(new Set());
-        dispatch({ type: "SET_PACKAGES_JOB_ID", payload: jobId });
-      }
-    },
-    [allTranslationJobs, dispatch],
-  );
-
   const toggleModExpand = useCallback((modId: string) => {
     setExpandedMods((prev) => {
       const next = new Set(prev);
@@ -227,42 +207,24 @@ export const PackagesPage = React.memo(function PackagesPage({
   // Effects
   // ═══════════════════════════════════════════════════════════
 
-  // 1. Load translation jobs on mount
+  // 1. Auto-load latest completed translation job on mount
   useEffect(() => {
-    if (!("__TAURI_INTERNALS__" in window)) {
-      setLoadingJob(false);
-      return;
-    }
+    if (!("__TAURI_INTERNALS__" in window)) return;
     let cancelled = false;
-    setLoadingJob(true);
-    listTranslationJobs()
-      .then((jobs) => {
-        if (cancelled) return;
-        setAllTranslationJobs(jobs);
-        const targetJob = state.packagesJobId
-          ? jobs.find((j) => j.jobId === state.packagesJobId)
-          : undefined;
-        const selected =
-          targetJob ?? jobs.find((j) => j.status === "completed");
-        if (selected) {
-          setTranslationJob(selected);
-          dispatch({ type: "SET_PACKAGES_JOB_ID", payload: selected.jobId });
+    loadLatestTranslationJobMeta()
+      .then((job) => {
+        if (cancelled || !job) return;
+        if (job.status === "completed" && job.completedEntries > 0) {
+          setTranslationJob(job);
         }
-        setLoadingJob(false);
       })
-      .catch((err) => {
-        console.warn("加载翻译任务列表失败:", err);
-        if (!cancelled) setLoadingJob(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .catch((err) => console.warn("加载最新翻译任务失败:", err));
+    return () => { cancelled = true; };
   }, []);
 
   // 2. Auto-pre-generate when job or scan becomes available
   useEffect(() => {
-    if (didAutoGenerate || loading || loadingJob || packResult) return;
+    if (didAutoGenerate || loading || packResult) return;
     if (translationJob && translationJob.completedEntries > 0) {
       setDidAutoGenerate(true);
       generateFromJob(false);
@@ -385,33 +347,6 @@ export const PackagesPage = React.memo(function PackagesPage({
           </div>
         )}
 
-        {/* Job selector */}
-        {allTranslationJobs.length > 0 && (
-          <div className="packages-job-selector">
-            <label htmlFor="job-selector">选择翻译任务:</label>
-            <select
-              id="job-selector"
-              className="job-selector"
-              value={translationJob?.jobId ?? ""}
-              onChange={(e) => handleJobSelect(e.target.value)}
-            >
-              <option value="" disabled>
-                -- 请选择翻译任务 --
-              </option>
-              {allTranslationJobs.map((job) => (
-                <option key={job.jobId} value={job.jobId}>
-                  [{job.status === "completed" ? "完成" : job.status}]
-                  {job.jobId.slice(0, 16)}… — {job.completedEntries} 条
-                  ({job.targetLanguage})
-                  {job.createdAt
-                    ? ` - ${new Date(job.createdAt).toLocaleDateString()}`
-                    : ""}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         {languageMismatch && (
           <div className="alert warning compact" style={{ marginTop: 10 }}>
             ⚠️ 当前设置的目标语言 ({scanSummary?.targetLanguage})
@@ -427,16 +362,8 @@ export const PackagesPage = React.memo(function PackagesPage({
           LAYER 2: 装箱动画 / 模组列表
           ══════════════════════════════════════════════════════ */}
       <div className="packages-layer packages-middle">
-        {/* Loading job */}
-        {loadingJob && (
-          <div className="packages-middle-empty">
-            <Loader2 size={24} className="spin" />
-            <p>检查翻译结果...</p>
-          </div>
-        )}
-
         {/* No scan yet */}
-        {!loadingJob && !scanSummary && (
+        {!scanSummary && (
           <div className="packages-middle-empty">
             <Boxes size={32} />
             <p>{t(language, "packages.noScan")}</p>
@@ -444,10 +371,10 @@ export const PackagesPage = React.memo(function PackagesPage({
         )}
 
         {/* No pack generated yet */}
-        {!loadingJob && scanSummary && !packResult && !loading && (
+        {!translationJob && scanSummary && !packResult && !loading && (
           <div className="packages-middle-empty">
             <FileArchive size={32} />
-            <p>选择翻译任务后自动生成资源包</p>
+            <p>暂无可用的翻译结果，请先完成翻译</p>
           </div>
         )}
 

@@ -26,9 +26,6 @@ interface AppState {
   translationResult: number | null;
   translationError: string;
 
-  // — Packages page selected job (P10) —
-  packagesJobId: string | null;
-
   // — Elapsed time for completion summaries —
   scanElapsedMs: number | null;
   translateElapsedMs: number | null;
@@ -39,7 +36,6 @@ interface AppState {
   setNavState: (key: PageKey, status: PageNavStatus) => void;
   setTranslationStatus: (status: TranslationPageStatus, result?: number | null, error?: string) => void;
   setTranslationJobId: (id: string | null) => void;
-  setPackagesJobId: (id: string | null) => void;
   setScanElapsedMs: (ms: number | null) => void;
   setTranslateElapsedMs: (ms: number | null) => void;
 }
@@ -55,7 +51,6 @@ export const useAppStore = create<AppState>()(
       translationStatus: "idle",
       translationResult: null,
       translationError: "",
-      packagesJobId: null,
       scanElapsedMs: null,
       translateElapsedMs: null,
 
@@ -77,7 +72,6 @@ export const useAppStore = create<AppState>()(
         })),
 
       setTranslationJobId: (id) => set({ translationJobId: id }),
-      setPackagesJobId: (id) => set({ packagesJobId: id }),
       setScanElapsedMs: (ms) => set({ scanElapsedMs: ms }),
       setTranslateElapsedMs: (ms) => set({ translateElapsedMs: ms }),
     }),
