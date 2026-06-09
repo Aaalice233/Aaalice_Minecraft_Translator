@@ -25,6 +25,7 @@ import { AnimatedCount } from "../components/AnimatedCount";
 import { PackingAnimation } from "../components/PackingAnimation";
 import { toErrorMessage } from "../utils";
 import { t } from "../i18n/translations";
+import { useAppStore } from "../stores/appStore";
 import type {
   AppLanguage,
   CopyResult,
@@ -194,6 +195,8 @@ export const PackagesPage = React.memo(function PackagesPage({
     }
   }, [packResult?.zipPath]);
 
+  const translationJobId = useAppStore((s) => s.translationJobId);
+
   const toggleModExpand = useCallback((modId: string) => {
     setExpandedMods((prev) => {
       const next = new Set(prev);
@@ -207,9 +210,15 @@ export const PackagesPage = React.memo(function PackagesPage({
   // Effects
   // ═══════════════════════════════════════════════════════════
 
-  // 1. Auto-load latest completed translation job on mount
+  // 1. Auto-load latest completed translation job.
+  // 只在当前会话确有翻译任务（translationJobId 被显式设置）时自动加载，
+  // 防止旧会话遗留的 translate_*.json 显示为已完成翻译。
   useEffect(() => {
     if (!("__TAURI_INTERNALS__" in window)) return;
+    if (!translationJobId) {
+      setTranslationJob(null);
+      return;
+    }
     let cancelled = false;
     loadLatestTranslationJobMeta()
       .then((job) => {
@@ -220,7 +229,7 @@ export const PackagesPage = React.memo(function PackagesPage({
       })
       .catch((err) => console.warn("加载最新翻译任务失败:", err));
     return () => { cancelled = true; };
-  }, []);
+  }, [translationJobId]);
 
   // 2. Auto-pre-generate when job or scan becomes available
   useEffect(() => {
