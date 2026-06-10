@@ -24,104 +24,34 @@
 
 ```
 Aaalice_Minecraft_Translator/
-├── assets/                   # 应用图标源（app-icon-source.png）
-├── data/                     # 运行期本地数据目录（.gitignore）
-│   ├── settings.json         # 持久化设置（JSON，serde camelCase）
-│   ├── dictionary.sqlite     # 词典数据库（SQLite）
-│   └── jobs/                 # 翻译任务状态和结果
-│       ├── translate_<ts>.json          # Job 轻量状态文件
-│       └── translate_<ts>_results.jsonl # 逐行 JSONL 结果
-├── docs/                     # 规格与设计文档
-│   ├── 00-index.md
-│   ├── 01-product-spec.md
-│   ├── 02-architecture-plan.md
-│   ├── 03-ui-style-guide.md
-│   ├── 04-agent-test-plan.md
-│   ├── 05-pipeline-refactor-prd.md
-│   ├── audit/                # 架构审计记录
-│   ├── superpowers/          # 功能增强设计文档
-│   └── ui-reference/         # UI 参考图（images/ 子目录）
-├── logs/                     # 运行期日志（.gitignore）
-│   ├── main.log              # 主日志 [unix_seconds] LEVEL message
-│   ├── redact.log            # 脱敏摘要日志
-│   ├── errors/               # 预留
-│   └── jobs/                 # 预留
-├── scripts/
-│   ├── package-exe.bat       # 双击一键打包入口
-│   └── package-exe.ps1       # PowerShell 打包脚本
-├── src/                      # React + TypeScript 前端（Vite + HMR）
-│   ├── main.tsx              # 入口：ReactDOM.createRoot
-│   ├── types.ts              # 前端所有类型定义（⚠️ 与 models.rs 同步）
-│   ├── api/
-│   │   └── tauri.ts          # Tauri invoke 懒加载封装 + 浏览器预览 mock
-│   ├── app/
-│   │   ├── App.tsx           # 应用壳：侧边栏导航 + 页面路由
-│   │   └── AppContext.tsx    # useReducer 全局状态（正在被 Zustand 替代）
-│   ├── pages/
-│   │   ├── DashboardPage.tsx # 扫描概览：实例选择、扫描进度、模组列表
-│   │   ├── JobsPage.tsx      # 翻译任务：启动/停止/进度/日志
-│   │   ├── DictionaryPage.tsx# 词典管理：搜索/编辑/导入/导出
-│   │   ├── PackagesPage.tsx  # 资源包生成：预览/打包/部署
-│   │   ├── ValidatePage.tsx  # 校对工作台：逐条审核翻译条目
-│   │   ├── SettingsPage.tsx  # 设置：7 选项卡（语言/API/性能/复用/日志/高级/外观）
-│   │   ├── LogsPage.tsx      # 日志中心
-│   │   └── PlaceholderPage.tsx # FTB / 硬编码占位页
-│   ├── components/
-│   │   ├── SplashScreen.tsx    # 启动屏（品牌动画 + 预热进度）
-│   │   └── CompletionSummary.tsx # 翻译完成摘要
-│   ├── hooks/
-│   │   └── useDebouncedValue.ts # 防抖 hook
-│   ├── stores/
-│   │   └── appStore.ts       # Zustand 全局状态（渐进替代 AppContext）
-│   ├── i18n/
-│   │   └── translations.ts   # 4+1 语言字典（zh_cn/en_us/ja_jp/ko_kr/ru_ru）
-│   └── styles/
-│       └── app.css           # 全局样式：6px 圆角、进度条动画、桌面工具风格
-├── src-tauri/                # Tauri 2 + Rust 后端
-│   ├── Cargo.toml            # 依赖：rayon、reqwest(blocking+json)、rusqlite、zip 等
-│   ├── tauri.conf.json       # Tauri 配置：窗口 1365x768、NSIS 打包
-│   ├── icons/                # 全套应用图标（32x32 ~ 512x512, ico, icns）
+├── assets/                  应用图标源
+├── data/                    运行期本地数据（.gitignore）
+│   ├── settings.json        持久化设置（camelCase）
+│   ├── dictionary.sqlite    词典数据库
+│   └── jobs/                翻译任务状态 + JSONL 结果
+├── docs/                    规格与设计文档（00-index.md 索引全部）
+├── logs/                    运行期日志（.gitignore）
+├── scripts/                 package-exe 打包脚本
+├── src/                     React 前端（Vite + HMR）
+│   ├── main.tsx             入口
+│   ├── types.ts             所有类型定义（⚠️ 与 models.rs 同步）
+│   ├── api/tauri.ts         Tauri invoke 懒加载 + 浏览器 mock
+│   ├── app/                 App 壳 + useReducer 状态（→ Zustand 迁移中）
+│   ├── pages/               8 个功能页面（Dashboard/Jobs/Dict/Packages/Validate/Settings/Logs/FTB）
+│   ├── components/          UI 通用组件（DataTable/SearchInput/SortableTableHeader 等）
+│   ├── hooks/               通用 hook（useSortFilter / useDebouncedValue）
+│   ├── stores/appStore.ts   Zustand 全局状态
+│   ├── i18n/translations.ts 4+1 语言字典
+│   └── styles/app.css       全局样式
+├── src-tauri/               Tauri 2 + Rust 后端
+│   ├── Cargo.toml
+│   ├── tauri.conf.json      窗口 1365x768、NSIS 打包
+│   ├── icons/
 │   └── src/
-│       ├── main.rs           # fn main() → 调用 lib::run()
-│       ├── lib.rs            # Tauri Builder 注册所有 command + 插件
-│       ├── commands/         # Tauri command 暴露层（每个功能一个子模块）
-│       │   ├── settings.rs   # get_settings / save_settings
-│       │   ├── scan.rs       # validate_instance / scan_instance / cancel_scan
-│       │   ├── translate.rs  # start_translation / cancel_translation / retry_failed_entries
-│       │   ├── jobs.rs       # get/load/list translation jobs
-│       │   ├── pack.rs       # generate_translation_pack / generate_pack_from_job / copy_pack_to_instance
-│       │   ├── llm.rs        # fetch_llm_models
-│       │   ├── dictionary.rs # search / update / delete / export / import / stats
-│       │   ├── validate.rs   # validate_translation
-│       │   ├── logs.rs       # read_logs
-│       │   ├── fonts.rs      # list_fonts
-│       │   ├── game.rs       # pick_instance_folder / open_path
-│       │   └── warmup.rs     # run_warmup / cancel_warmup（预热 pipeline）
-│       └── core/             # 后端核心逻辑
-│           ├── models.rs       # 所有数据模型（⚠️ 与 types.ts 同步）
-│           ├── settings.rs     # JSON 持久化 + 校验（temperature/concurrency/batch等范围检查）
-│           ├── scanner.rs      # 并行扫描 jars（rayon, zip, 进度回调）
-│           ├── pipeline.rs     # 翻译流水线编排（Phase trait, 5 阶段：scan→extract→dict→llm→finalize）
-│           ├── llm.rs          # OpenAI-compatible HTTP client（并发批次、429 降级、重试）
-│           ├── shield.rs       # 占位符保护/恢复/验证（%s, §a, {player}, <item:> 等）
-│           ├── dictionary.rs   # SQLite 词典（哈希搜索、CFPA 模糊匹配）
-│           ├── cfpa.rs         # CFPA 词典集成（fuzzy_search）
-│           ├── packer.rs       # 资源包生成（assets/<modid>/lang/<target>.json → zip）
-│           ├── jobs.rs         # Job 状态管理（JSON 状态 + JSONL 结果）
-│           ├── paths.rs        # 运行时根路径解析 + 各数据文件路径
-│           ├── logging.rs      # tracing + tracing-appender 异步文件日志
-│           │   └── redact.rs   # API 密钥脱敏
-│           └── mod.rs          # 模块声明
-├── tests/                   # 前端单元测试（Vitest + jsdom）
-│   ├── app.test.tsx          # App 壳 / Sidebar / SettingsPage 渲染测试
-│   ├── validate.test.tsx     # 校对工作台测试
-│   └── fixtures/             # Minecraft fixture 数据
-├── dev-reload.ps1           # 一键重启热重载脚本
-├── index.html               # HTML 入口（lang=zh-CN）
-├── package.json             # 依赖与脚本
-├── tsconfig.json            # TypeScript 配置（ES2020, strict, react-jsx）
-├── vite.config.ts           # Vite 配置（host 127.0.0.1:1420, strictPort, jsdom test）
-└── AGENTS.md                # 本文件
+│       ├── commands/        9 个 Tauri command 模块
+│       └── core/            核心逻辑（scanner/pipeline/shield/dictionary/cfpa/llm/packer/jobs/paths/logging）
+├── tests/                   前端单元测试（Vitest）
+└── 配置文件（package.json / tsconfig.json / vite.config.ts）
 ```
 
 ---
@@ -153,34 +83,28 @@ Aaalice_Minecraft_Translator/
 
 ### 前端
 
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| React | ^18.3.1 | UI 框架 |
-| TypeScript | ^5.6.3 | 类型安全 |
-| Vite | ^6.0.1 | 构建/开发服务器 |
-| Zustand | ^5.0.14 | 全局状态管理 |
-| lucide-react | ^0.468.0 | 图标库 |
-| react-virtuoso | ^4.18.7 | 虚拟滚动列表 |
-| @tauri-apps/api | ^2.5.0 | Tauri 前端桥接 |
-| @vitejs/plugin-react | ^4.3.4 | Vite React 插件 |
-| Vitest | ^2.1.8 | 测试框架 |
-| @testing-library/react | ^16.1.0 | 组件测试 |
-| jsdom | ^25.0.1 | DOM 环境模拟 |
+| 技术 | 用途 |
+|------|------|
+| React 18 + TypeScript 5 | UI + 类型安全 |
+| Vite 6 | 构建/开发服务器 |
+| Zustand 5 | 全局状态管理 |
+| react-virtuoso | 虚拟滚动表格 |
+| lucide-react | 图标库 |
+| Vitest + @testing-library/react | 单元测试 |
 
 ### 后端
 
 | 技术 | 用途 |
 |------|------|
 | Tauri 2 | 桌面框架 |
-| Rayon 1 | 并行 jar 扫描 |
-| reqwest 0.12 (blocking+json) | LLM API HTTP 客户端 |
-| rusqlite 0.31 (bundled) | SQLite 词典 |
-| serde 1 + serde_json 1 | JSON 序列化（camelCase） |
-| zip 2 | 资源包 zip 生成 |
-| regex 1 | 占位符匹配 |
-| tracing 0.1 + tracing-appender 0.2 | 异步文件日志 |
-| tauri-plugin-dialog 2 | 原生文件夹选择对话框 |
-| font-kit 0.14 | 系统字体枚举 |
+| Rayon | 并行 jar 扫描 |
+| reqwest (blocking+json) | LLM API HTTP 客户端 |
+| rusqlite (bundled) | SQLite 词典 |
+| serde + serde_json | JSON 序列化（camelCase） |
+| zip | 资源包 zip 生成 |
+| regex | 占位符匹配 |
+| tracing + tracing-appender | 异步文件日志 |
+| font-kit | 系统字体枚举 |
 
 ---
 
@@ -276,6 +200,44 @@ ScanExtractPhase → DictionaryPhase → LlmPhase → FinalizePhase
 - 后端：`cargo test`，单元测试内联在 `mod tests` 中
 - 新增测试优先补最小 fixture（放在 `tests/fixtures/`）
 
+### UI 组件复用规范
+
+#### 核心原则：不重复造轮子
+
+**新增任何 UI 元素前，必须检查 `src/components/` 目录下是否有现成的通用组件可用。** 严禁在各页面中手写重复的表格、搜索框、过滤弹窗等模式。
+
+#### 通用组件库结构
+
+```
+src/components/
+├── DataTable.tsx              # ⭐ 通用虚拟滚动表格（封装 TableVirtuoso + SortableTableHeader）
+├── SearchInput.tsx            # ⭐ 统一搜索框（带防抖、清除按钮、Search 图标）
+├── SortableTableHeader.tsx    # ⭐ 可排序/过滤表头（支持 text / select / number-range）
+├── TranslationEditPanel.tsx   # 翻译编辑弹窗
+├── CompletionSummary.tsx      # 扫描/翻译完成摘要卡片
+├── SplashScreen.tsx           # 启动屏
+├── AnimatedCount.tsx          # 数字递增动画
+└── PackingAnimation.tsx       # 打包动画
+```
+
+#### 组件使用规则
+
+| 场景 | 推荐组件 | 禁止做法 |
+|------|---------|---------|
+| 带排序/过滤的数据表格 | `DataTable` + `ColumnConfig` | 手写原生 `<table>` 表头 |
+| 表格每列过滤 | `SortableTableHeader` + `filterType` | 在页面 useMemo 中手写过滤 UI |
+| 全局搜索框 | `SearchInput`（防抖内置） | 手写 input + Search 图标组合 |
+| 数字范围过滤 | `filterType: "number-range"` | 在页面内手写 min/max 输入框 |
+| 排序/过滤状态管理 | `useSortFilter` hook | 在页面内手写 useState + 回调 |
+
+#### 新增通用组件的要求
+
+如需添加新的通用组件，必须：
+1. 放在 `src/components/` 目录
+2. 导出的类型定义放在组件文件头部的 `interface Props`
+3. 使用 JSDoc 说明组件用途
+4. 完成所有页面迁移后，删除页面内的旧实现
+
 ---
 
 ## 关键架构决策
@@ -312,69 +274,24 @@ ScanExtractPhase → DictionaryPhase → LlmPhase → FinalizePhase
 
 ## 项目文档
 
-| 文档 | 路径 | 说明 |
-|------|------|------|
-| 文档索引 | `docs/00-index.md` | 全部文档导航 |
-| 产品规格 | `docs/01-product-spec.md` | 功能需求与范围 |
-| 架构与计划 | `docs/02-architecture-plan.md` | 系统架构与分阶段实施计划 |
-| UI 风格指南 | `docs/03-ui-style-guide.md` | 视觉统一规范 |
-| Agent 测试计划 | `docs/04-agent-test-plan.md` | 自动化测试框架 |
-| UI 参考图 | `docs/ui-reference/README.md` | 参考图说明 |
-| 参考图目录 | `docs/ui-reference/images/` | 09 张参考图（Logo / 仪表盘 / 翻译进度 / 词典 / 设置 / 打包 / 日志 / FTB / 硬编码） |
+`docs/00-index.md` 为全部文档的索引。核心文档：
+`01-product-spec.md` · `02-architecture-plan.md` · `03-ui-style-guide.md` · `04-agent-test-plan.md` · `05-pipeline-refactor-prd.md`
 
 ---
 
 ## 当前约定
 
-- 首期主线：模组语言文件扫描 → 资源包复用 → 词典复用 → LLM 翻译 → 资源包打包 → 日志 → 自动化测试。
-- FTB 任务汉化作为首期可选模块预留。
-- 硬编码汉化只进入二期实验室，不自动应用补丁。
-- **不直接修改原始 mod jar。**
-- **不未经确认替换用户已有资源包。**
-- 应用自身支持 `zh_cn` / `en_us` / `ja_jp` / `ko_kr` / `ru_ru` 五种 UI 语言，默认 `zh_cn`。
-- 新增 UI 文案必须写入 `src/i18n/translations.ts` `TranslationKey` + 各语言字典，不要在组件里硬编码。
-- 翻译语言使用 Minecraft locale code，例如 `en_us` / `zh_cn` / `ja_jp` / `ko_kr`。
-- 来源语言允许 `auto`，目标语言禁止 `auto`；`sourceLanguage=auto` 时优先使用 `en_us`。
-- 生成资源包时语言文件路径：`assets/<modid>/lang/<targetLanguage>.json`。
-- 项目使用 Git；`.gitignore` 忽略：`.pi/`、`dist/`、`build/`、`target/`、`node_modules/`、`logs/`、`data/`、`*.log`、`.env` 等运行时/构建产物。
-
----
-
-## 依赖关系
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Tauri 2 Shell                                              │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  Rust Backend (commands/ + core/)                    │   │
-│  │  ├─ scanner (rayon 并行 jar 扫描)                     │   │
-│  │  ├─ pipeline (Phase trait 编排)                      │   │
-│  │  │  ├─ shield.rs (占位符保护)                         │   │
-│  │  │  ├─ dictionary.rs (SQLite 词典)                    │   │
-│  │  │  ├─ cfpa.rs (CFPA 参考集成)                       │   │
-│  │  │  ├─ llm.rs (并发 HTTP 翻译)                       │   │
-│  │  │  └─ packer.rs (zip 资源包生成)                     │   │
-│  │  ├─ settings.rs (JSON 持久化 + 校验)                   │   │
-│  │  ├─ jobs.rs (任务状态管理)                              │   │
-│  │  ├─ logging.rs (tracing 异步日志)                      │   │
-│  │  └─ paths.rs (运行时路径)                              │   │
-│  └──────────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────────┐   │
-│  │  React Frontend (Vite HMR)                           │   │
-│  │  ├─ App.tsx → 侧边栏 + 页面路由                       │   │
-│  │  ├─ pages/ → 8 个功能页面                              │   │
-│  │  ├─ api/tauri.ts → Tauri invoke 封装                 │   │
-│  │  ├─ stores/appStore.ts → Zustand 全局状态            │   │
-│  │  ├─ i18n/translations.ts → 多语言字典                │   │
-│  │  └─ types.ts → 前端类型定义                           │   │
-│  └──────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────┘
-```
+- 首期主线：模组扫描 → 资源包复用 → 词典复用 → LLM 翻译 → 资源包打包 → 日志 → 自动化测试。
+- FTB 任务汉化 / 硬编码汉化作为二期预留。
+- **不直接修改原始 mod jar。** **不未经确认替换用户已有资源包。**
+- 应用 UI 支持 `zh_cn` / `en_us` / `ja_jp` / `ko_kr` / `ru_ru`，默认 `zh_cn`。
+- 新增 UI 文案必须写入 `i18n/translations.ts`，不要在组件里硬编码。
+- 翻译语言使用 Minecraft locale code（`en_us` / `zh_cn` 等）。来源语言允许 `auto`，目标语言禁止 `auto`。
+- 资源包路径：`assets/<modid>/lang/<targetLanguage>.json`。
 
 ---
 
 ## 参考项目
 
-- MineAI-Modpack-Translator：`https://github.com/Thedrezik/MineAI-Modpack-Translator`
-- mc-autotranslator：`https://gitee.com/li27744/mc-autotranslator`
-- 参考项目只用于对照扫描、翻译、资源包生成和异常兼容思路；具体实现仍以本项目规格、当前代码和用户最新要求为准。
+- [MineAI-Modpack-Translator](https://github.com/Thedrezik/MineAI-Modpack-Translator) · [mc-autotranslator](https://gitee.com/li27744/mc-autotranslator)
+- 仅对照扫描/翻译/打包思路；具体以本项目规格和当前代码为准。

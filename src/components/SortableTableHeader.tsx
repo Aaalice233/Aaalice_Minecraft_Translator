@@ -1,8 +1,11 @@
 import { Filter } from "lucide-react";
 import type { ReactNode } from "react";
 import { normalizeAppLanguage, t } from "../i18n/translations";
+import { NumberRangeFilter } from "./NumberRangeFilter";
 
 // ── Column config ──
+
+export type NumberRange = { min?: number; max?: number };
 
 export interface ColumnConfig {
   key: string;
@@ -10,7 +13,7 @@ export interface ColumnConfig {
   sortable?: boolean;
   /** Default sort direction when clicked first time (default "asc"). */
   defaultSort?: "asc" | "desc";
-  filterType?: "text" | "select" | "none";
+  filterType?: "text" | "select" | "number-range" | "none";
   filterOptions?: { value: string; label: string }[];
   /** Override the entire filter popover content. When set, filterType is ignored. */
   renderFilterContent?: (props: FilterContentProps) => ReactNode;
@@ -20,8 +23,8 @@ export interface ColumnConfig {
 
 export interface FilterContentProps {
   column: string;
-  value: string | undefined;
-  onChange: (value: string | null) => void;
+  value: string | NumberRange | undefined;
+  onChange: (value: string | NumberRange | null) => void;
 }
 
 // ── Sort/filter state shape ──
@@ -36,12 +39,12 @@ export interface SortConfig {
 interface Props {
   columns: ColumnConfig[];
   sortConfig: SortConfig | null;
-  filters: Record<string, string>;
+  filters: Record<string, string | NumberRange | undefined>;
   openFilter: string | null;
   filterRef: React.RefObject<HTMLDivElement | null>;
   onSort: (key: string) => void;
   onToggleFilter: (key: string) => void;
-  onFilterChange: (key: string, value: string | null) => void;
+  onFilterChange: (key: string, value: string | NumberRange | null) => void;
   /** Default column for initial sort indicator */
   defaultSortKey?: string;
   /** App language for i18n filter labels. */
@@ -149,7 +152,7 @@ export function SortableTableHeader({
                     })
                   ) : col.filterType === "select" && col.filterOptions ? (
                     <select
-                      value={filters[col.key] || ""}
+                      value={String(filters[col.key] ?? "")}
                       onChange={(e) => onFilterChange(col.key, e.target.value || null)}
                       autoFocus
                     >
@@ -160,10 +163,17 @@ export function SortableTableHeader({
                         </option>
                       ))}
                     </select>
+                  ) : col.filterType === "number-range" ? (
+                    <NumberRangeFilter
+                      value={typeof filters[col.key] === "object" ? filters[col.key] as NumberRange : undefined}
+                      onChange={(v) => onFilterChange(col.key, v)}
+                      minLabel={t(lang, "common.filterMin")}
+                      maxLabel={t(lang, "common.filterMax")}
+                    />
                   ) : (
                     <input
                       type="text"
-                      value={filters[col.key] || ""}
+                      value={String(filters[col.key] ?? "")}
                       onChange={(e) => onFilterChange(col.key, e.target.value)}
                       placeholder={t(lang, "common.filterPlaceholder")}
                       autoFocus

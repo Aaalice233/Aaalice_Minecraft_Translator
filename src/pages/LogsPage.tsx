@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Pause, Play, Trash2 } from "lucide-react";
+import { PageHeader } from "../components/PageHeader";
 import { readLogs } from "../api/tauri";
 import { t } from "../i18n/translations";
 import type { AppLanguage, LogEntry } from "../types";
@@ -123,28 +124,28 @@ export function LogsPage({ language }: Props) {
 
   return (
     <section className="page">
-      <div className="page-header">
-        <div>
-          <h1>{t(language, "logs.title")}</h1>
-          <p>{t(language, "logs.subtitle")}</p>
-        </div>
-        <div className="page-header-button">
-          <button
-            className={`icon-button ${paused ? '' : 'active'}`}
-            onClick={() => setPaused((p) => !p)}
-            type="button"
-            data-tooltip={t(language, paused ? "logs.resume" : "logs.pause")}
-          >
-            {paused ? <Play size={16} /> : <Pause size={16} />}
-          </button>
-          <button className="icon-button" onClick={copyAll} type="button" data-tooltip={t(language, "logs.copyAll")}>
-            <Copy size={16} />
-          </button>
-          <button className="icon-button danger" onClick={clearLog} type="button" data-tooltip={t(language, "logs.clear")}>
-            <Trash2 size={16} />
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={t(language, "logs.title")}
+        subtitle={t(language, "logs.subtitle")}
+        actions={
+          <>
+            <button
+              className={`icon-button ${paused ? '' : 'active'}`}
+              onClick={() => setPaused((p) => !p)}
+              type="button"
+              data-tooltip={t(language, paused ? "logs.resume" : "logs.pause")}
+            >
+              {paused ? <Play size={16} /> : <Pause size={16} />}
+            </button>
+            <button className="icon-button" onClick={copyAll} type="button" data-tooltip={t(language, "logs.copyAll")}>
+              <Copy size={16} />
+            </button>
+            <button className="icon-button danger" onClick={clearLog} type="button" data-tooltip={t(language, "logs.clear")}>
+              <Trash2 size={16} />
+            </button>
+          </>
+        }
+      />
 
       <div className="log-filter-bar">
         {LEVELS.map((lvl) => {

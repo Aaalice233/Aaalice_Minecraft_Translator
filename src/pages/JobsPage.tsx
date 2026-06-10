@@ -1,5 +1,6 @@
 import { AlertTriangle, BookOpen, Bot, CheckCircle, FileText, Play, RefreshCw, Square, XCircle, Zap } from "lucide-react";
-import { TableVirtuoso } from "react-virtuoso";
+import { SearchInput } from "../components/SearchInput";
+import { DataTable } from "../components/DataTable";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { cancelTranslation, loadLatestTranslationJobMeta, loadTranslationResults, retryFailedEntries, startTranslation } from "../api/tauri";
@@ -9,7 +10,8 @@ import { t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
 import { toErrorMessage } from "../utils";
 import { CompletionSummary } from "../components/CompletionSummary";
-import { SortableTableHeader } from "../components/SortableTableHeader";
+import { PageHeader } from "../components/PageHeader";
+import type { ColumnConfig } from "../components/SortableTableHeader";
 import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
 
 function csvQuote(val: string): string {
@@ -536,6 +538,31 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     return result;
   }, [logVersion, filterTerm, sf.filters, sf.sortConfig, entryProgressVersion]);
 
+  const jobColumnsMemo: ColumnConfig[] = useMemo(() => [
+    { key: "key", label: t(language, "jobs.logPanel.colKey"), filterType: "text" },
+    { key: "sourceText", label: t(language, "jobs.logPanel.colSource"), filterType: "text" },
+    { key: "targetText", label: t(language, "jobs.logPanel.colTarget"), filterType: "text" },
+    { key: "modName", label: t(language, "jobs.logPanel.colMod"), filterType: "text" },
+    {
+      key: "sourceType",
+      label: t(language, "jobs.logPanel.colType"),
+      filterType: "select",
+      filterOptions: KNOWN_SOURCE_TYPES.map((st) => ({
+        value: st,
+        label: sourceTypeLabel(st, language),
+      })),
+    },
+    {
+      key: "status",
+      label: t(language, "jobs.logPanel.colStatus"),
+      filterType: "select",
+      filterOptions: KNOWN_STATUSES.map((st) => ({
+        value: st,
+        label: statusLabel(st, language),
+      })),
+    },
+  ], [language]);
+
   const copyEntry = useCallback(async (entry: TranslateLogEntry) => {
     try {
       const tgt = entry.targetText || entryProgressMapRef.current.get(entryProgKey(entry.modName, entry.key))?.targetText || "";
@@ -553,13 +580,11 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
 
   return (
     <section className="page page-jobs">
-      <div className="page-header">
-        <div>
-          <h1>{t(language, "jobs.title")}</h1>
-          <p>{t(language, "jobs.subtitle")}</p>
-        </div>
-        <div className="page-header-button">
-          {isRunning ? (
+      <PageHeader
+        title={t(language, "jobs.title")}
+        subtitle={t(language, "jobs.subtitle")}
+        actions={
+          isRunning ? (
             <button className="primary-button danger" onClick={handleCancel} type="button" data-tooltip={t(language, "tooltip.stopTranslation")}>
               <Square size={17} />
               {t(language, "jobs.stop")}
@@ -575,9 +600,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               <Play size={18} />
               {status === "completed" ? t(language, "jobs.restart") : t(language, "jobs.start")}
             </button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       {scanSummary && scanSummary.actualPendingEntries === 0 && status === "idle" && (
         <div className="empty-state">
@@ -785,105 +810,51 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               {t(language, "jobs.logPanel.entriesCount", { count: filteredEntries.length })}
             </span>
           )}
-          <input
-            className="log-panel-filter"
-            placeholder={t(language, "jobs.logPanel.filterPlaceholder")}
+          <SearchInput
             value={filterTerm}
-            onChange={(e) => setFilterTerm(e.target.value)}
+            onChange={setFilterTerm}
+            placeholder={t(language, "jobs.logPanel.filterPlaceholder")}
           />
         </div>
         <div className="log-panel-body">
           {filteredEntries.length === 0 || !isActive ? (
             <div className="log-panel-empty">{t(language, "jobs.logPanel.noEntries")}</div>
           ) : (
-            <TableVirtuoso
-              ref={virtuosoRef}
+            <DataTable
+              data={filteredEntries}
+              columns={jobColumnsMemo}
+              sortConfig={sf.sortConfig}
+              filters={sf.filters}
+              openFilter={sf.openFilter}
+              filterRef={sf.filterRef as React.RefObject<HTMLDivElement | null>}
+              onSort={sf.handleSort}
+              onToggleFilter={sf.toggleFilter}
+              onFilterChange={sf.handleFilterChange}
+              defaultSortKey="key"
+              language={language}
+              renderRow={(entry, index) => (
+                <LogRow
+                  entry={entry}
+                  language={language}
+                  copyEntry={copyEntry}
+                  entryProgressRef={entryProgressMapRef}
+                  version={entryProgressVersion}
+                />
+              )}
+              colWidths={["16%", "22%", "22%", "18%", "11%", "11%"]}
+              RowWrapper={({ item: entry, children, ...rest }) => (
+                <tr
+                  className="copy-log-row"
+                  onClick={() => copyEntry(entry)}
+                  title={t(language, "jobs.logPanel.copyEntry")}
+                  {...rest}
+                >
+                  {children}
+                </tr>
+              )}
+              emptyMessage={t(language, "jobs.logPanel.noEntries")}
               followOutput
-              style={{ height: "100%" }}
-              totalCount={filteredEntries.length}
-              components={{
-                Scroller: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, ...props }, ref) => (
-                  <div ref={ref} style={{ ...style, overflowX: "hidden" }} {...props} />
-                )),
-                Table: ({ children, ...rest }) => (
-                  <table {...rest}>
-                    <colgroup>
-                      <col style={{ width: "16%" }} />
-                      <col style={{ width: "22%" }} />
-                      <col style={{ width: "22%" }} />
-                      <col style={{ width: "18%" }} />
-                      <col style={{ width: "11%" }} />
-                      <col style={{ width: "11%" }} />
-                    </colgroup>
-                    {children}
-                  </table>
-                ),
-                TableRow: ({ children, ...rest }) => {
-                  const index = (rest as any)["data-index"];
-                  const entry = index !== undefined ? filteredEntries[index] : null;
-                  return (
-                    <tr
-                      className="copy-log-row"
-                      onClick={() => entry && copyEntry(entry)}
-                      title={t(language, "jobs.logPanel.copyEntry")}
-                      {...rest}
-                    >
-                      {children}
-                    </tr>
-                  );
-                },
-              }}
-              fixedHeaderContent={() => {
-                const jobColumns: import("../components/SortableTableHeader").ColumnConfig[] = [
-                  { key: "key", label: t(language, "jobs.logPanel.colKey"), filterType: "text" },
-                  { key: "sourceText", label: t(language, "jobs.logPanel.colSource"), filterType: "text" },
-                  { key: "targetText", label: t(language, "jobs.logPanel.colTarget"), filterType: "text" },
-                  { key: "modName", label: t(language, "jobs.logPanel.colMod"), filterType: "text" },
-                  {
-                    key: "sourceType",
-                    label: t(language, "jobs.logPanel.colType"),
-                    filterType: "select",
-                    filterOptions: KNOWN_SOURCE_TYPES.map((st) => ({
-                      value: st,
-                      label: sourceTypeLabel(st, language),
-                    })),
-                  },
-                  {
-                    key: "status",
-                    label: t(language, "jobs.logPanel.colStatus"),
-                    filterType: "select",
-                    filterOptions: KNOWN_STATUSES.map((st) => ({
-                      value: st,
-                      label: statusLabel(st, language),
-                    })),
-                  },
-                ];
-                return (
-                  <SortableTableHeader
-                    columns={jobColumns}
-                    sortConfig={sf.sortConfig}
-                    filters={sf.filters}
-                    openFilter={sf.openFilter}
-                    filterRef={sf.filterRef}
-                    onSort={sf.handleSort}
-                    onToggleFilter={sf.toggleFilter}
-                    onFilterChange={sf.handleFilterChange}
-                    defaultSortKey="key"
-                  />
-                );
-              }}
-              itemContent={(index) => {
-                const entry = filteredEntries[index];
-                return (
-                  <LogRow
-                    entry={entry}
-                    language={language}
-                    copyEntry={copyEntry}
-                    entryProgressRef={entryProgressMapRef}
-                    version={entryProgressVersion}
-                  />
-                );
-              }}
+              virtuosoRef={virtuosoRef}
             />
           )}
         </div>

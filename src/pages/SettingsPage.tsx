@@ -16,6 +16,9 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchLlmModels, getSystemFonts, saveSettings } from "../api/tauri";
+import { Toggle } from "../components/Toggle";
+import { Field } from "../components/Field";
+import { PageHeader } from "../components/PageHeader";
 import {
   appLanguages,
   minecraftLanguageOptions,
@@ -202,12 +205,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
 
   return (
     <section className="page">
-      <div className="page-header">
-        <div>
-          <h1>{t(language, "settings.title")}</h1>
-          <p>{t(language, "settings.subtitle")}</p>
-        </div>
-      </div>
+      <PageHeader title={t(language, "settings.title")} subtitle={t(language, "settings.subtitle")} />
 
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert error">{error}</div>}
@@ -301,20 +299,15 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                       ))}
                     </select>
                   </label>
-                  <label className="toggle-row">
-                    <span>{t(language, "settings.uiDarkMode")}</span>
-                    <div
-                      className={`toggle-track${draft.uiDarkMode ? " active" : ""}`}
-                      onClick={() => {
-                        const next = !draft.uiDarkMode;
-                        setDraft(prev => ({ ...prev, uiDarkMode: next }));
-                        applyTheme(draft.uiTheme, next);
-                        scheduleSave();
-                      }}
-                    >
-                      <div className="toggle-thumb" />
-                    </div>
-                  </label>
+                  <Toggle
+                    label={t(language, "settings.uiDarkMode")}
+                    checked={draft.uiDarkMode}
+                    onChange={(checked) => {
+                      setDraft(prev => ({ ...prev, uiDarkMode: checked }));
+                      applyTheme(draft.uiTheme, checked);
+                      scheduleSave();
+                    }}
+                  />
                   <label className="field">
                     {t(language, "settings.uiFont")}
                     {isLoadingFonts && <small className="field-hint">{t(language, "settings.loadingFonts")}</small>}
@@ -515,55 +508,6 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
         </section>
       </div>
     </section>
-  );
-}
-
-// ── Field ─────────────────────────────────────
-
-interface FieldProps {
-  label: string;
-  value: string | number;
-  type?: string;
-  onChange: (value: string) => void;
-}
-
-function Field({ label, value, type = "text", onChange }: FieldProps) {
-  return (
-    <label className="field">
-      {label}
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
-    </label>
-  );
-}
-
-// ── Toggle (CSS sliding switch) ───────────────
-
-interface ToggleProps {
-  label: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}
-
-function Toggle({ label, checked, onChange }: ToggleProps) {
-  return (
-    <label className="toggle-row">
-      <span>{label}</span>
-      <span
-        className={`toggle-track${checked ? " active" : ""}`}
-        onClick={() => onChange(!checked)}
-        role="switch"
-        aria-checked={checked}
-        tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onChange(!checked);
-          }
-        }}
-      >
-        <span className="toggle-thumb" />
-      </span>
-    </label>
   );
 }
 

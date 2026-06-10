@@ -21,6 +21,7 @@ import {
   loadLatestTranslationJobMeta,
 } from "../api/tauri";
 import { AnimatedCount } from "../components/AnimatedCount";
+import { PageHeader } from "../components/PageHeader";
 import { PackingAnimation } from "../components/PackingAnimation";
 import { toErrorMessage } from "../utils";
 import { t } from "../i18n/translations";
@@ -271,12 +272,10 @@ export const PackagesPage = React.memo(function PackagesPage({
           LAYER 1: 统计 + 操作
           ══════════════════════════════════════════════════════ */}
       <div className="packages-layer packages-top">
-        <div className="page-header">
-          <div>
-            <h1>{t(language, "packages.title")}</h1>
-            <p>{t(language, "packages.subtitle")}</p>
-          </div>
-          <div className="page-header-button">
+        <PageHeader
+          title={t(language, "packages.title")}
+          subtitle={t(language, "packages.subtitle")}
+          actions={
             <button
               className="primary-button"
               disabled={!canRegenerate}
@@ -291,8 +290,8 @@ export const PackagesPage = React.memo(function PackagesPage({
               )}
               {t(language, "packages.regenerate")}
             </button>
-          </div>
-        </div>
+          }
+        />
 
         {/* Stats bar */}
         {packResult && !loading && (

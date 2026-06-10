@@ -72,6 +72,8 @@ export type TranslationKey =
   | "common.delete"
   | "common.filterAll"
   | "common.filterPlaceholder"
+  | "common.filterMin"
+  | "common.filterMax"
   | "dictionary.title"
   | "dictionary.subtitle"
   | "dictionary.subtitleEmpty"
@@ -496,6 +498,8 @@ const zhCn: TranslationMap = {
   "common.delete": "删除",
   "common.filterAll": "全部",
   "common.filterPlaceholder": "筛选...",
+  "common.filterMin": "最小值",
+  "common.filterMax": "最大值",
   "dictionary.title": "词典管理",
   "dictionary.subtitle": "共 {total} 条词典条目，{mods} 个模组",
   "dictionary.subtitleEmpty": "词典尚未加载",
@@ -1023,6 +1027,8 @@ const enUs: TranslationMap = {
   "validate.entries": "{count} entries",
   "common.filterAll": "All",
   "common.filterPlaceholder": "Filter...",
+  "common.filterMin": "Min",
+  "common.filterMax": "Max",
   "dashboard.andMore": "...and {count} more",
   "dashboard.dictCache": "Dictionary Cache",
   "dashboard.dictHitCheck": "Hit/Check",

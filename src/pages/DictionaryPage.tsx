@@ -1,10 +1,12 @@
-import { BookOpen, Download, Search, Upload } from "lucide-react";
-import { TableVirtuoso } from "react-virtuoso";
+import { Download, Upload } from "lucide-react";
+import { SearchInput } from "../components/SearchInput";
+import { DataTable } from "../components/DataTable";
+import { PageHeader } from "../components/PageHeader";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
-import { SortableTableHeader, type ColumnConfig } from "../components/SortableTableHeader";
+import { type ColumnConfig } from "../components/SortableTableHeader";
 import { TranslationEditPanel, type EditPanelEntry } from "../components/TranslationEditPanel";
 import {
   deleteDictionaryEntry,
@@ -288,7 +290,7 @@ export function DictionaryPage({ language }: Props) {
 
   // ── Column config ──
 
-  const dictColumns: ColumnConfig[] = useMemo(
+  const dictColumnsMemo: ColumnConfig[] = useMemo(
     () => [
       { key: "sourceText", label: t(language, "dictionary.col.source"), filterType: "text" },
       { key: "targetText", label: t(language, "dictionary.col.target"), filterType: "text" },
@@ -312,120 +314,72 @@ export function DictionaryPage({ language }: Props) {
 
   return (
     <section className="page dictionary-page">
-      <div className="page-header">
-        <div>
-          <h1>{t(language, "dictionary.title")}</h1>
-          <p>
-            {stats
-              ? t(language, "dictionary.subtitle", { total: stats.total, mods: stats.modIds.length })
-              : t(language, "dictionary.subtitleEmpty")}
-          </p>
-        </div>
-        <div className="page-header-button">
-          <button
-            className="ghost-button"
-            type="button"
-            disabled={!isTauriRuntime()}
-            data-tooltip={t(language, "tooltip.export")}
-          >
-            <Download size={17} />
-            {t(language, "dictionary.export")}
-          </button>
-          <button
-            className="ghost-button"
-            type="button"
-            disabled={!isTauriRuntime()}
-            data-tooltip={t(language, "tooltip.import")}
-          >
-            <Upload size={17} />
-            {t(language, "dictionary.import")}
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={t(language, "dictionary.title")}
+        subtitle={stats
+          ? t(language, "dictionary.subtitle", { total: stats.total, mods: stats.modIds.length })
+          : t(language, "dictionary.subtitleEmpty")}
+        actions={
+          <>
+            <button className="ghost-button" type="button" disabled={!isTauriRuntime()} data-tooltip={t(language, "tooltip.export")}>
+              <Download size={17} />
+              {t(language, "dictionary.export")}
+            </button>
+            <button className="ghost-button" type="button" disabled={!isTauriRuntime()} data-tooltip={t(language, "tooltip.import")}>
+              <Upload size={17} />
+              {t(language, "dictionary.import")}
+            </button>
+          </>
+        }
+      />
 
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert error">{error}</div>}
 
-      {/* Search bar */}
-      <div className="dictionary-search-row">
-        <label className="search-field">
-          <Search size={17} />
-          <input
-            value={globalSearch}
-            onChange={(e) => setGlobalSearch(e.target.value)}
-            placeholder={t(language, "dictionary.searchPlaceholder")}
-          />
-        </label>
+      <div style={{ marginBottom: 16 }}>
+        <SearchInput
+          value={globalSearch}
+          onChange={setGlobalSearch}
+          placeholder={t(language, "dictionary.searchPlaceholder")}
+        />
       </div>
 
       {/* Loading state */}
       {loading && <div className="empty-state">{t(language, "common.loading")}</div>}
 
-      {/* Empty state */}
-      {!loading && filteredEntries.length === 0 && (
-        <div className="empty-state">
-          <BookOpen size={32} />
-          <p>{t(language, "dictionary.empty")}</p>
-        </div>
-      )}
-
-      {/* Virtual-scrolled table */}
-      {!loading && filteredEntries.length > 0 && (
+      {/* Data table */}
+      {!loading && (
         <div className="log-panel" style={{ flex: 1, marginTop: 12 }}>
           <div className="log-panel-body" style={{ overflowX: "hidden" }}>
-            <TableVirtuoso
-              style={{ height: "100%" }}
-              totalCount={filteredEntries.length}
-              components={{
-                Scroller: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, ...props }, ref) => (
-                  <div ref={ref} style={{ ...style, overflowX: "hidden" }} {...props} />
-                )),
-                Table: ({ children, ...rest }) => (
-                  <table {...rest}>
-                    <colgroup>
-                      <col style={{ width: "25%" }} />
-                      <col style={{ width: "25%" }} />
-                      <col style={{ width: "15%" }} />
-                      <col style={{ width: "20%" }} />
-                      <col style={{ width: "7%" }} />
-                      <col style={{ width: "8%" }} />
-                    </colgroup>
-                    {children}
-                  </table>
-                ),
-              }}
-              fixedHeaderContent={() => (
-                <SortableTableHeader
-                  columns={dictColumns}
-                  sortConfig={sf.sortConfig}
-                  filters={sf.filters}
-                  openFilter={sf.openFilter}
-                  filterRef={sf.filterRef}
-                  onSort={sf.handleSort}
-                  onToggleFilter={sf.toggleFilter}
-                  onFilterChange={sf.handleFilterChange}
-                  defaultSortKey="sourceText"
+            <DataTable
+              data={filteredEntries}
+              columns={dictColumnsMemo}
+              sortConfig={sf.sortConfig}
+              filters={sf.filters}
+              openFilter={sf.openFilter}
+              filterRef={sf.filterRef as React.RefObject<HTMLDivElement | null>}
+              onSort={sf.handleSort}
+              onToggleFilter={sf.toggleFilter}
+              onFilterChange={sf.handleFilterChange}
+              defaultSortKey="sourceText"
+              language={language}
+              renderRow={(entry, index) => (
+                <DictionaryRow
+                  key={entry.id ?? index}
+                  entry={entry}
+                  onOpenPanel={() => {
+                    if (entry.id != null) {
+                      setPanelKey(`dict::${entry.id}`);
+                      setPanelOpen(true);
+                    }
+                  }}
+                  highlighted={panelOpen && panelKey === `dict::${entry.id}`}
+                  onDelete={handleDelete}
+                  language={language}
                 />
               )}
-              itemContent={(index) => {
-                const entry = filteredEntries[index];
-                const isHighlighted = panelOpen && panelKey === `dict::${entry.id}`;
-                return (
-                  <DictionaryRow
-                    key={entry.id ?? index}
-                    entry={entry}
-                    onOpenPanel={() => {
-                      if (entry.id != null) {
-                        setPanelKey(`dict::${entry.id}`);
-                        setPanelOpen(true);
-                      }
-                    }}
-                    highlighted={isHighlighted}
-                    onDelete={handleDelete}
-                    language={language}
-                  />
-                );
-              }}
+              colWidths={["25%", "25%", "15%", "20%", "7%", "8%"]}
+              emptyMessage={t(language, "dictionary.empty")}
             />
           </div>
         </div>

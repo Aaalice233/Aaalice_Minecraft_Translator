@@ -1,4 +1,3 @@
-import { TableVirtuoso } from "react-virtuoso";
 import {
   CheckCircle,
   Loader2,
@@ -10,7 +9,10 @@ import { createPortal } from "react-dom";
 import { loadLatestTranslationJobMeta, loadTranslationResults, markJobReviewed, saveTranslationEntry, translateSingleEntry } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import { useSortFilter } from "../hooks/useSortFilter";
-import { SortableTableHeader } from "../components/SortableTableHeader";
+import { PageHeader } from "../components/PageHeader";
+import { SearchInput } from "../components/SearchInput";
+import { DataTable } from "../components/DataTable";
+import type { ColumnConfig } from "../components/SortableTableHeader";
 import { TranslationEditPanel } from "../components/TranslationEditPanel";
 import type { EditPanelEntry } from "../components/TranslationEditPanel";
 import { useAppStore } from "../stores/appStore";
@@ -182,6 +184,21 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
   }, [allEntries, filterTerm, sf.filters, sf.sortConfig]);
 
 
+  const validateColumnsMemo: ColumnConfig[] = useMemo(() => [
+    { key: "modName", label: t(language, "validate.col.modName"), filterType: "text", thStyle: sortThStyle },
+    { key: "modId", label: t(language, "validate.col.modId"), filterType: "text", thStyle: sortThStyle },
+    { key: "sourceText", label: t(language, "validate.col.sourceText"), filterType: "text", thStyle: sortThStyle },
+    { key: "targetText", label: t(language, "validate.col.targetText"), filterType: "text", thStyle: sortThStyle },
+    { key: "sourceType", label: t(language, "validate.col.sourceType"), filterType: "select", filterOptions: [
+      { value: "llm", label: t(language, "jobs.sourceType.llm") },
+      { value: "dictionary", label: t(language, "jobs.sourceType.dictionary") },
+      { value: "existing", label: t(language, "jobs.sourceType.existing") },
+      { value: "skipped", label: t(language, "jobs.sourceType.skipped") },
+      { value: "failed", label: t(language, "jobs.sourceType.failed") },
+      { value: "reviewed", label: t(language, "jobs.sourceType.reviewed") },
+    ], thStyle: sortThStyle },
+  ], [language]);
+
   const hasData = job && job.status === "completed" && filteredEntries.length > 0;
 
   // ── Render helpers ──
@@ -217,12 +234,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
     if (!job) {
       return (
         <>
-          <div className="page-header">
-            <div>
-              <h1>{t(language, "validate.title")}</h1>
-              <p>{t(language, "validate.description")}</p>
-            </div>
-          </div>
+          <PageHeader title={t(language, "validate.title")} subtitle={t(language, "validate.description")} />
           <div className="empty-state">
             <Search size={32} />
             <p>{t(language, "validate.noJob")}</p>
@@ -231,16 +243,19 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
       );
     }
 
+    const validateSubtitle = job
+      ? (() => {
+          const dateStr = job.completedAt
+            ? new Date(job.completedAt).toLocaleString(localeByAppLanguage[language], { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+            : "";
+          return t(language, "validate.summary", { count: job.completedEntries, date: dateStr, total: allEntries.length });
+        })()
+      : t(language, "validate.description");
     const jobIsFinished = job.status === "completed" || job.status === "reviewed" || job.status === "failed";
     if (!jobIsFinished) {
       return (
         <>
-          <div className="page-header">
-            <div>
-              <h1>{t(language, "validate.title")}</h1>
-              <p>{t(language, "validate.description")}</p>
-            </div>
-          </div>
+          <PageHeader title={t(language, "validate.title")} subtitle={t(language, "validate.description")} />
           <div className="empty-state">
             <Loader2 size={32} />
             <p>{t(language, "validate.jobPending")}</p>
@@ -251,44 +266,26 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
 
     return (
       <>
-        <div className="page-header">
-          <div>
-            <h1>{t(language, "validate.title")}</h1>
-            <p>
-              {job
-                ? (() => {
-                    const dateStr = job.completedAt
-                      ? new Date(job.completedAt).toLocaleString(localeByAppLanguage[language], { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
-                      : "";
-                    return t(language, "validate.summary", { count: job.completedEntries, date: dateStr, total: allEntries.length });
-                  })()
-                : t(language, "validate.description")}
-            </p>
-          </div>
-          <div className="page-header-button">
-            {isReviewed && (
-              <span className="badge success" style={{ fontSize: 12, marginRight: 8 }}>
-                <CheckCircle size={14} style={{ marginRight: 4 }} />
-                {t(language, "validate.reviewed")}
-              </span>
-            )}
-            {!isReviewed && allEntries.length > 0 && (
-              <button
-                className="primary-button"
-                onClick={handleReviewComplete}
-                disabled={submitting}
-                type="button"
-              >
-                {submitting ? (
-                  <Loader2 size={18} className="spin" />
-                ) : (
-                  <PackageCheck size={18} />
-                )}
-                {t(language, "validate.markDone")}
-              </button>
-            )}
-          </div>
-        </div>
+        <PageHeader
+          title={t(language, "validate.title")}
+          subtitle={validateSubtitle}
+          actions={
+            <>
+              {isReviewed && (
+                <span className="badge success" style={{ fontSize: 12, marginRight: 8 }}>
+                  <CheckCircle size={14} style={{ marginRight: 4 }} />
+                  {t(language, "validate.reviewed")}
+                </span>
+              )}
+              {!isReviewed && allEntries.length > 0 && (
+                <button className="primary-button" onClick={handleReviewComplete} disabled={submitting} type="button">
+                  {submitting ? <Loader2 size={18} className="spin" /> : <PackageCheck size={18} />}
+                  {t(language, "validate.markDone")}
+                </button>
+              )}
+            </>
+          }
+        />
 
         {/* ── Error / Info alerts ── */}
         {error && (
@@ -306,90 +303,39 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
         {/* ── Flat table ── */}
         {allEntries.length > 0 && (
           <>
-          <div className="dictionary-search-row">
-            <label className="search-field">
-              <Search size={17} />
-              <input
-                value={filterTerm}
-                onChange={(e) => setFilterTerm(e.target.value)}
-                placeholder={t(language, "validate.searchPlaceholder")}
+          <div style={{ marginBottom: 8 }}>
+          <SearchInput
+            value={filterTerm}
+            onChange={setFilterTerm}
+            placeholder={t(language, "validate.searchPlaceholder")}
+          />
+          </div>
+          <DataTable
+            data={filteredEntries}
+            columns={validateColumnsMemo}
+            sortConfig={sf.sortConfig}
+            filters={sf.filters}
+            openFilter={sf.openFilter}
+            filterRef={sf.filterRef as React.RefObject<HTMLDivElement | null>}
+            onSort={sf.handleSort}
+            onToggleFilter={sf.toggleFilter}
+            onFilterChange={sf.handleFilterChange}
+            defaultSortKey="modName"
+            language={language}
+            renderRow={(entry, index) => (
+              <ValidateRow
+                entry={entry}
+                language={language}
+                onOpenPanel={() => {
+                  setPanelKey(`${entry.modId}::${entry.key}`);
+                  setPanelOpen(true);
+                }}
+                highlighted={panelOpen && panelKey === `${entry.modId}::${entry.key}`}
               />
-            </label>
-          </div>
-          <div className="log-panel" style={{ flex: 1, marginTop: 0 }}>
-            <div className="log-panel-body">
-              {filteredEntries.length === 0 ? (
-                <div className="log-panel-empty">{t(language, "validate.noMatch")}</div>
-              ) : (
-                <TableVirtuoso
-                  followOutput={false}
-                  style={{ height: "100%" }}
-                  totalCount={filteredEntries.length}
-                  components={{
-                    Scroller: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, ...props }, ref) => (
-                      <div ref={ref} style={{ ...style, overflowX: "hidden" }} {...props} />
-                    )),
-                    Table: ({ children, ...rest }) => (
-                      <table {...rest}>
-                        <colgroup>
-                          <col style={{ width: "16%" }} />
-                          <col style={{ width: "12%" }} />
-                          <col style={{ width: "28%" }} />
-                          <col style={{ width: "30%" }} />
-                          <col style={{ width: "14%" }} />
-                        </colgroup>
-                        {children}
-                      </table>
-                    ),
-                  }}
-                  fixedHeaderContent={() => {
-                    const validateColumns: import("../components/SortableTableHeader").ColumnConfig[] = [
-                      { key: "modName", label: t(language, "validate.col.modName"), filterType: "text", thStyle: sortThStyle },
-                      { key: "modId", label: t(language, "validate.col.modId"), filterType: "text", thStyle: sortThStyle },
-                      { key: "sourceText", label: t(language, "validate.col.sourceText"), filterType: "text", thStyle: sortThStyle },
-                      { key: "targetText", label: t(language, "validate.col.targetText"), filterType: "text", thStyle: sortThStyle },
-                      { key: "sourceType", label: t(language, "validate.col.sourceType"), filterType: "select", filterOptions: [
-                        { value: "llm", label: t(language, "jobs.sourceType.llm") },
-                        { value: "dictionary", label: t(language, "jobs.sourceType.dictionary") },
-                        { value: "existing", label: t(language, "jobs.sourceType.existing") },
-                        { value: "skipped", label: t(language, "jobs.sourceType.skipped") },
-                        { value: "failed", label: t(language, "jobs.sourceType.failed") },
-                        { value: "reviewed", label: t(language, "jobs.sourceType.reviewed") },
-                      ], thStyle: sortThStyle },
-                    ];
-                    return (
-                      <SortableTableHeader
-                        columns={validateColumns}
-                        sortConfig={sf.sortConfig}
-                        filters={sf.filters}
-                        openFilter={sf.openFilter}
-                        filterRef={sf.filterRef}
-                        onSort={sf.handleSort}
-                        onToggleFilter={sf.toggleFilter}
-                        onFilterChange={sf.handleFilterChange}
-                        defaultSortKey="modName"
-                      />
-                    );
-                  }}
-                  itemContent={(index) => {
-                    const entry = filteredEntries[index];
-                    const isHighlighted = panelOpen && panelKey === `${entry.modId}::${entry.key}`;
-                    return (
-                      <ValidateRow
-                        entry={entry}
-                        language={language}
-                        onOpenPanel={() => {
-                          setPanelKey(`${entry.modId}::${entry.key}`);
-                          setPanelOpen(true);
-                        }}
-                        highlighted={isHighlighted}
-                      />
-                    );
-                  }}
-                />
-              )}
-            </div>
-          </div>
+            )}
+            colWidths={["16%", "12%", "28%", "30%", "14%"]}
+            emptyMessage={t(language, "validate.noMatch")}
+          />
           </>
         )}
 

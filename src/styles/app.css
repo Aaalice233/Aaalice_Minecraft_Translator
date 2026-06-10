@@ -990,9 +990,9 @@ p {
   font-weight: 700;
 }
 
-/* Search field — icon inline with input */
-.search-field {
-  display: flex !important;
+/* ── Unified search input (replaces .search-field, .mod-search-wrap, .dictionary-search-row, .log-panel-filter) ── */
+.app-search-input {
+  display: flex;
   align-items: center;
   gap: 8px;
   border: 1px solid var(--border-input);
@@ -1000,40 +1000,46 @@ p {
   padding: 0 10px;
   background: var(--bg-surface);
   color: var(--text-muted);
-  font-weight: 400;
   min-height: 34px;
+  /* fills flexible parent (panel-title) or stretches in block context */
+  flex: 1;
 }
 
-.search-field:focus-within {
+.app-search-input:focus-within {
   border-color: var(--accent);
 }
 
-.search-field input {
+.app-search-input-field {
   flex: 1;
-  border: none;
+  border: none !important;
   outline: none;
   background: transparent;
   color: var(--text-primary);
   font-weight: 400;
   padding: 6px 0;
   min-width: 0;
+  height: 100% !important;
 }
 
-.search-field input::placeholder {
+.app-search-input-field::placeholder {
   color: var(--muted);
 }
 
-/* Dictionary search bar row — flex layout replacing instance-row grid */
-.dictionary-search-row {
+.app-search-input-clear {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
+  justify-content: center;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0;
+  margin: 0;
+  flex-shrink: 0;
 }
 
-.dictionary-search-row .search-field {
-  flex: 1;
-  min-width: 0;
+.app-search-input-clear:hover {
+  color: var(--text-primary);
 }
 
 input,
@@ -1494,54 +1500,6 @@ select optgroup option {
   gap: 12px;
 }
 
-.mod-search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.mod-search-input {
-  height: 30px;
-  width: 320px;
-  border: 1px solid var(--border-input);
-  border-radius: 5px;
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  padding: 0 28px 0 10px;
-  font-size: 12px;
-  outline: none;
-  transition: border-color 0.12s;
-}
-
-.mod-search-input:focus {
-  border-color: var(--accent);
-}
-
-.mod-search-input::placeholder {
-  color: var(--muted);
-}
-
-.mod-search-clear {
-  position: absolute;
-  right: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition: color 0.12s, background 0.12s;
-}
-
-.mod-search-clear:hover {
-  color: var(--danger);
-  background: var(--danger-bg);
-}
-
 .table-wrap {
   overflow-x: auto;
 }
@@ -1736,6 +1694,19 @@ th.sorted-default .sort-indicator {
   align-items: center;
   gap: 8px;
   margin-top: 6px;
+}
+
+/* Hide native number spinners — they look clunky in compact filter popovers */
+.filter-popover .number-range-row input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  width: 72px;
+  text-align: center;
+}
+.filter-popover .number-range-row input[type="number"]::-webkit-inner-spin-button,
+.filter-popover .number-range-row input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .filter-popover .number-range-row span {
@@ -2223,19 +2194,6 @@ th.sorted-default .sort-indicator {
   font-size: 14px;
   font-weight: 700;
   white-space: nowrap;
-}
-
-.log-panel-filter {
-  display: flex;
-  flex: 1;
-  max-width: 300px;
-  min-width: 140px;
-  height: 30px;
-  border: 1px solid var(--border-input);
-  border-radius: 5px;
-  padding: 0 10px;
-  font-size: 12px;
-  background: var(--bg-surface);
 }
 
 .log-panel-body {

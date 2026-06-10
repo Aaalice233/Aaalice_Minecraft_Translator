@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, Filter, FolderOpen, Loader2, Package, RefreshCcw, ScanLine, Square, X, Zap } from "lucide-react";
+import { AlertTriangle, ChevronDown, FolderOpen, Loader2, Package, RefreshCcw, ScanLine, Square, Zap } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useSortFilter } from "../hooks/useSortFilter";
@@ -6,6 +6,9 @@ import { cancelScan, saveSettings, scanAndDiff, scanInstance } from "../api/taur
 import { localeByAppLanguage, t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
 import { CompletionSummary } from "../components/CompletionSummary";
+import { PageHeader } from "../components/PageHeader";
+import { SearchInput } from "../components/SearchInput";
+import { SortableTableHeader, type ColumnConfig } from "../components/SortableTableHeader";
 import type { AppLanguage, ModScanResult, ScanProgressEvent, ScanSummary, ScanWarning, Settings } from "../types";
 import type { TranslationKey } from "../i18n/translations";
 
@@ -163,6 +166,34 @@ export const DashboardPage = React.memo(function DashboardPage({
       { label: t(language, "dashboard.stats.actualPending"), value: scanSummary?.actualPendingEntries ?? 0, hint: t(language, "dashboard.stats.actualPendingHint") },
     ],
     [language, scanSummary],
+  );
+
+  const dashboardColumns: ColumnConfig[] = useMemo(
+    () => [
+      { key: "fileName", label: t(language, "dashboard.column.mod"), filterType: "text" },
+      { key: "modId", label: t(language, "dashboard.column.modId"), filterType: "text" },
+      {
+        key: "formats",
+        label: t(language, "dashboard.column.format"),
+        filterType: "select",
+        filterOptions: [
+          { value: "json", label: "json" },
+          { value: "lang", label: "lang" },
+        ],
+      },
+      { key: "languageFileCount", label: t(language, "dashboard.column.langFiles"), filterType: "number-range" },
+      { key: "pending", label: t(language, "dashboard.column.pending"), filterType: "number-range" },
+      {
+        key: "hasTargetLanguage",
+        label: t(language, "dashboard.column.status"),
+        filterType: "select",
+        filterOptions: [
+          { value: "true", label: t(language, "dashboard.hasTarget") },
+          { value: "false", label: t(language, "dashboard.needsTranslation") },
+        ],
+      },
+    ],
+    [language],
   );
 
   const processedMods = useMemo(() => {
@@ -448,12 +479,10 @@ export const DashboardPage = React.memo(function DashboardPage({
 
   return (
     <section className="page dashboard-page">
-      <div className="page-header">
-        <div>
-          <h1>{t(language, "dashboard.title")}</h1>
-          <p>{t(language, "dashboard.subtitle")}</p>
-        </div>
-        <div className="page-header-button">
+      <PageHeader
+        title={t(language, "dashboard.title")}
+        subtitle={t(language, "dashboard.subtitle")}
+        actions={
           <button
             className={scanBtn.className}
             disabled={scanBtn.disabled}
@@ -464,8 +493,8 @@ export const DashboardPage = React.memo(function DashboardPage({
             {scanBtn.icon}
             {scanBtn.text}
           </button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="instance-row">
         <label>
@@ -656,154 +685,27 @@ export const DashboardPage = React.memo(function DashboardPage({
         <section className="panel">
           <div className="panel-title">
             <h2>{t(language, "dashboard.modsTitle")}</h2>
-            <div className="mod-search-wrap">
-              <input
-                type="text"
-                className="mod-search-input"
-                placeholder={t(language, "dashboard.filterSearch")}
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-              />
-              {searchText && (
-                <button
-                  className="mod-search-clear"
-                  onClick={() => setSearchText("")}
-                  type="button"
-                >
-                  <X size={13} />
-                </button>
-              )}
-            </div>
+            <SearchInput
+              value={searchText}
+              onChange={setSearchText}
+              placeholder={t(language, "dashboard.filterSearch")}
+            />
           </div>
           <div className="table-wrap">
             <table>
               <thead>
-                <tr>
-                  {[
-                    { key: "fileName", label: t(language, "dashboard.column.mod") },
-                    { key: "modId", label: t(language, "dashboard.column.modId") },
-                    { key: "formats", label: t(language, "dashboard.column.format") },
-                    { key: "languageFileCount", label: t(language, "dashboard.column.langFiles") },
-                    { key: "pending", label: t(language, "dashboard.column.pending") },
-                    { key: "hasTargetLanguage", label: t(language, "dashboard.column.status") },
-                  ].map((col) => {
-                    const isActiveSort = sf.sortConfig?.key === col.key;
-                    const isDefaultSort = !sf.sortConfig && col.key === "fileName";
-                    const hasActiveFilter = col.key in sf.filters;
-                    return (
-                      <th
-                        key={col.key}
-                        className={[
-                          "sortable",
-                          isActiveSort ? (sf.sortConfig!.direction === "asc" ? "sorted-asc" : "sorted-desc") : "",
-                          isDefaultSort ? "sorted-default" : "",
-                        ].filter(Boolean).join(" ")}
-                        onClick={() => sf.handleSort(col.key)}
-                      >
-                        <span className="th-filter-wrap">
-                          {col.label}
-                          {(isActiveSort || isDefaultSort) && (
-                            <span className="sort-indicator">
-                              {isActiveSort ? (sf.sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}
-                            </span>
-                          )}
-                          <button
-                            className={[
-                              "th-filter-btn",
-                              hasActiveFilter ? "has-filter" : "",
-                              sf.openFilter === col.key ? "active" : "",
-                            ].filter(Boolean).join(" ")}
-                            onClick={(e) => { e.stopPropagation(); sf.toggleFilter(col.key); }}
-                            type="button"
-                            aria-label={`Filter ${col.label}`}
-                            data-tooltip={t(language, "tooltip.filter")}
-                          >
-                            <Filter size={13} />
-                          </button>
-                          {sf.openFilter === col.key && (
-                            <div
-                              className={["filter-popover", (col.key === "pending" || col.key === "hasTargetLanguage") ? "popover-right" : ""].filter(Boolean).join(" ")}
-                              ref={sf.filterRef}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <div className="filter-popover-header">
-                                <span>{col.label}</span>
-                                <button
-                                  className="filter-popover-clear"
-                                  onClick={() => sf.handleFilterChange(col.key, null)}
-                                  type="button"
-                                  data-tooltip={t(language, "tooltip.clearFilter")}
-                                >
-                                  <X size={13} />
-                                </button>
-                              </div>
-                              {(col.key === "fileName" || col.key === "modId") && (
-                                <input
-                                  type="text"
-                                  value={(sf.filters[col.key] as string) || ""}
-                                  onChange={(e) => sf.handleFilterChange(col.key, e.target.value)}
-                                  placeholder={t(language, "dashboard.filterSearch")}
-                                  autoFocus
-                                />
-                              )}
-                              {col.key === "formats" && (
-                                <select
-                                  value={(sf.filters.formats as string) || ""}
-                                  onChange={(e) => sf.handleFilterChange("formats", e.target.value || null)}
-                                  autoFocus
-                                >
-                                  <option value="">{t(language, "dashboard.filterAllFormats")}</option>
-                                  <option value="json">json</option>
-                                  <option value="lang">lang</option>
-                                </select>
-                              )}
-                              {(col.key === "languageFileCount" || col.key === "pending") && (
-                                <div>
-                                  <div className="number-range-row">
-                                    <span>{t(language, "dashboard.rangeFrom")}</span>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={(sf.filters[col.key] as { min?: number })?.min ?? ""}
-                                      onChange={(e) => {
-                                        const prev = (sf.filters[col.key] as { min?: number; max?: number }) ?? {};
-                                        sf.handleFilterChange(col.key, { min: e.target.value === "" ? undefined : Number(e.target.value), max: prev.max });
-                                      }}
-                                      autoFocus
-                                    />
-                                  </div>
-                                  <div className="number-range-row">
-                                    <span>{t(language, "dashboard.rangeTo")}</span>
-                                    <input
-                                      type="number"
-                                      min={0}
-                                      value={(sf.filters[col.key] as { max?: number })?.max ?? ""}
-                                      onChange={(e) => {
-                                        const prev = (sf.filters[col.key] as { min?: number; max?: number }) ?? {};
-                                        sf.handleFilterChange(col.key, { min: prev.min, max: e.target.value === "" ? undefined : Number(e.target.value) });
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                              {col.key === "hasTargetLanguage" && (
-                                <select
-                                  value={(sf.filters.hasTargetLanguage as string) ?? ""}
-                                  onChange={(e) => sf.handleFilterChange("hasTargetLanguage", e.target.value ?? null)}
-                                  autoFocus
-                                >
-                                  <option value="">{t(language, "dashboard.filterAllStatus")}</option>
-                                  <option value="true">{t(language, "dashboard.hasTarget")}</option>
-                                  <option value="false">{t(language, "dashboard.needsTranslation")}</option>
-                                </select>
-                              )}
-                            </div>
-                          )}
-                        </span>
-                      </th>
-                    );
-                  })}
-                </tr>
+                <SortableTableHeader
+                  columns={dashboardColumns}
+                  sortConfig={sf.sortConfig}
+                  filters={sf.filters}
+                  openFilter={sf.openFilter}
+                  filterRef={sf.filterRef}
+                  onSort={sf.handleSort}
+                  onToggleFilter={sf.toggleFilter}
+                  onFilterChange={sf.handleFilterChange}
+                  defaultSortKey="fileName"
+                  language={language}
+                />
               </thead>
               <tbody>
                 {scanSummary && processedMods.length === 0 && (
