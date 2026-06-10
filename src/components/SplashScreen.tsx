@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { cancelWarmup } from "../api/tauri";
+import { normalizeAppLanguage, t } from "../i18n/translations";
 import type { WarmupPhase, WarmupProgress } from "../types";
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -9,13 +10,6 @@ const LETTER_REVEAL_MS = 60;
 const BRAND_NAME = "Aaalice";
 const SUBTITLE = "Minecraft Translator";
 const ICON_SIZE = 48;
-
-const PHASE_LABELS: Record<string, string> = {
-  settings: "设置",
-  local: "本地",
-  dictionary: "词典",
-  llm: "LLM",
-};
 
 const PHASE_ORDER: WarmupPhase[] = ["settings", "local", "dictionary", "llm"];
 
@@ -32,6 +26,8 @@ interface SplashScreenProps {
   warmupComplete?: boolean;
   /** Current warmup progress from Rust events. */
   progress?: WarmupProgress | null;
+  /** App language for splash screen i18n. */
+  language?: string;
 }
 
 // ── Diamond-book SVG icon ──────────────────────────────────────────────
@@ -101,7 +97,9 @@ export function SplashScreen({
   isFirstLaunch,
   warmupComplete,
   progress,
+  language,
 }: SplashScreenProps) {
+  const splashLang = normalizeAppLanguage(language ?? "zh_cn");
   const [phase, setPhase] = useState<SplashPhase>("init");
   const [showSplash, setShowSplash] = useState(true);
   const [curPercent, setCurPercent] = useState(0);
@@ -160,7 +158,7 @@ export function SplashScreen({
 
   // ── Phase label helpers ──
   const getPhaseLabel = (phaseKey: WarmupPhase): string =>
-    PHASE_LABELS[phaseKey] ?? phaseKey;
+    t(splashLang, `splash.phase.${phaseKey}`);
 
   function getPhaseIcon(phaseKey: WarmupPhase): string {
     const status = phaseStatuses[phaseKey];
@@ -276,13 +274,13 @@ export function SplashScreen({
 
           {/* Offline indicator */}
           {offline && !fatalError && (
-            <p className="splash-offline-indicator">离线模式</p>
+            <p className="splash-offline-indicator">{t(splashLang, "splash.offline")}</p>
           )}
 
           {/* First launch hint */}
           {isFirstLaunch && !warmupComplete && (
             <p className="splash-first-launch-hint">
-              首次启动，正在初始化…
+              {t(splashLang, "splash.firstLaunch")}
             </p>
           )}
 
@@ -295,7 +293,7 @@ export function SplashScreen({
                 onClick={handleForceSkip}
                 type="button"
               >
-                跳过，直接进入
+                {t(splashLang, "splash.skip")}
               </button>
             </div>
           )}

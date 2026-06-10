@@ -66,7 +66,6 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
   const [didAutoGenerate, setDidAutoGenerate] = useState(false);
-  const [updateDictionary, setUpdateDictionary] = useState(false);
   const [reviewRequired, setReviewRequired] = useState(false);
 
   const animFrameRef = useRef<number>(0);
@@ -76,7 +75,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   // ═══════════════════════════════════════════════════════════
 
   const generateFromJob = useCallback(
-    async (dryRun: boolean, updateDict?: boolean) => {
+    async (dryRun: boolean) => {
       if (!translationJob) return;
       setLoading(true);
       setError("");
@@ -89,7 +88,6 @@ export const PackagesPage = React.memo(function PackagesPage({
           translationJob.jobId,
           targetLang,
           dryRun,
-          updateDict ?? updateDictionary,
         );
         setPackResult(result);
       } catch (err) {
@@ -99,7 +97,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         setLoading(false);
       }
     },
-    [translationJob, scanSummary?.targetLanguage, updateDictionary],
+    [translationJob, scanSummary?.targetLanguage],
   );
 
   const handleRegenerate = useCallback(() => {
@@ -143,7 +141,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         packResult.zipPath.split(/[/\\]/).pop() || "translation-pack.zip";
       const dest = await save({
         defaultPath: zipName,
-        filters: [{ name: "ZIP 资源包", extensions: ["zip"] }],
+        filters: [{ name: t(language, "packages.zipFilter"), extensions: ["zip"] }],
       });
       if (!dest) return; // user cancelled
       await copyFile(packResult.zipPath, dest);
@@ -196,7 +194,7 @@ export const PackagesPage = React.memo(function PackagesPage({
           setReviewRequired(job.reviewed === false);
         }
       })
-      .catch((err) => console.warn("加载最新翻译任务失败:", err));
+      .catch((err) => console.warn("load latest translation job failed:", err));
     return () => { cancelled = true; };
   }, [translationJobId]);
 
@@ -255,6 +253,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   const languageMismatch =
     settings.instancePath &&
     translationJob &&
+    scanSummary?.targetLanguage &&
     translationJob.targetLanguage !== scanSummary?.targetLanguage;
 
   const canRegenerate =
@@ -283,47 +282,34 @@ export const PackagesPage = React.memo(function PackagesPage({
               disabled={!canRegenerate}
               onClick={handleRegenerate}
               type="button"
-              data-tooltip="重新生成资源包"
+              data-tooltip={t(language, "packages.regenerateTooltip")}
             >
               {loading ? (
                 <Loader2 size={18} className="spin" />
               ) : (
                 <RefreshCw size={18} />
               )}
-              重新生成
+              {t(language, "packages.regenerate")}
             </button>
           </div>
         </div>
-
-        {/* ── 更新词典复选框 ── */}
-        {translationJob && (
-          <label className="toggle-row" style={{ marginBottom: 12, fontSize: 13, cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              checked={updateDictionary}
-              onChange={(e) => setUpdateDictionary(e.target.checked)}
-              style={{ width: 16, height: 16, cursor: "pointer" }}
-            />
-            <span>打包时更新词典（将 LLM 翻译结果保存到词典）</span>
-          </label>
-        )}
 
         {/* Stats bar */}
         {packResult && !loading && (
           <div className="packages-stats-bar">
             <span className="packages-stat">
               <Boxes size={16} />
-              <span><AnimatedCount value={packResult.modCount} /> 个模组</span>
+              <span><AnimatedCount value={packResult.modCount} />{t(language, "packages.modCount").replace("{count}", "")}</span>
             </span>
             <span className="packages-stat-divider" />
             <span className="packages-stat">
               <FileText size={16} />
-              <span><AnimatedCount value={packResult.entryCount} /> 条翻译</span>
+              <span><AnimatedCount value={packResult.entryCount} />{t(language, "packages.entryCount").replace("{count}", "")}</span>
             </span>
             <span className="packages-stat-divider" />
             <span className="packages-stat packages-status-ready">
               <CheckCircle2 size={16} />
-              <span>已就绪</span>
+              <span>{t(language, "packages.ready")}</span>
             </span>
           </div>
         )}
@@ -332,21 +318,19 @@ export const PackagesPage = React.memo(function PackagesPage({
           <div className="packages-stats-bar">
             <span className="packages-stat packages-status-generating">
               <Loader2 size={16} className="spin" />
-              <span>正在打包...</span>
+              <span>{t(language, "packages.packing")}</span>
             </span>
           </div>
         )}
 
         {reviewRequired && (
           <div className="alert warning compact" style={{ marginTop: 10 }}>
-            ⚠️ 当前翻译任务尚未完成校对。请前往「校对」页面完成校对后再打包。
+            ⚠️ {t(language, "packages.reviewRequired")}
           </div>
         )}
         {languageMismatch && (
           <div className="alert warning compact" style={{ marginTop: 10 }}>
-            ⚠️ 当前设置的目标语言 ({scanSummary?.targetLanguage})
-            与翻译结果的语言 ({translationJob!.targetLanguage}) 不一致。
-            将使用当前设置的语言打包。
+            ⚠️ {t(language, "packages.languageMismatch", { current: scanSummary!.targetLanguage, job: translationJob!.targetLanguage })}
           </div>
         )}
 
@@ -369,7 +353,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         {!translationJob && scanSummary && !packResult && !loading && (
           <div className="packages-middle-empty">
             <FileArchive size={32} />
-            <p>暂无可用的翻译结果，请先完成翻译</p>
+            <p>{t(language, "packages.noTranslation")}</p>
           </div>
         )}
 
@@ -386,13 +370,13 @@ export const PackagesPage = React.memo(function PackagesPage({
                   />
                 </div>
                 <span className="packages-progress-label">
-                  正在打包 ({Math.round(animationProgress)}%)
+                  {t(language, "packages.packingPercent", { percent: Math.round(animationProgress) })}
                 </span>
               </>
             )}
             {packResult && !loading && !packComplete && (
               <span className="packages-progress-label packages-status-ready">
-                <CheckCircle2 size={14} /> 打包完成
+                <CheckCircle2 size={14} /> {t(language, "packages.packDone")}
               </span>
             )}
           </div>
@@ -402,7 +386,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         {packResult && packComplete && scanSummary && (
           <div className="packages-mod-list">
             <div className="packages-mod-list-header">
-              <h2>全部模组 ({scanSummary.mods.length})</h2>
+              <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
             </div>
             <div className="packages-mod-list-body">
               {scanSummary.mods.map((mod) => {
@@ -439,11 +423,11 @@ export const PackagesPage = React.memo(function PackagesPage({
                       <span className="packages-mod-file">{mod.fileName}</span>
                       <span className="packages-mod-meta">
                         {mod.entries.length || mod.languageFileCount
-                          ? [mod.entries.length ? `${mod.entries.length} 条目` : null, mod.languageFileCount ? `${mod.languageFileCount} 文件` : null].filter(Boolean).join(" · ")
-                          : "无语言文件"}
+                          ? [mod.entries.length ? t(language, "packages.entries_label", { count: mod.entries.length }) : null, mod.languageFileCount ? t(language, "packages.files_label", { count: mod.languageFileCount }) : null].filter(Boolean).join(" · ")
+                          : t(language, "packages.noLangFiles")}
                       </span>
                       {hasErrors && (
-                        <span className="packages-mod-error-badge">失败</span>
+                        <span className="packages-mod-error-badge">{t(language, "packages.failed_label")}</span>
                       )}
                       {hasEntries && (
                         <span className="packages-mod-expand">
@@ -458,8 +442,8 @@ export const PackagesPage = React.memo(function PackagesPage({
                     {isExpanded && hasEntries && (
                       <div className="packages-mod-detail">
                         <div className="packages-mod-detail-row packages-mod-detail-header">
-                          <span className="packages-detail-key">键</span>
-                          <span>原文</span>
+                          <span className="packages-detail-key">{t(language, "packages.detailKey")}</span>
+                          <span>{t(language, "packages.detailSource")}</span>
                         </div>
                         {mod.entries.slice(0, 20).map((entry) => (
                           <div key={entry.key} className="packages-mod-detail-row">
@@ -471,7 +455,7 @@ export const PackagesPage = React.memo(function PackagesPage({
                         ))}
                         {mod.entries.length > 20 && (
                           <div className="packages-mod-detail-more">
-                            ...还有 {mod.entries.length - 20} 条
+                            {t(language, "packages.moreEntries", { count: mod.entries.length - 20 })}
                           </div>
                         )}
                       </div>
@@ -494,28 +478,28 @@ export const PackagesPage = React.memo(function PackagesPage({
               className="packages-deploy-btn"
               onClick={handleSaveLocally}
               type="button"
-              data-tooltip="选择保存位置"
+              data-tooltip={t(language, "packages.saveLocallyTooltip")}
             >
               <Download size={18} />
-              <span>保存本地</span>
+              <span>{t(language, "packages.saveLocally")}</span>
             </button>
             <button
               className="packages-deploy-btn packages-deploy-primary"
               onClick={handleCopyToInstance}
               type="button"
-              data-tooltip="复制到游戏实例 resourcepacks 目录"
+              data-tooltip={t(language, "packages.copyToInstanceTooltip")}
             >
               <Copy size={18} />
-              <span>复制到实例</span>
+              <span>{t(language, "packages.copyToInstanceBtn")}</span>
             </button>
             <button
               className="packages-deploy-btn"
               onClick={handleOpenFolder}
               type="button"
-              data-tooltip="在文件管理器中打开"
+              data-tooltip={t(language, "packages.openFolderTooltip")}
             >
               <FolderOpen size={18} />
-              <span>打开文件夹</span>
+              <span>{t(language, "packages.openFolder")}</span>
             </button>
           </div>
 

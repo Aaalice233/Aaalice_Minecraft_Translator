@@ -679,11 +679,6 @@ const PROVIDER_PRESETS: Record<string, { baseUrl: string; model: string }> = {
   openai: { baseUrl: "https://api.openai.com/v1", model: "gpt-4o-mini" },
 };
 
-const PROVIDER_OPTIONS = [
-  { value: "deepseek", label: "DeepSeek" },
-  { value: "openai", label: "OpenAI 兼容" },
-] as const;
-
 interface ApiSettingsTabProps {
   language: AppLanguage;
   draft: Settings;
@@ -702,6 +697,11 @@ const PROVIDER_ICONS: Record<string, React.ReactNode> = {
 };
 
 function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, handleFetchModels, showCustomModel, setShowCustomModel, scheduleSave }: ApiSettingsTabProps) {
+  const PROVIDER_OPTIONS = [
+    { value: "deepseek", label: "DeepSeek" },
+    { value: "openai", label: t(language, "settings.providerOpenai") },
+  ] as const;
+
   const [providerOpen, setProviderOpen] = useState(false);
   const providerRef = useRef<HTMLDivElement>(null);
 

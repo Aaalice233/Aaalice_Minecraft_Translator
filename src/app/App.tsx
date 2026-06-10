@@ -138,19 +138,32 @@ function AppShell() {
   useEffect(() => {
     getSettings()
       .then((s) => dispatch({ type: "SET_SETTINGS", payload: s }))
-      .catch((error) => console.warn("getSettings 失败:", error));
+      .catch((error) => console.warn("getSettings failed:", error));
   }, [dispatch]);
 
   useEffect(() => {
     const TOOLTIP_TOP_THRESHOLD = 60;
+    const TOOLTIP_EDGE_THRESHOLD = 300; // half of max tooltip width
     const handler = (e: MouseEvent) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>("[data-tooltip]");
       if (!el) return;
       const rect = el.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+
+      // Top/bottom edge
       if (rect.top < TOOLTIP_TOP_THRESHOLD) {
         el.setAttribute("data-tooltip-direction", "down");
       } else {
         el.removeAttribute("data-tooltip-direction");
+      }
+
+      // Left/right edge: keep tooltip within window bounds
+      if (centerX < TOOLTIP_EDGE_THRESHOLD) {
+        el.setAttribute("data-tooltip-align", "left");
+      } else if (window.innerWidth - centerX < TOOLTIP_EDGE_THRESHOLD) {
+        el.setAttribute("data-tooltip-align", "right");
+      } else {
+        el.removeAttribute("data-tooltip-align");
       }
     };
     document.addEventListener("mouseover", handler);
@@ -234,7 +247,7 @@ function AppShell() {
       document.documentElement.removeAttribute('data-vt-mode');
       animatingRef.current = false;
       dispatch({ type: "SET_SETTINGS", payload: updated });
-      saveSettings(updated).catch((err) => console.warn("saveSettings 失败:", err));
+      saveSettings(updated).catch((err) => console.warn("saveSettings failed:", err));
     });
   }, [settings, dispatch]);
 
@@ -287,6 +300,7 @@ function AppShell() {
           isFirstLaunch={isFirstLaunch}
           warmupComplete={warmupComplete}
           progress={warmupProgress}
+          language={language}
         />
       )}
       <div
@@ -361,18 +375,16 @@ function AppShell() {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-footer-left">
-            <button
-              className="dark-toggle-btn"
-              onClick={(e) => toggleDarkMode(e)}
-              type="button"
-              data-tooltip={settings?.uiDarkMode ? t(language, "settings.uiDarkModeOff") : t(language, "settings.uiDarkModeOn")}
-              data-tooltip-direction="down"
-            >
-              {settings?.uiDarkMode ? <Sun size={14} /> : <Moon size={14} />}
-            </button>
-            <span>v0.1.0</span>
-          </div>
+          <button
+            className="dark-toggle-btn"
+            onClick={(e) => toggleDarkMode(e)}
+            type="button"
+            data-tooltip={settings?.uiDarkMode ? t(language, "settings.uiDarkModeOff") : t(language, "settings.uiDarkModeOn")}
+            data-tooltip-direction="down"
+          >
+            {settings?.uiDarkMode ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+          <span>v0.1.0</span>
           <span className="status-dot" data-tooltip={t(language, "app.ready")} data-tooltip-direction="up">{t(language, "app.ready")}</span>
         </div>
       </aside>

@@ -142,7 +142,7 @@ export const DashboardPage = React.memo(function DashboardPage({
       setCopiedKey(key);
       setTimeout(() => setCopiedKey(null), 1200);
     } catch (err) {
-      console.warn("剪贴板复制失败:", err);
+      console.warn("clipboard copy failed:", err);
     }
   }, []);
 
@@ -269,8 +269,8 @@ export const DashboardPage = React.memo(function DashboardPage({
         }
       }, 3000);
     } catch (err) {
-      console.error("取消扫描失败:", err);
-      setError("取消扫描失败: " + (err instanceof Error ? err.message : String(err)));
+      console.error("cancel scan failed:", err);
+      setError("Cancel scan failed: " + (err instanceof Error ? err.message : String(err)));
       setScanElapsedMs(null);
       setIsCancelling(false);
     }
@@ -566,16 +566,16 @@ export const DashboardPage = React.memo(function DashboardPage({
         <div className="alert info" style={{ marginTop: 12 }}>
           <Zap size={17} />
           <div style={{ flex: 1 }}>
-            <strong>发现 {diffResult.newModCount} 个新模组</strong>
+            <strong>{t(language, "dashboard.newModsFound", { count: diffResult.newModCount })}</strong>
             <p style={{ margin: "4px 0", fontSize: 13, color: "var(--text-muted)" }}>
-              共 {diffResult.pendingEntries} 条待翻译条目：
+              {t(language, "dashboard.newPendingEntries", { count: diffResult.pendingEntries })}
             </p>
             <ul style={{ margin: "4px 0 0 0", paddingLeft: 20, fontSize: 12 }}>
               {diffResult.newMods.slice(0, 10).map((id) => (
                 <li key={id}>{id}</li>
               ))}
               {diffResult.newMods.length > 10 && (
-                <li style={{ color: "var(--text-muted)" }}>...还有 {diffResult.newMods.length - 10} 个</li>
+                <li style={{ color: "var(--text-muted)" }}>{t(language, "dashboard.andMore", { count: diffResult.newMods.length - 10 })}</li>
               )}
             </ul>
           </div>
@@ -586,7 +586,7 @@ export const DashboardPage = React.memo(function DashboardPage({
               type="button"
               style={{ fontSize: 13 }}
             >
-              知道了
+              {t(language, "dashboard.gotIt")}
             </button>
           </div>
         </div>
@@ -606,11 +606,11 @@ export const DashboardPage = React.memo(function DashboardPage({
         ))}
         {scanSummary && scanSummary.dictionaryCacheTotal != null && scanSummary.dictionaryCacheTotal > 0 && (
           <article className="stat-card" key="dict-cache">
-            <span className="stat-label">词典缓存</span>
+            <span className="stat-label">{t(language, "dashboard.dictCache")}</span>
             <span className="stat-value">
               {scanSummary.dictionaryCacheHits}/{scanSummary.dictionaryCacheTotal}
             </span>
-            <span className="stat-hint">命中/检查</span>
+            <span className="stat-hint">{t(language, "dashboard.dictHitCheck")}</span>
           </article>
         )}
       </div>
@@ -631,7 +631,7 @@ export const DashboardPage = React.memo(function DashboardPage({
           {t(language, "dashboard.resourceSources")}
           {scanSummary && scanSummary.resourcePacks.length > 0 && (
             <span style={{ marginLeft: "auto", fontWeight: 400, fontSize: 12, color: "var(--text-muted)" }}>
-              {scanSummary.resourcePacks.reduce((s, p) => s + p.langFileCount, 0)} 个文件 / {scanSummary.resourcePacks.reduce((s, p) => s + p.entryCount, 0)} 条
+              {t(language, "dashboard.resourceFilesEntries", { files: scanSummary.resourcePacks.reduce((s, p) => s + p.langFileCount, 0), entries: scanSummary.resourcePacks.reduce((s, p) => s + p.entryCount, 0) })}
             </span>
           )}
         </div>
@@ -759,7 +759,7 @@ export const DashboardPage = React.memo(function DashboardPage({
                                   onChange={(e) => sf.handleFilterChange("formats", e.target.value || null)}
                                   autoFocus
                                 >
-                                  <option value="">全部格式</option>
+                                  <option value="">{t(language, "dashboard.filterAllFormats")}</option>
                                   <option value="json">json</option>
                                   <option value="lang">lang</option>
                                 </select>
@@ -767,7 +767,7 @@ export const DashboardPage = React.memo(function DashboardPage({
                               {(col.key === "languageFileCount" || col.key === "pending") && (
                                 <div>
                                   <div className="number-range-row">
-                                    <span>从</span>
+                                    <span>{t(language, "dashboard.rangeFrom")}</span>
                                     <input
                                       type="number"
                                       min={0}
@@ -780,7 +780,7 @@ export const DashboardPage = React.memo(function DashboardPage({
                                     />
                                   </div>
                                   <div className="number-range-row">
-                                    <span>到</span>
+                                    <span>{t(language, "dashboard.rangeTo")}</span>
                                     <input
                                       type="number"
                                       min={0}
@@ -799,7 +799,7 @@ export const DashboardPage = React.memo(function DashboardPage({
                                   onChange={(e) => sf.handleFilterChange("hasTargetLanguage", e.target.value ?? null)}
                                   autoFocus
                                 >
-                                  <option value="">全部状态</option>
+                                  <option value="">{t(language, "dashboard.filterAllStatus")}</option>
                                   <option value="true">{t(language, "dashboard.hasTarget")}</option>
                                   <option value="false">{t(language, "dashboard.needsTranslation")}</option>
                                 </select>

@@ -8,7 +8,7 @@ import {
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { loadLatestTranslationJobMeta, loadTranslationResults, markJobReviewed, saveTranslationEntry, translateSingleEntry } from "../api/tauri";
-import { t } from "../i18n/translations";
+import { localeByAppLanguage, t } from "../i18n/translations";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { SortableTableHeader } from "../components/SortableTableHeader";
 import { TranslationEditPanel } from "../components/TranslationEditPanel";
@@ -77,7 +77,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
 
   // ── Auto-save when user leaves an edited textarea ──
   const handleSave = useCallback(async (entry: TranslationResult, newText: string) => {
-    if (!job) throw new Error("未找到翻译任务");
+    if (!job) throw new Error("Translation job not found");
     if (newText === entry.targetText) return;
     try {
       await saveTranslationEntry(job.jobId, entry.key, entry.modName, entry.modId, newText);
@@ -209,7 +209,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
       return (
         <div className="empty-state">
           <Loader2 size={24} className="spin" />
-          <p>加载中...</p>
+          <p>{t(language, "validate.loading")}</p>
         </div>
       );
     }
@@ -225,7 +225,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
           </div>
           <div className="empty-state">
             <Search size={32} />
-            <p>未找到翻译任务。请先在「翻译任务」页面完成一次翻译。</p>
+            <p>{t(language, "validate.noJob")}</p>
           </div>
         </>
       );
@@ -243,7 +243,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
           </div>
           <div className="empty-state">
             <Loader2 size={32} />
-            <p>翻译任务尚未完成，请等待翻译完成后进入校对。</p>
+            <p>{t(language, "validate.jobPending")}</p>
           </div>
         </>
       );
@@ -254,13 +254,22 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
         <div className="page-header">
           <div>
             <h1>{t(language, "validate.title")}</h1>
-            <p>{t(language, "validate.description")}</p>
+            <p>
+              {job
+                ? (() => {
+                    const dateStr = job.completedAt
+                      ? new Date(job.completedAt).toLocaleString(localeByAppLanguage[language], { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })
+                      : "";
+                    return t(language, "validate.summary", { count: job.completedEntries, date: dateStr, total: allEntries.length });
+                  })()
+                : t(language, "validate.description")}
+            </p>
           </div>
           <div className="page-header-button">
             {isReviewed && (
               <span className="badge success" style={{ fontSize: 12, marginRight: 8 }}>
                 <CheckCircle size={14} style={{ marginRight: 4 }} />
-                已校对
+                {t(language, "validate.reviewed")}
               </span>
             )}
             {!isReviewed && allEntries.length > 0 && (
@@ -275,26 +284,10 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
                 ) : (
                   <PackageCheck size={18} />
                 )}
-                校对完成
+                {t(language, "validate.markDone")}
               </button>
             )}
           </div>
-        </div>
-
-        {/* ── Job info bar ── */}
-        <div className="job-info-bar">
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-            <CheckCircle size={14} style={{ color: "var(--accent)" }} />
-            {job.completedEntries} 条已翻译
-          </span>
-          {job.completedAt && (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-              {new Date(job.completedAt).toLocaleString("zh-CN", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-            </span>
-          )}
-          <span style={{ marginLeft: "auto", color: "var(--text-muted)" }}>
-            {allEntries.length} 个条目
-          </span>
         </div>
 
         {/* ── Error / Info alerts ── */}
@@ -306,44 +299,44 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
         {allEntries.length === 0 && (
           <div className="empty-state" style={{ padding: 32 }}>
             <Search size={28} />
-            <p>暂无翻译结果</p>
+            <p>{t(language, "validate.noResults")}</p>
           </div>
         )}
 
         {/* ── Flat table ── */}
         {allEntries.length > 0 && (
-          <div className="log-panel" style={{ flex: 1, marginTop: 0 }}>
-            <div className="log-panel-header">
-              <h3>翻译条目</h3>
-              {filteredEntries.length > 0 && (
-                <span className="log-entries-count">
-                  {filteredEntries.length} / {allEntries.length} 条
-                </span>
-              )}
+          <>
+          <div className="dictionary-search-row">
+            <label className="search-field">
+              <Search size={17} />
               <input
-                className="log-panel-filter"
-                placeholder="搜索模组名、ModId、键名、原文或译文..."
                 value={filterTerm}
                 onChange={(e) => setFilterTerm(e.target.value)}
+                placeholder={t(language, "validate.searchPlaceholder")}
               />
-            </div>
+            </label>
+          </div>
+          <div className="log-panel" style={{ flex: 1, marginTop: 0 }}>
             <div className="log-panel-body">
               {filteredEntries.length === 0 ? (
-                <div className="log-panel-empty">没有匹配的条目</div>
+                <div className="log-panel-empty">{t(language, "validate.noMatch")}</div>
               ) : (
                 <TableVirtuoso
                   followOutput={false}
                   style={{ height: "100%" }}
                   totalCount={filteredEntries.length}
                   components={{
+                    Scroller: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, ...props }, ref) => (
+                      <div ref={ref} style={{ ...style, overflowX: "hidden" }} {...props} />
+                    )),
                     Table: ({ children, ...rest }) => (
                       <table {...rest}>
                         <colgroup>
-                          <col style={{ width: "17%" }} />
-                          <col style={{ width: "15%" }} />
-                          <col style={{ width: "27%" }} />
-                          <col style={{ width: "31%" }} />
-                          <col style={{ width: "10%" }} />
+                          <col style={{ width: "16%" }} />
+                          <col style={{ width: "12%" }} />
+                          <col style={{ width: "28%" }} />
+                          <col style={{ width: "30%" }} />
+                          <col style={{ width: "14%" }} />
                         </colgroup>
                         {children}
                       </table>
@@ -351,11 +344,18 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
                   }}
                   fixedHeaderContent={() => {
                     const validateColumns: import("../components/SortableTableHeader").ColumnConfig[] = [
-                      { key: "modName", label: "Mod 名称", filterType: "text", thStyle: sortThStyle },
-                      { key: "modId", label: "Mod ID", filterType: "text", thStyle: sortThStyle },
-                      { key: "sourceText", label: "原文", filterType: "text", thStyle: sortThStyle },
-                      { key: "targetText", label: "译文", filterType: "text", thStyle: sortThStyle },
-                      { key: "sourceType", label: "来源", filterType: "text", thStyle: sortThStyle },
+                      { key: "modName", label: t(language, "validate.col.modName"), filterType: "text", thStyle: sortThStyle },
+                      { key: "modId", label: t(language, "validate.col.modId"), filterType: "text", thStyle: sortThStyle },
+                      { key: "sourceText", label: t(language, "validate.col.sourceText"), filterType: "text", thStyle: sortThStyle },
+                      { key: "targetText", label: t(language, "validate.col.targetText"), filterType: "text", thStyle: sortThStyle },
+                      { key: "sourceType", label: t(language, "validate.col.sourceType"), filterType: "select", filterOptions: [
+                        { value: "llm", label: t(language, "jobs.sourceType.llm") },
+                        { value: "dictionary", label: t(language, "jobs.sourceType.dictionary") },
+                        { value: "existing", label: t(language, "jobs.sourceType.existing") },
+                        { value: "skipped", label: t(language, "jobs.sourceType.skipped") },
+                        { value: "failed", label: t(language, "jobs.sourceType.failed") },
+                        { value: "reviewed", label: t(language, "jobs.sourceType.reviewed") },
+                      ], thStyle: sortThStyle },
                     ];
                     return (
                       <SortableTableHeader
@@ -377,6 +377,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
                     return (
                       <ValidateRow
                         entry={entry}
+                        language={language}
                         onOpenPanel={() => {
                           setPanelKey(`${entry.modId}::${entry.key}`);
                           setPanelOpen(true);
@@ -389,6 +390,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
               )}
             </div>
           </div>
+          </>
         )}
 
         {/* ── Edit Panel (via createPortal) ── */}
@@ -408,7 +410,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
               const orig = filteredEntries.find(
                 (e) => e.key === panelEntry.key && e.modName === panelEntry.modName && e.modId === panelEntry.modId,
               );
-              if (!orig) throw new Error("条目已不在当前列表，无法保存");
+              if (!orig) throw new Error("Entry no longer in list, cannot save");
               await handleSave(orig, newText);
             }}
             onClose={() => setPanelOpen(false)}
@@ -446,7 +448,7 @@ const sortThStyle: React.CSSProperties = {
 
 const tdStyle: React.CSSProperties = {
   padding: "8px 12px",
-  verticalAlign: "top",
+  verticalAlign: "middle",
   borderBottom: "1px solid var(--bg-muted)",
   lineHeight: 1.5,
 };
@@ -461,58 +463,42 @@ const highlightedTdStyle: React.CSSProperties = {
 
 const ValidateRow = React.memo(function ValidateRow({
   entry,
+  language,
   onOpenPanel,
   highlighted,
 }: {
   entry: TranslationResult;
+  language: AppLanguage;
   onOpenPanel?: () => void;
   highlighted?: boolean;
 }) {
-  let sourceTypeLabel = entry.sourceType;
-  if (sourceTypeLabel === "llm") sourceTypeLabel = "LLM";
-  else if (sourceTypeLabel === "dictionary") sourceTypeLabel = "词典";
-  else if (sourceTypeLabel === "existing") sourceTypeLabel = "已有";
-  else if (sourceTypeLabel === "skipped") sourceTypeLabel = "跳过";
-  else if (sourceTypeLabel === "failed") sourceTypeLabel = "失败";
-  else if (sourceTypeLabel === "reviewed") sourceTypeLabel = "已审";
+  const sourceTypeLabel = t(language, `jobs.sourceType.${entry.sourceType}` as any);
 
   const hStyle = highlighted ? highlightedTdStyle : tdStyle;
 
   return (
     <>
-      <td style={{ ...hStyle, fontWeight: 500 }} title={entry.modName}>
+      <td style={{ ...hStyle, fontWeight: 500, wordBreak: "break-word" }} title={entry.modName}>
         {entry.modName}
       </td>
-      <td style={{ ...hStyle, fontFamily: '"JetBrains Mono", monospace', fontSize: 11 }} title={entry.modId}>
+      <td style={{ ...hStyle, wordBreak: "break-all" }} title={entry.modId}>
         {entry.modId}
       </td>
-      <td style={{ ...hStyle }} title={entry.sourceText}>
-        <span style={{
-          display: "-webkit-box",
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-          lineHeight: 1.5,
-        }}>
+      <td style={{ ...hStyle, wordBreak: "break-word" }} title={entry.sourceText}>
+        <span style={{ lineHeight: 1.5 }}>
           {entry.sourceText}
         </span>
       </td>
       <td
-        style={{ ...hStyle, cursor: "pointer" }}
+        style={{ ...hStyle, cursor: "pointer", wordBreak: "break-word" }}
         onDoubleClick={onOpenPanel}
-        title="双击打开编辑面板"
+        title={t(language, "validate.doubleClickEdit")}
       >
-        <span style={{
-          display: "-webkit-box",
-          WebkitLineClamp: 3,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
-          lineHeight: 1.5,
-        }}>
+        <span style={{ lineHeight: 1.5 }}>
           {entry.targetText}
         </span>
       </td>
-      <td style={{ ...hStyle, textAlign: "center" }}>
+      <td style={{ ...hStyle }}>
         <span className="badge" style={{ fontSize: 10 }}>{sourceTypeLabel}</span>
       </td>
     </>

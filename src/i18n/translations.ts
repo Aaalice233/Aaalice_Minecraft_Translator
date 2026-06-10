@@ -54,11 +54,24 @@ export type TranslationKey =
   | "dashboard.resourceSources"
   | "dashboard.resourceCount"
   | "dashboard.emptyResource"
+  | "dashboard.filterAllFormats"
+  | "dashboard.filterAllStatus"
+  | "dashboard.gotIt"
+  | "dashboard.newModsFound"
+  | "dashboard.newPendingEntries"
+  | "dashboard.andMore"
+  | "dashboard.dictCache"
+  | "dashboard.dictHitCheck"
+  | "dashboard.rangeFrom"
+  | "dashboard.rangeTo"
+  | "dashboard.resourceFilesEntries"
   | "common.loading"
   | "common.save"
   | "common.cancel"
   | "common.copied"
   | "common.delete"
+  | "common.filterAll"
+  | "common.filterPlaceholder"
   | "dictionary.title"
   | "dictionary.subtitle"
   | "dictionary.subtitleEmpty"
@@ -82,6 +95,27 @@ export type TranslationKey =
   | "dictionary.saved"
   | "dictionary.deleted"
   | "dictionary.moreResults"
+  | "dictionary.doubleClickEdit"
+  | "dictionary.readOnly"
+  | "editPanel.ariaClose"
+  | "editPanel.ariaLabel"
+  | "editPanel.ariaTargetEdit"
+  | "editPanel.close"
+  | "editPanel.copied"
+  | "editPanel.copySource"
+  | "editPanel.entryNotFound"
+  | "editPanel.llmFailed"
+  | "editPanel.llmTranslate"
+  | "editPanel.llmTranslateTooltip"
+  | "editPanel.nextTooltip"
+  | "editPanel.prevTooltip"
+  | "editPanel.retranslate"
+  | "editPanel.retry"
+  | "editPanel.save"
+  | "editPanel.sourceTitle"
+  | "editPanel.targetTitle"
+  | "editPanel.translating"
+  | "editPanel.accept"
   | "jobs.title"
   | "jobs.subtitle"
   | "jobs.start"
@@ -98,6 +132,17 @@ export type TranslationKey =
   | "jobs.stage.matching"
   | "jobs.stage.translating"
   | "jobs.stage.packaging"
+  | "jobs.stage.scanning"
+  | "jobs.stage.extracting"
+  | "jobs.stage.dictionary"
+  | "jobs.stage.translatingWithSub"
+  | "jobs.cancelFailed"
+  | "jobs.clearFilter"
+  | "jobs.clearStatusFilter"
+  | "jobs.entryCountWithPercent"
+  | "jobs.filterByStatus"
+  | "jobs.postScanFailed"
+  | "jobs.totalCount"
   | "jobs.completed.message"
   | "jobs.canceled"
   | "jobs.canceledStatus"
@@ -130,6 +175,7 @@ export type TranslationKey =
   | "jobs.sourceType.llm"
   | "jobs.sourceType.skipped"
   | "jobs.sourceType.failed"
+  | "jobs.sourceType.reviewed"
   | "packages.title"
   | "packages.subtitle"
   | "packages.dryRun"
@@ -143,6 +189,32 @@ export type TranslationKey =
   | "packages.confirmTitle"
   | "packages.confirmMessage"
   | "packages.copyToInstance"
+  | "packages.allMods"
+  | "packages.copyToInstanceBtn"
+  | "packages.copyToInstanceTooltip"
+  | "packages.detailKey"
+  | "packages.detailSource"
+  | "packages.entries_label"
+  | "packages.entryCount"
+  | "packages.failed_label"
+  | "packages.files_label"
+  | "packages.languageMismatch"
+  | "packages.modCount"
+  | "packages.moreEntries"
+  | "packages.noLangFiles"
+  | "packages.noTranslation"
+  | "packages.openFolder"
+  | "packages.openFolderTooltip"
+  | "packages.packDone"
+  | "packages.packing"
+  | "packages.packingPercent"
+  | "packages.ready"
+  | "packages.regenerate"
+  | "packages.regenerateTooltip"
+  | "packages.reviewRequired"
+  | "packages.saveLocally"
+  | "packages.saveLocallyTooltip"
+  | "packages.zipFilter"
   | "packages.copySuccess"
   | "packages.copyFailed"
   | "packages.replaced"
@@ -226,6 +298,15 @@ export type TranslationKey =
   | "settings.card.timeouts"
   | "settings.card.dictionary"
   | "settings.futureAdvanced"
+  | "settings.providerOpenai"
+  | "splash.phase.settings"
+  | "splash.phase.local"
+  | "splash.phase.dictionary"
+  | "splash.phase.llm"
+  | "splash.offline"
+  | "splash.firstLaunch"
+  | "splash.skip"
+  | "splash.phase.completed"
   | "logs.title"
   | "logs.subtitle"
   | "logs.recentJob"
@@ -233,6 +314,15 @@ export type TranslationKey =
   | "logs.instance"
   | "logs.warning"
   | "logs.empty"
+  | "logs.pause"
+  | "logs.resume"
+  | "logs.copyAll"
+  | "logs.clear"
+  | "logs.allLevel"
+  | "logs.paused"
+  | "logs.lines"
+  | "logs.linesWithTotal"
+  | "logs.scrollToBottom"
   | "dashboard.stage.scan"
   | "dashboard.stage.resourcepacks"
   | "dashboard.stage.aggregate"
@@ -276,7 +366,22 @@ export type TranslationKey =
   | "summary.failed"
   | "validate.title"
   | "validate.description"
-  | "validate.entries";
+  | "validate.col.modName"
+  | "validate.col.modId"
+  | "validate.col.sourceText"
+  | "validate.col.targetText"
+  | "validate.col.sourceType"
+  | "validate.summary"
+  | "validate.noJob"
+  | "validate.jobPending"
+  | "validate.entries"
+  | "validate.doubleClickEdit"
+  | "validate.loading"
+  | "validate.markDone"
+  | "validate.noMatch"
+  | "validate.noResults"
+  | "validate.reviewed"
+  | "validate.searchPlaceholder";
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -373,11 +478,24 @@ const zhCn: TranslationMap = {
   "dashboard.cancel": "取消扫描",
   "dashboard.cancelling": "正在停止...",
   "dashboard.cancelledMessage": "扫描已被取消，显示部分结果",
+  "dashboard.newModsFound": "发现 {count} 个新模组",
+  "dashboard.newPendingEntries": "共 {count} 条待翻译条目：",
+  "dashboard.andMore": "...还有 {count} 个",
+  "dashboard.gotIt": "知道了",
+  "dashboard.dictCache": "词典缓存",
+  "dashboard.dictHitCheck": "命中/检查",
+  "dashboard.rangeFrom": "从",
+  "dashboard.rangeTo": "到",
+  "dashboard.filterAllFormats": "全部格式",
+  "dashboard.filterAllStatus": "全部状态",
+  "dashboard.resourceFilesEntries": "{files} 个文件 / {entries} 条",
   "common.loading": "加载中...",
   "common.save": "保存",
   "common.cancel": "取消",
   "common.copied": "已复制",
   "common.delete": "删除",
+  "common.filterAll": "全部",
+  "common.filterPlaceholder": "筛选...",
   "dictionary.title": "词典管理",
   "dictionary.subtitle": "共 {total} 条词典条目，{mods} 个模组",
   "dictionary.subtitleEmpty": "词典尚未加载",
@@ -401,6 +519,27 @@ const zhCn: TranslationMap = {
   "dictionary.saved": "译文已更新",
   "dictionary.deleted": "条目已删除",
   "dictionary.moreResults": "显示前 500 条，还有 {count} 条未显示",
+  "dictionary.doubleClickEdit": "双击打开编辑面板",
+  "dictionary.readOnly": "只读",
+  "editPanel.ariaClose": "关闭",
+  "editPanel.ariaLabel": "翻译编辑面板",
+  "editPanel.ariaTargetEdit": "译文编辑",
+  "editPanel.close": "关闭",
+  "editPanel.copied": "已复制",
+  "editPanel.copySource": "复制原文",
+  "editPanel.entryNotFound": "未找到当前条目（可能已被过滤）",
+  "editPanel.llmFailed": "LLM 翻译失败",
+  "editPanel.llmTranslate": "LLM 翻译",
+  "editPanel.llmTranslateTooltip": "LLM 翻译",
+  "editPanel.nextTooltip": "下一项 (→)",
+  "editPanel.prevTooltip": "上一项 (←)",
+  "editPanel.retranslate": "重新翻译",
+  "editPanel.retry": "重试",
+  "editPanel.save": "保存",
+  "editPanel.sourceTitle": "原文",
+  "editPanel.targetTitle": "译文",
+  "editPanel.translating": "翻译中...",
+  "editPanel.accept": "采纳",
   "jobs.title": "翻译任务",
   "jobs.subtitle": "管理翻译流程，查看进度和结果",
   "jobs.start": "开始翻译",
@@ -417,6 +556,10 @@ const zhCn: TranslationMap = {
   "jobs.stage.matching": "匹配词典",
   "jobs.stage.translating": "翻译中",
   "jobs.stage.packaging": "打包中",
+  "jobs.stage.scanning": "正在扫描: {mod}",
+  "jobs.stage.extracting": "正在提取待翻译条目...",
+  "jobs.stage.dictionary": "正在词典匹配...",
+  "jobs.stage.translatingWithSub": "正在翻译{sub}",
   "jobs.completed.message": "翻译完成：共处理 {count} 条条目",
   "jobs.canceled": "翻译已取消",
   "jobs.canceledStatus": "已取消",
@@ -449,6 +592,14 @@ const zhCn: TranslationMap = {
   "jobs.sourceType.llm": "LLM 翻译",
   "jobs.sourceType.skipped": "已跳过",
   "jobs.sourceType.failed": "翻译失败",
+  "jobs.sourceType.reviewed": "已审",
+  "jobs.cancelFailed": "取消失败: {error}",
+  "jobs.clearFilter": "清除过滤",
+  "jobs.clearStatusFilter": "点击取消过滤此状态",
+  "jobs.entryCountWithPercent": "{label}: {count} 条 ({percent}%)",
+  "jobs.filterByStatus": "点击过滤此状态",
+  "jobs.postScanFailed": "翻译后自动重新扫描失败: {error}",
+  "jobs.totalCount": "总计 {count} 条",
   "packages.title": "资源包打包",
   "packages.subtitle": "生成翻译资源包并部署到实例",
   "packages.dryRun": "预览",
@@ -465,6 +616,32 @@ const zhCn: TranslationMap = {
   "packages.copySuccess": "已复制到 {path} {replaced}",
   "packages.copyFailed": "复制失败",
   "packages.replaced": "（已替换旧版本）",
+  "packages.allMods": "全部模组 ({count})",
+  "packages.copyToInstanceBtn": "复制到实例",
+  "packages.copyToInstanceTooltip": "复制到游戏实例 resourcepacks 目录",
+  "packages.detailKey": "键",
+  "packages.detailSource": "原文",
+  "packages.entries_label": "{count} 条目",
+  "packages.entryCount": "{count} 条翻译",
+  "packages.failed_label": "失败",
+  "packages.files_label": "{count} 文件",
+  "packages.languageMismatch": "当前设置的目标语言 ({current}) 与翻译结果的语言 ({job}) 不一致。将使用当前设置的语言打包。",
+  "packages.modCount": "{count} 个模组",
+  "packages.moreEntries": "...还有 {count} 条",
+  "packages.noLangFiles": "无语言文件",
+  "packages.noTranslation": "暂无可用的翻译结果，请先完成翻译",
+  "packages.openFolder": "打开文件夹",
+  "packages.openFolderTooltip": "在文件管理器中打开",
+  "packages.packDone": "打包完成",
+  "packages.packing": "正在打包...",
+  "packages.packingPercent": "正在打包 ({percent}%)",
+  "packages.ready": "已就绪",
+  "packages.regenerate": "重新生成",
+  "packages.regenerateTooltip": "重新生成资源包",
+  "packages.reviewRequired": "当前翻译任务尚未完成校对。请前往「校对」页面完成校对后再打包。",
+  "packages.saveLocally": "保存本地",
+  "packages.saveLocallyTooltip": "选择保存位置",
+  "packages.zipFilter": "ZIP 资源包",
   "settings.title": "设置中心",
   "settings.subtitle": "常用选项会持久化保存到本地设置文件。",
   "settings.systemPrompt": "系统提示词",
@@ -545,6 +722,15 @@ const zhCn: TranslationMap = {
   "settings.packPlaceholder": "例如: Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
   "settings.packDefaultI18n": "默认含 CFPAOrg (i18n) 和 VM 汉化资源包",
   "settings.futureAdvanced": "词典、打包和实验功能设置会在对应阶段接入。",
+  "settings.providerOpenai": "OpenAI 兼容",
+  "splash.phase.settings": "设置",
+  "splash.phase.local": "本地",
+  "splash.phase.dictionary": "词典",
+  "splash.phase.llm": "LLM",
+  "splash.offline": "离线模式",
+  "splash.firstLaunch": "首次启动，正在初始化…",
+  "splash.skip": "跳过，直接进入",
+  "splash.phase.completed": "",
   "logs.title": "日志中心",
   "logs.subtitle": "第一阶段已写入 main、job 和 error 日志；完整过滤器在后续阶段接入。",
   "logs.recentJob": "最近任务",
@@ -552,6 +738,15 @@ const zhCn: TranslationMap = {
   "logs.instance": "实例：{path}",
   "logs.warning": "warning：{count}",
   "logs.empty": "尚未执行扫描任务。",
+  "logs.pause": "暂停滚动",
+  "logs.resume": "继续滚动",
+  "logs.copyAll": "复制全部日志",
+  "logs.clear": "清空日志",
+  "logs.allLevel": "全部",
+  "logs.paused": "日志已暂停",
+  "logs.lines": "{count} 行",
+  "logs.linesWithTotal": "/ {count} 全部",
+  "logs.scrollToBottom": "回到底部",
   "tooltip.scan": "开始扫描模组的语言文件",
   "tooltip.cancelScan": "取消正在进行的扫描",
   "tooltip.pickInstance": "选择 Minecraft 实例目录",
@@ -587,7 +782,22 @@ const zhCn: TranslationMap = {
   "summary.failed": "失败 {count}",
   "validate.title": "校对工作台",
   "validate.description": "逐条审核 LLM 翻译结果，校对完成后可进入打包阶段",
+  "validate.col.modName": "Mod 名称",
+  "validate.col.modId": "Mod ID",
+  "validate.col.sourceText": "原文",
+  "validate.col.targetText": "译文",
+  "validate.col.sourceType": "来源",
+  "validate.summary": "{count} 条已翻译 · {date} · {total} 个条目",
+  "validate.noJob": "未找到翻译任务。请先在「翻译任务」页面完成一次翻译。",
+  "validate.jobPending": "翻译任务尚未完成，请等待翻译完成后进入校对。",
   "validate.entries": "{count} 条",
+  "validate.doubleClickEdit": "双击打开编辑面板",
+  "validate.loading": "加载中...",
+  "validate.markDone": "校对完成",
+  "validate.noMatch": "没有匹配的条目",
+  "validate.noResults": "暂无翻译结果",
+  "validate.reviewed": "已校对",
+  "validate.searchPlaceholder": "搜索模组名、ModId、键名、原文或译文...",
 };
 
 const enUs: TranslationMap = {
@@ -766,6 +976,15 @@ const enUs: TranslationMap = {
   "jobs.sourceType.llm": "LLM",
   "jobs.sourceType.skipped": "Skipped",
   "jobs.sourceType.failed": "Failed",
+  "jobs.sourceType.reviewed": "Reviewed",
+  "validate.col.modName": "Mod Name",
+  "validate.col.modId": "Mod ID",
+  "validate.col.sourceText": "Source",
+  "validate.col.targetText": "Target",
+  "validate.col.sourceType": "Type",
+  "validate.summary": "{count} translated · {date} · {total} entries",
+  "validate.noJob": "No translation job found. Complete a translation first.",
+  "validate.jobPending": "Translation job is still running. Wait for completion before reviewing.",
   "tooltip.scan": "Start scanning mod language files",
   "tooltip.cancelScan": "Cancel the current scan",
   "tooltip.pickInstance": "Select Minecraft instance directory",
@@ -802,6 +1021,102 @@ const enUs: TranslationMap = {
   "validate.title": "Validate Translations",
   "validate.description": "Review LLM translation results entry by entry, then proceed to packaging",
   "validate.entries": "{count} entries",
+  "common.filterAll": "All",
+  "common.filterPlaceholder": "Filter...",
+  "dashboard.andMore": "...and {count} more",
+  "dashboard.dictCache": "Dictionary Cache",
+  "dashboard.dictHitCheck": "Hit/Check",
+  "dashboard.filterAllFormats": "All formats",
+  "dashboard.filterAllStatus": "All statuses",
+  "dashboard.gotIt": "Got it",
+  "dashboard.newModsFound": "Found {count} new mod(s)",
+  "dashboard.newPendingEntries": "{count} entries pending translation:",
+  "dashboard.rangeFrom": "From",
+  "dashboard.rangeTo": "To",
+  "dashboard.resourceFilesEntries": "{files} files / {entries} entries",
+  "dictionary.doubleClickEdit": "Double-click to edit",
+  "dictionary.readOnly": "Read-only",
+  "editPanel.accept": "Accept",
+  "editPanel.ariaClose": "Close",
+  "editPanel.ariaLabel": "Translation Editor",
+  "editPanel.ariaTargetEdit": "Edit translation",
+  "editPanel.close": "Close",
+  "editPanel.copied": "Copied",
+  "editPanel.copySource": "Copy source",
+  "editPanel.entryNotFound": "Entry not found (may have been filtered out)",
+  "editPanel.llmFailed": "LLM translation failed",
+  "editPanel.llmTranslate": "LLM Translate",
+  "editPanel.llmTranslateTooltip": "LLM Translate",
+  "editPanel.nextTooltip": "Next (→)",
+  "editPanel.prevTooltip": "Previous (←)",
+  "editPanel.retranslate": "Retranslate",
+  "editPanel.retry": "Retry",
+  "editPanel.save": "Save",
+  "editPanel.sourceTitle": "Source",
+  "editPanel.targetTitle": "Translation",
+  "editPanel.translating": "Translating...",
+  "jobs.cancelFailed": "Cancel failed: {error}",
+  "jobs.clearFilter": "Clear filter",
+  "jobs.clearStatusFilter": "Click to clear status filter",
+  "jobs.entryCountWithPercent": "{label}: {count} ({percent}%)",
+  "jobs.filterByStatus": "Click to filter by status",
+  "jobs.postScanFailed": "Post-translation rescan failed: {error}",
+  "jobs.stage.dictionary": "Matching dictionary...",
+  "jobs.stage.extracting": "Extracting entries...",
+  "jobs.stage.scanning": "Scanning: {mod}",
+  "jobs.stage.translatingWithSub": "Translating{sub}",
+  "jobs.totalCount": "Total {count} entries",
+  "logs.allLevel": "All",
+  "logs.clear": "Clear log",
+  "logs.copyAll": "Copy all logs",
+  "logs.lines": "{count} lines",
+  "logs.linesWithTotal": "/ {count} total",
+  "logs.pause": "Pause scrolling",
+  "logs.paused": "Log paused",
+  "logs.resume": "Resume scrolling",
+  "logs.scrollToBottom": "Scroll to bottom",
+  "packages.allMods": "All mods ({count})",
+  "packages.copyToInstanceBtn": "Copy to Instance",
+  "packages.copyToInstanceTooltip": "Copy to instance resourcepacks directory",
+  "packages.detailKey": "Key",
+  "packages.detailSource": "Source",
+  "packages.entries_label": "{count} entries",
+  "packages.entryCount": "{count} translations",
+  "packages.failed_label": "Failed",
+  "packages.files_label": "{count} files",
+  "packages.languageMismatch": "Current target language ({current}) differs from the translation language ({job}). Using current language for packaging.",
+  "packages.modCount": "{count} mods",
+  "packages.moreEntries": "...and {count} more",
+  "packages.noLangFiles": "No language files",
+  "packages.noTranslation": "No translation results available. Please complete a translation first.",
+  "packages.openFolder": "Open Folder",
+  "packages.openFolderTooltip": "Open in file manager",
+  "packages.packDone": "Pack complete",
+  "packages.packing": "Packing...",
+  "packages.packingPercent": "Packing ({percent}%)",
+  "packages.ready": "Ready",
+  "packages.regenerate": "Regenerate",
+  "packages.regenerateTooltip": "Regenerate resource pack",
+  "packages.reviewRequired": "The current translation job has not been reviewed. Please review it on the Validate page first.",
+  "packages.saveLocally": "Save Locally",
+  "packages.saveLocallyTooltip": "Choose save location",
+  "packages.zipFilter": "ZIP Pack",
+  "settings.providerOpenai": "OpenAI Compatible",
+  "splash.firstLaunch": "First launch, initializing…",
+  "splash.offline": "Offline mode",
+  "splash.phase.completed": "",
+  "splash.phase.dictionary": "Dictionary",
+  "splash.phase.llm": "LLM",
+  "splash.phase.local": "Local",
+  "splash.phase.settings": "Settings",
+  "splash.skip": "Skip and continue",
+  "validate.doubleClickEdit": "Double-click to edit",
+  "validate.loading": "Loading...",
+  "validate.markDone": "Mark Reviewed",
+  "validate.noMatch": "No matching entries",
+  "validate.noResults": "No translation results",
+  "validate.reviewed": "Reviewed",
+  "validate.searchPlaceholder": "Search mod name, ModId, key, source or target text...",
 };
 
 const jaJp: TranslationMap = {
@@ -969,6 +1284,100 @@ const jaJp: TranslationMap = {
   "summary.dictionary": "辞書 {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "失敗 {count}",
+  "common.filterAll": "すべて",
+  "common.filterPlaceholder": "フィルター...",
+  "dashboard.andMore": "...他 {count} 件",
+  "dashboard.dictCache": "辞書キャッシュ",
+  "dashboard.dictHitCheck": "ヒット/チェック",
+  "dashboard.filterAllFormats": "すべての形式",
+  "dashboard.filterAllStatus": "すべての状態",
+  "dashboard.gotIt": "確認",
+  "dashboard.newModsFound": "{count} 個の新規 Mod を検出",
+  "dashboard.newPendingEntries": "合計 {count} 件の未翻訳項目：",
+  "dashboard.rangeFrom": "最小",
+  "dashboard.rangeTo": "最大",
+  "dashboard.resourceFilesEntries": "{files} ファイル / {entries} 項目",
+  "dictionary.doubleClickEdit": "ダブルクリックで編集",
+  "dictionary.readOnly": "読み取り専用",
+  "editPanel.accept": "採用",
+  "editPanel.ariaClose": "閉じる",
+  "editPanel.ariaLabel": "翻訳エディター",
+  "editPanel.ariaTargetEdit": "訳文編集",
+  "editPanel.close": "閉じる",
+  "editPanel.copied": "コピーしました",
+  "editPanel.copySource": "原文をコピー",
+  "editPanel.entryNotFound": "項目が見つかりません（フィルターで除外された可能性があります）",
+  "editPanel.llmFailed": "LLM 翻訳失敗",
+  "editPanel.llmTranslate": "LLM 翻訳",
+  "editPanel.nextTooltip": "次へ (→)",
+  "editPanel.prevTooltip": "前へ (←)",
+  "editPanel.retranslate": "再翻訳",
+  "editPanel.retry": "リトライ",
+  "editPanel.save": "保存",
+  "editPanel.sourceTitle": "原文",
+  "editPanel.targetTitle": "訳文",
+  "editPanel.translating": "翻訳中...",
+  "jobs.cancelFailed": "キャンセル失敗: {error}",
+  "jobs.clearFilter": "フィルターをクリア",
+  "jobs.clearStatusFilter": "クリックしてステータスフィルターを解除",
+  "jobs.entryCountWithPercent": "{label}: {count} 件 ({percent}%)",
+  "jobs.filterByStatus": "クリックしてステータスでフィルター",
+  "jobs.postScanFailed": "翻訳後の再スキャンに失敗: {error}",
+  "jobs.stage.dictionary": "辞書を照合中...",
+  "jobs.stage.extracting": "翻訳項目を抽出中...",
+  "jobs.stage.scanning": "スキャン中: {mod}",
+  "jobs.stage.translatingWithSub": "翻訳中{sub}",
+  "jobs.totalCount": "合計 {count} 件",
+  "logs.allLevel": "すべて",
+  "logs.clear": "ログをクリア",
+  "logs.copyAll": "すべてのログをコピー",
+  "logs.lines": "{count} 行",
+  "logs.linesWithTotal": "/ 合計 {count}",
+  "logs.pause": "スクロール停止",
+  "logs.paused": "ログ停止中",
+  "logs.resume": "スクロール再開",
+  "logs.scrollToBottom": "最下部へ",
+  "packages.allMods": "すべての Mod ({count})",
+  "packages.copyToInstanceBtn": "インスタンスにコピー",
+  "packages.copyToInstanceTooltip": "インスタンスの resourcepacks ディレクトリにコピー",
+  "packages.detailKey": "キー",
+  "packages.detailSource": "原文",
+  "packages.entries_label": "{count} 項目",
+  "packages.entryCount": "{count} 翻訳",
+  "packages.failed_label": "失敗",
+  "packages.files_label": "{count} ファイル",
+  "packages.languageMismatch": "現在の対象言語 ({current}) が翻訳結果の言語 ({job}) と異なります。現在の言語でパッケージ化します。",
+  "packages.modCount": "{count} 個のMod",
+  "packages.moreEntries": "...他 {count} 件",
+  "packages.noLangFiles": "言語ファイルなし",
+  "packages.noTranslation": "翻訳結果がありません。先に翻訳を完了してください。",
+  "packages.openFolder": "フォルダを開く",
+  "packages.openFolderTooltip": "ファイルマネージャーで開く",
+  "packages.packDone": "パッケージ完了",
+  "packages.packing": "パッケージ中...",
+  "packages.packingPercent": "パッケージ中 ({percent}%)",
+  "packages.ready": "準備完了",
+  "packages.regenerate": "再生成",
+  "packages.regenerateTooltip": "リソースパックを再生成",
+  "packages.reviewRequired": "現在の翻訳ジョブはまだレビューされていません。先に「レビュー」ページでレビューを完了してください。",
+  "packages.saveLocally": "ローカル保存",
+  "packages.saveLocallyTooltip": "保存場所を選択",
+  "packages.zipFilter": "ZIP パック",
+  "settings.providerOpenai": "OpenAI 互換",
+  "splash.firstLaunch": "初回起動、初期化中…",
+  "splash.offline": "オフラインモード",
+  "splash.phase.dictionary": "辞書",
+  "splash.phase.llm": "LLM",
+  "splash.phase.local": "ローカル",
+  "splash.phase.settings": "設定",
+  "splash.skip": "スキップして続行",
+  "validate.doubleClickEdit": "ダブルクリックで編集",
+  "validate.loading": "読み込み中...",
+  "validate.markDone": "レビュー完了",
+  "validate.noMatch": "一致する項目がありません",
+  "validate.noResults": "翻訳結果がありません",
+  "validate.reviewed": "レビュー済み",
+  "validate.searchPlaceholder": "Mod名、ModId、キー、原文、訳文を検索...",
 };
 
 const koKr: TranslationMap = {
@@ -1136,6 +1545,100 @@ const koKr: TranslationMap = {
   "summary.dictionary": "사전 {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "실패 {count}",
+  "common.filterAll": "전체",
+  "common.filterPlaceholder": "필터...",
+  "dashboard.newModsFound": "새 모드 {count}개 발견",
+  "dashboard.newPendingEntries": "번역 대기 {count}개:",
+  "dashboard.andMore": "...외 {count}개",
+  "dashboard.gotIt": "확인",
+  "dashboard.dictCache": "사전 캐시",
+  "dashboard.dictHitCheck": "적중/확인",
+  "dashboard.rangeFrom": "최소",
+  "dashboard.rangeTo": "최대",
+  "dashboard.filterAllFormats": "모든 형식",
+  "dashboard.filterAllStatus": "모든 상태",
+  "dashboard.resourceFilesEntries": "{files}개 파일 / {entries}개 항목",
+  "dictionary.doubleClickEdit": "더블클릭하여 편집",
+  "dictionary.readOnly": "읽기 전용",
+  "editPanel.sourceTitle": "원문",
+  "editPanel.targetTitle": "번역문",
+  "editPanel.translating": "번역 중...",
+  "editPanel.retry": "재시도",
+  "editPanel.accept": "적용",
+  "editPanel.save": "저장",
+  "editPanel.close": "닫기",
+  "editPanel.copied": "복사됨",
+  "editPanel.copySource": "원문 복사",
+  "editPanel.retranslate": "다시 번역",
+  "editPanel.llmFailed": "LLM 번역 실패",
+  "editPanel.llmTranslate": "LLM 번역",
+  "editPanel.entryNotFound": "항목을 찾을 수 없음 (필터에서 제외되었을 수 있음)",
+  "editPanel.prevTooltip": "이전 (←)",
+  "editPanel.nextTooltip": "다음 (→)",
+  "editPanel.ariaLabel": "번역 편집기",
+  "editPanel.ariaClose": "닫기",
+  "editPanel.ariaTargetEdit": "번역문 편집",
+  "jobs.stage.scanning": "스캔 중: {mod}",
+  "jobs.stage.extracting": "번역 항목 추출 중...",
+  "jobs.stage.dictionary": "사전 매칭 중...",
+  "jobs.stage.translatingWithSub": "번역 중{sub}",
+  "jobs.cancelFailed": "취소 실패: {error}",
+  "jobs.clearFilter": "필터 지우기",
+  "jobs.clearStatusFilter": "클릭하여 상태 필터 해제",
+  "jobs.entryCountWithPercent": "{label}: {count}개 ({percent}%)",
+  "jobs.filterByStatus": "클릭하여 상태별 필터",
+  "jobs.postScanFailed": "번역 후 재스캔 실패: {error}",
+  "jobs.totalCount": "총 {count}개 항목",
+  "logs.pause": "스크롤 일시정지",
+  "logs.resume": "스크롤 재개",
+  "logs.copyAll": "모든 로그 복사",
+  "logs.clear": "로그 지우기",
+  "logs.allLevel": "전체",
+  "logs.paused": "로그 일시정지됨",
+  "logs.lines": "{count}줄",
+  "logs.linesWithTotal": "/ 총 {count}",
+  "logs.scrollToBottom": "맨 아래로",
+  "packages.allMods": "모든 모드 ({count})",
+  "packages.copyToInstanceBtn": "인스턴스에 복사",
+  "packages.copyToInstanceTooltip": "인스턴스 resourcepacks 디렉토리에 복사",
+  "packages.detailKey": "키",
+  "packages.detailSource": "원문",
+  "packages.entries_label": "{count}개 항목",
+  "packages.entryCount": "{count}개 번역",
+  "packages.failed_label": "실패",
+  "packages.files_label": "{count}개 파일",
+  "packages.languageMismatch": "현재 대상 언어({current})가 번역 결과 언어({job})와 일치하지 않습니다. 현재 언어로 패키징합니다.",
+  "packages.modCount": "{count}개 모드",
+  "packages.moreEntries": "...외 {count}개",
+  "packages.noLangFiles": "언어 파일 없음",
+  "packages.noTranslation": "번역 결과가 없습니다. 먼저 번역을 완료해주세요.",
+  "packages.openFolder": "폴더 열기",
+  "packages.openFolderTooltip": "파일 관리자에서 열기",
+  "packages.packDone": "패키징 완료",
+  "packages.packing": "패키징 중...",
+  "packages.packingPercent": "패키징 중 ({percent}%)",
+  "packages.ready": "준비됨",
+  "packages.regenerate": "재생성",
+  "packages.regenerateTooltip": "리소스 팩 재생성",
+  "packages.reviewRequired": "현재 번역 작업이 아직 검토되지 않았습니다. '검토' 페이지에서 검토를 완료해주세요.",
+  "packages.saveLocally": "로컬 저장",
+  "packages.saveLocallyTooltip": "저장 위치 선택",
+  "packages.zipFilter": "ZIP 팩",
+  "settings.providerOpenai": "OpenAI 호환",
+  "splash.phase.settings": "설정",
+  "splash.phase.local": "로컬",
+  "splash.phase.dictionary": "사전",
+  "splash.phase.llm": "LLM",
+  "splash.offline": "오프라인 모드",
+  "splash.firstLaunch": "첫 실행, 초기화 중…",
+  "splash.skip": "건너뛰고 계속",
+  "validate.doubleClickEdit": "더블클릭하여 편집",
+  "validate.loading": "로딩 중...",
+  "validate.markDone": "검토 완료",
+  "validate.noMatch": "일치하는 항목 없음",
+  "validate.noResults": "번역 결과 없음",
+  "validate.reviewed": "검토됨",
+  "validate.searchPlaceholder": "모드명, ModId, 키, 원문 또는 번역문 검색...",
 };
 
 
@@ -1392,6 +1895,100 @@ const ruRu: TranslationMap = {
   "summary.dictionary": "Словарь {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "Ошибок {count}",
+  "common.filterAll": "Все",
+  "common.filterPlaceholder": "Фильтр...",
+  "dashboard.newModsFound": "Обнаружено {count} новых модов",
+  "dashboard.newPendingEntries": "{count} записей ожидают перевода:",
+  "dashboard.andMore": "...и ещё {count}",
+  "dashboard.gotIt": "Понятно",
+  "dashboard.dictCache": "Кеш словаря",
+  "dashboard.dictHitCheck": "Попаданий/Проверок",
+  "dashboard.rangeFrom": "От",
+  "dashboard.rangeTo": "До",
+  "dashboard.filterAllFormats": "Все форматы",
+  "dashboard.filterAllStatus": "Все статусы",
+  "dashboard.resourceFilesEntries": "{files} файлов / {entries} записей",
+  "dictionary.doubleClickEdit": "Двойной щелчок для редактирования",
+  "dictionary.readOnly": "Только чтение",
+  "editPanel.sourceTitle": "Исходный текст",
+  "editPanel.targetTitle": "Перевод",
+  "editPanel.translating": "Перевод...",
+  "editPanel.retry": "Повторить",
+  "editPanel.accept": "Принять",
+  "editPanel.save": "Сохранить",
+  "editPanel.close": "Закрыть",
+  "editPanel.copied": "Скопировано",
+  "editPanel.copySource": "Копировать исходник",
+  "editPanel.retranslate": "Перевести заново",
+  "editPanel.llmFailed": "Ошибка LLM перевода",
+  "editPanel.llmTranslate": "LLM Перевод",
+  "editPanel.entryNotFound": "Запись не найдена (возможно, отфильтрована)",
+  "editPanel.prevTooltip": "Назад (←)",
+  "editPanel.nextTooltip": "Вперёд (→)",
+  "editPanel.ariaLabel": "Редактор перевода",
+  "editPanel.ariaClose": "Закрыть",
+  "editPanel.ariaTargetEdit": "Редактирование перевода",
+  "jobs.stage.scanning": "Сканирование: {mod}",
+  "jobs.stage.extracting": "Извлечение записей...",
+  "jobs.stage.dictionary": "Сопоставление словаря...",
+  "jobs.stage.translatingWithSub": "Перевод{sub}",
+  "jobs.cancelFailed": "Ошибка отмены: {error}",
+  "jobs.clearFilter": "Очистить фильтр",
+  "jobs.clearStatusFilter": "Нажмите, чтобы снять фильтр статуса",
+  "jobs.entryCountWithPercent": "{label}: {count} ({percent}%)",
+  "jobs.filterByStatus": "Нажмите для фильтрации по статусу",
+  "jobs.postScanFailed": "Ошибка повторного сканирования: {error}",
+  "jobs.totalCount": "Всего {count} записей",
+  "logs.pause": "Пауза",
+  "logs.resume": "Продолжить",
+  "logs.copyAll": "Копировать все логи",
+  "logs.clear": "Очистить лог",
+  "logs.allLevel": "Все",
+  "logs.paused": "Лог приостановлен",
+  "logs.lines": "{count} строк",
+  "logs.linesWithTotal": "/ {count} всего",
+  "logs.scrollToBottom": "Вниз",
+  "packages.allMods": "Все моды ({count})",
+  "packages.copyToInstanceBtn": "Копировать в экземпляр",
+  "packages.copyToInstanceTooltip": "Копировать в каталог resourcepacks экземпляра",
+  "packages.detailKey": "Ключ",
+  "packages.detailSource": "Исходный",
+  "packages.entries_label": "{count} записей",
+  "packages.entryCount": "{count} переводов",
+  "packages.failed_label": "Ошибка",
+  "packages.files_label": "{count} файлов",
+  "packages.languageMismatch": "Текущий целевой язык ({current}) отличается от языка перевода ({job}). Используется текущий язык.",
+  "packages.modCount": "{count} модов",
+  "packages.moreEntries": "...и ещё {count}",
+  "packages.noLangFiles": "Нет языковых файлов",
+  "packages.noTranslation": "Результаты перевода отсутствуют. Сначала выполните перевод.",
+  "packages.openFolder": "Открыть папку",
+  "packages.openFolderTooltip": "Открыть в проводнике",
+  "packages.packDone": "Упаковка завершена",
+  "packages.packing": "Упаковка...",
+  "packages.packingPercent": "Упаковка ({percent}%)",
+  "packages.ready": "Готово",
+  "packages.regenerate": "Перегенерировать",
+  "packages.regenerateTooltip": "Перегенерировать ресурс-пак",
+  "packages.reviewRequired": "Текущий перевод не был проверен. Проверьте его на странице «Проверка».",
+  "packages.saveLocally": "Сохранить локально",
+  "packages.saveLocallyTooltip": "Выберите место сохранения",
+  "packages.zipFilter": "ZIP-пак",
+  "settings.providerOpenai": "OpenAI Совместимый",
+  "splash.phase.settings": "Настройки",
+  "splash.phase.local": "Локальный",
+  "splash.phase.dictionary": "Словарь",
+  "splash.phase.llm": "LLM",
+  "splash.offline": "Офлайн-режим",
+  "splash.firstLaunch": "Первый запуск, инициализация…",
+  "splash.skip": "Пропустить",
+  "validate.doubleClickEdit": "Двойной щелчок для редактирования",
+  "validate.loading": "Загрузка...",
+  "validate.markDone": "Проверено",
+  "validate.noMatch": "Нет подходящих записей",
+  "validate.noResults": "Нет результатов перевода",
+  "validate.reviewed": "Проверено",
+  "validate.searchPlaceholder": "Поиск по имени мода, ModId, ключу, исходному тексту или переводу...",
 };
 const translations: Record<AppLanguage, TranslationMap> = {
   zh_cn: zhCn,

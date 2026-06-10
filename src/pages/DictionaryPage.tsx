@@ -1,6 +1,6 @@
 import { BookOpen, Download, Search, Upload } from "lucide-react";
 import { TableVirtuoso } from "react-virtuoso";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -9,7 +9,6 @@ import { TranslationEditPanel, type EditPanelEntry } from "../components/Transla
 import {
   deleteDictionaryEntry,
   getDictionaryStats,
-  importTranslationResultsToDictionary,
   searchDictionary,
   translateSingleEntry,
   updateDictionaryEntry,
@@ -49,7 +48,7 @@ const DictionaryRow = React.memo(function DictionaryRow({
       <td
         style={{ cursor: entry.id != null ? "pointer" : "default" }}
         onDoubleClick={entry.id != null ? onOpenPanel : undefined}
-        title={entry.id != null ? "双击打开编辑面板" : "只读"}
+        title={entry.id != null ? t(language, "dictionary.doubleClickEdit") : t(language, "dictionary.readOnly")}
       >
         <span style={{ color: highlighted ? "var(--accent)" : undefined }}>
           {entry.targetText}
@@ -84,7 +83,6 @@ export function DictionaryPage({ language }: Props) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [importing, setImporting] = useState(false);
   const [globalSearch, setGlobalSearch] = useState("");
   const debouncedSearch = useDebouncedValue(globalSearch, 300);
 
@@ -95,6 +93,16 @@ export function DictionaryPage({ language }: Props) {
   const sf = useSortFilter();
 
   // ── Data loading ──
+
+  // ── Silent fetch: skip setLoading to avoid UI flicker during polling ──
+  const fetchEntriesSilent = useCallback(async () => {
+    try {
+      const results = await searchDictionary(undefined, undefined, undefined, undefined, undefined, 1000);
+      setEntries(results);
+    } catch {
+      // silent — ignore polling errors
+    }
+  }, []);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -123,26 +131,52 @@ export function DictionaryPage({ language }: Props) {
     fetchStats();
   }, [fetchEntries, fetchStats]);
 
-  // ── Import handler ──
+  // ── Auto-refresh: poll every 5s while page is visible ──
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let cancelled = false;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
 
-  const handleImport = async () => {
-    setImporting(true);
-    setError("");
-    setMessage("");
-    try {
-      const result = await importTranslationResultsToDictionary();
-      setMessage(
-        `已导入 ${result.imported} 条，跳过 ${result.skipped} 条` +
-          (result.conflicts.length > 0 ? `，${result.conflicts.length} 条冲突` : ""),
-      );
-      fetchEntries();
+    const safeFetch = () => {
+      if (cancelled) return;
+      fetchEntriesSilent();
       fetchStats();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setImporting(false);
+    };
+
+    const startPolling = () => {
+      if (intervalId) return;
+      intervalId = setInterval(safeFetch, 5000);
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    // Visibility change handler — refresh immediately then start/stop polling
+    const onVisibility = () => {
+      if (cancelled) return;
+      if (document.visibilityState === "visible") {
+        safeFetch();
+        startPolling();
+      } else {
+        stopPolling();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    if (document.visibilityState === "visible") {
+      startPolling();
     }
-  };
+
+    return () => {
+      cancelled = true;
+      stopPolling();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [fetchEntriesSilent, fetchStats]);
 
   // ── Edit handlers ──
 
@@ -291,16 +325,6 @@ export function DictionaryPage({ language }: Props) {
           <button
             className="ghost-button"
             type="button"
-            disabled={!isTauriRuntime() || importing}
-            onClick={handleImport}
-            data-tooltip="从已有翻译导入词典"
-          >
-            <Download size={17} />
-            {importing ? "导入中..." : "导入已有翻译"}
-          </button>
-          <button
-            className="ghost-button"
-            type="button"
             disabled={!isTauriRuntime()}
             data-tooltip={t(language, "tooltip.export")}
           >
@@ -323,7 +347,7 @@ export function DictionaryPage({ language }: Props) {
       {error && <div className="alert error">{error}</div>}
 
       {/* Search bar */}
-      <div className="instance-row">
+      <div className="dictionary-search-row">
         <label className="search-field">
           <Search size={17} />
           <input
@@ -332,11 +356,6 @@ export function DictionaryPage({ language }: Props) {
             placeholder={t(language, "dictionary.searchPlaceholder")}
           />
         </label>
-        {filteredEntries.length > 0 && (
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
-            {filteredEntries.length} / {entries.length} 条
-          </span>
-        )}
       </div>
 
       {/* Loading state */}
@@ -353,20 +372,23 @@ export function DictionaryPage({ language }: Props) {
       {/* Virtual-scrolled table */}
       {!loading && filteredEntries.length > 0 && (
         <div className="log-panel" style={{ flex: 1, marginTop: 12 }}>
-          <div className="log-panel-body">
+          <div className="log-panel-body" style={{ overflowX: "hidden" }}>
             <TableVirtuoso
               style={{ height: "100%" }}
               totalCount={filteredEntries.length}
               components={{
+                Scroller: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, ...props }, ref) => (
+                  <div ref={ref} style={{ ...style, overflowX: "hidden" }} {...props} />
+                )),
                 Table: ({ children, ...rest }) => (
                   <table {...rest}>
                     <colgroup>
-                      <col style={{ width: "30%" }} />
-                      <col style={{ width: "30%" }} />
+                      <col style={{ width: "25%" }} />
+                      <col style={{ width: "25%" }} />
                       <col style={{ width: "15%" }} />
-                      <col style={{ width: "15%" }} />
-                      <col style={{ width: "5%" }} />
-                      <col style={{ width: "5%" }} />
+                      <col style={{ width: "20%" }} />
+                      <col style={{ width: "7%" }} />
+                      <col style={{ width: "8%" }} />
                     </colgroup>
                     {children}
                   </table>

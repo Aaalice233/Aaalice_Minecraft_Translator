@@ -2,6 +2,7 @@ import { Check, ChevronLeft, ChevronRight, ClipboardCopy, CornerDownLeft, Sparkl
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { AppLanguage } from "../types";
+import { t } from "../i18n/translations";
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -138,7 +139,7 @@ export function TranslationEditPanel({
       setLlmSuggestion({
         text: "",
         loading: false,
-        error: err instanceof Error ? err.message : "LLM 翻译失败",
+        error: err instanceof Error ? err.message : t(language, "editPanel.llmFailed"),
       });
     }
   }, [currentEntry, onLlmTranslate]);
@@ -241,8 +242,8 @@ export function TranslationEditPanel({
       <div className="edit-panel-overlay" onClick={onClose}>
         <div className="edit-panel-modal" onClick={(e) => e.stopPropagation()}>
           <div className="empty-state">
-            <p>未找到当前条目（可能已被过滤）</p>
-            <button className="primary-button" onClick={onClose} type="button">关闭</button>
+            <p>{t(language, "editPanel.entryNotFound")}</p>
+            <button className="primary-button" onClick={onClose} type="button">{t(language, "editPanel.close")}</button>
           </div>
         </div>
       </div>,
@@ -258,7 +259,7 @@ export function TranslationEditPanel({
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="翻译编辑面板"
+        aria-label={t(language, "editPanel.ariaLabel")}
       >
         {/* ── Header ── */}
         <div className="edit-panel-header">
@@ -276,7 +277,7 @@ export function TranslationEditPanel({
               className="edit-panel-close"
               onClick={handleClose}
               type="button"
-              aria-label="关闭"
+              aria-label={t(language, "editPanel.ariaClose")}
             >
               <X size={18} />
             </button>
@@ -288,12 +289,12 @@ export function TranslationEditPanel({
           {/* Source */}
           <div className="edit-panel-source">
             <div className="edit-panel-section-header">
-              <span>原文</span>
+              <span>{t(language, "editPanel.sourceTitle")}</span>
               <button
                 className="ghost-button"
                 onClick={handleCopySource}
                 type="button"
-                data-tooltip={copied ? "已复制" : "复制原文"}
+                data-tooltip={copied ? t(language, "editPanel.copied") : t(language, "editPanel.copySource")}
               >
                 {copied ? <Check size={14} /> : <ClipboardCopy size={14} />}
               </button>
@@ -306,7 +307,7 @@ export function TranslationEditPanel({
           {/* Target */}
           <div className="edit-panel-target">
             <div className="edit-panel-section-header">
-              <span>译文</span>
+              <span>{t(language, "editPanel.targetTitle")}</span>
             </div>
             {saveError && (
               <div className="alert error" style={{ marginBottom: 8, fontSize: 12, padding: "4px 8px" }}>
@@ -318,21 +319,21 @@ export function TranslationEditPanel({
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
               rows={5}
-              aria-label="译文编辑"
+              aria-label={t(language, "editPanel.ariaTargetEdit")}
             />
 
             {/* Suggestion bar */}
             {llmSuggestion.loading && (
               <div className="suggestion-bar loading">
                 <span className="spin" style={{ display: "inline-block" }}>⟳</span>
-                翻译中...
+                {t(language, "editPanel.translating")}
               </div>
             )}
             {llmSuggestion.error && (
               <div className="suggestion-bar error">
                 <span>{llmSuggestion.error}</span>
                 <button className="text-button" onClick={handleLlmTranslate} type="button">
-                  重试
+                  {t(language, "editPanel.retry")}
                 </button>
               </div>
             )}
@@ -347,7 +348,7 @@ export function TranslationEditPanel({
                     style={{ fontSize: 12, padding: "3px 10px" }}
                   >
                     <CornerDownLeft size={12} />
-                    采纳
+                    {t(language, "editPanel.accept")}
                   </button>
                   <button
                     className="ghost-button"
@@ -355,7 +356,7 @@ export function TranslationEditPanel({
                     type="button"
                     style={{ fontSize: 12 }}
                   >
-                    重新翻译
+                    {t(language, "editPanel.retranslate")}
                   </button>
                 </div>
               </div>
@@ -370,10 +371,10 @@ export function TranslationEditPanel({
             onClick={handleLlmTranslate}
             type="button"
             disabled={llmSuggestion.loading || !onLlmTranslate}
-            data-tooltip="LLM 翻译"
+            data-tooltip={t(language, "editPanel.llmTranslateTooltip")}
           >
             <Sparkles size={16} />
-            LLM 翻译
+            {t(language, "editPanel.llmTranslate")}
           </button>
 
           <div className="edit-panel-toolbar-divider" />
@@ -383,7 +384,7 @@ export function TranslationEditPanel({
             onClick={handlePrev}
             disabled={!canGoPrev}
             type="button"
-            data-tooltip="上一项 (←)"
+            data-tooltip={t(language, "editPanel.prevTooltip")}
           >
             <ChevronLeft size={16} />
           </button>
@@ -392,7 +393,7 @@ export function TranslationEditPanel({
             onClick={handleNext}
             disabled={!canGoNext}
             type="button"
-            data-tooltip="下一项 (→)"
+            data-tooltip={t(language, "editPanel.nextTooltip")}
           >
             <ChevronRight size={16} />
           </button>
@@ -403,10 +404,10 @@ export function TranslationEditPanel({
             className="ghost-button"
             onClick={handleCopySource}
             type="button"
-            data-tooltip={copied ? "已复制" : "复制原文"}
+            data-tooltip={copied ? t(language, "editPanel.copied") : t(language, "editPanel.copySource")}
           >
             {copied ? <Check size={16} /> : <ClipboardCopy size={16} />}
-            复制原文
+            {t(language, "editPanel.copySource")}
           </button>
 
           <button
@@ -417,7 +418,7 @@ export function TranslationEditPanel({
             type="button"
           >
             {saved ? <Check size={16} /> : null}
-            保存
+            {t(language, "editPanel.save")}
           </button>
         </div>
       </div>

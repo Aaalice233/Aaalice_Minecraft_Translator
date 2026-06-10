@@ -35,14 +35,14 @@ function stageLabel(progress: TranslateProgress | null, lang: AppLanguage): stri
   if (!progress) return t(lang, "jobs.translating");
   switch (progress.phase) {
     case "scanning":
-      return `正在扫描: ${progress.modName || ""}`;
+      return t(lang, "jobs.stage.scanning", { mod: progress.modName || "" });
     case "extracting":
-      return "正在提取待翻译条目...";
+      return t(lang, "jobs.stage.extracting");
     case "dictionary":
-      return "正在词典匹配...";
+      return t(lang, "jobs.stage.dictionary");
     case "translating": {
       const sub = progress.subStep ? ` (${progress.subStep})` : "";
-      return `正在翻译${sub}`;
+      return t(lang, "jobs.stage.translatingWithSub", { sub });
     }
     default:
       return t(lang, `jobs.stage.${progress.phase}` as any) || progress.phase;
@@ -224,7 +224,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
           onCompleteChange?.(true);
         }
       })
-      .catch((err) => console.warn("恢复翻译状态失败:", err));
+      .catch((err) => console.warn("restore translation state failed:", err));
     return () => { cancelled = true; };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -353,14 +353,14 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         await Promise.all([
           loadLatestTranslationJobMeta().then((job) => {
             if (job) dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
-          }).catch((err) => console.warn("获取翻译任务 ID 失败:", err)),
+          }).catch((err) => console.warn("get translation job ID failed:", err)),
           (async () => {
             try {
               const { scanInstance } = await import("../api/tauri");
               postCompletionRescan.current = true;
               onScanSummaryChange(await scanInstance(instPath, srcLang, tgtLang));
             } catch (scanErr) {
-              setTranslationError("翻译后自动重新扫描失败: " + toErrorMessage(scanErr));
+              setTranslationError(t(language, "jobs.postScanFailed", { error: toErrorMessage(scanErr) }));
             }
           })(),
         ]);
@@ -430,9 +430,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       setStatus("canceled");
       setTranslationResult(null);
     } catch (err) {
-      console.warn("取消翻译失败：", err);
+      console.warn("Cancel translation failed:", err);
       setStatus("canceled");
-      setTranslationError("取消失败: " + toErrorMessage(err));
+      setTranslationError(t(language, "jobs.cancelFailed", { error: toErrorMessage(err) }));
     }
   }
 
@@ -671,7 +671,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                         key={key}
                         className="essb-segment"
                         style={{ width: `${pct}%`, backgroundColor: color }}
-                        title={`${statusLabel(key, language)}: ${count} 条 (${Math.round(pct)}%)`}
+                        title={t(language, "jobs.entryCountWithPercent", { label: statusLabel(key, language), count: count.toString(), percent: Math.round(pct).toString() })}
                       />
                     );
                   })}
@@ -687,7 +687,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                     key={key}
                     onClick={() => sf.handleFilterChange("status", sf.filters.status === key ? null : key)}
                     type="button"
-                    title={sf.filters.status === key ? "点击取消过滤此状态" : "点击过滤此状态"}
+                    title={sf.filters.status === key ? t(language, "jobs.clearStatusFilter") : t(language, "jobs.filterByStatus")}
                   >
                     <span className="essb-legend-dot" style={{ backgroundColor: color }} />
                     {statusLabel(key, language)}
@@ -699,13 +699,13 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                     className="essb-legend-item essb-legend-clear"
                     onClick={() => sf.handleFilterChange("status", null)}
                     type="button"
-                    title="清除状态过滤"
+                    title={t(language, "jobs.clearStatusFilter")}
                   >
-                    清除过滤
+                    {t(language, "jobs.clearFilter")}
                   </button>
                 )}
                 <span className="essb-legend-item essb-legend-total">
-                  总计 {(scanSummary.actualPendingEntries).toLocaleString()} 条
+                  {t(language, "jobs.totalCount", { count: (scanSummary.actualPendingEntries).toLocaleString() })}
                 </span>
               </div>
             </>
@@ -800,6 +800,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               style={{ height: "100%" }}
               totalCount={filteredEntries.length}
               components={{
+                Scroller: React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(({ style, ...props }, ref) => (
+                  <div ref={ref} style={{ ...style, overflowX: "hidden" }} {...props} />
+                )),
                 Table: ({ children, ...rest }) => (
                   <table {...rest}>
                     <colgroup>

@@ -1,5 +1,6 @@
-import { Filter, X } from "lucide-react";
+import { Filter } from "lucide-react";
 import type { ReactNode } from "react";
+import { normalizeAppLanguage, t } from "../i18n/translations";
 
 // ── Column config ──
 
@@ -43,6 +44,8 @@ interface Props {
   onFilterChange: (key: string, value: string | null) => void;
   /** Default column for initial sort indicator */
   defaultSortKey?: string;
+  /** App language for i18n filter labels. */
+  language?: string;
 }
 
 /**
@@ -72,10 +75,13 @@ export function SortableTableHeader({
   onToggleFilter,
   onFilterChange,
   defaultSortKey,
+  language,
 }: Props) {
+  const lang = normalizeAppLanguage(language);
   return (
     <tr>
-      {columns.map((col) => {
+      {columns.map((col, colIdx) => {
+        const isRightColumn = colIdx >= columns.length - 2; // last 2 columns → right-align popover
         // Special handling: columns with no sort/filter
         if (col.sortable === false && col.filterType === "none") {
           return (
@@ -124,30 +130,17 @@ export function SortableTableHeader({
                   }}
                   type="button"
                   aria-label={`Filter ${col.label}`}
-                  data-tooltip="筛选"
+                  data-tooltip={t(lang, "tooltip.filter")}
                 >
                   <Filter size={13} />
                 </button>
               )}
               {openFilter === col.key && (
                 <div
-                  className="filter-popover"
+                  className={`filter-popover${isRightColumn ? " popover-right" : ""}`}
                   ref={filterRef as React.RefObject<HTMLDivElement>}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <div className="filter-popover-header">
-                    <span>{col.label}</span>
-                    <button
-                      className="filter-popover-clear"
-                      onClick={() => {
-                        onFilterChange(col.key, null);
-                      }}
-                      type="button"
-                      data-tooltip="清除筛选"
-                    >
-                      <X size={13} />
-                    </button>
-                  </div>
                   {col.renderFilterContent ? (
                     col.renderFilterContent({
                       column: col.key,
@@ -160,7 +153,7 @@ export function SortableTableHeader({
                       onChange={(e) => onFilterChange(col.key, e.target.value || null)}
                       autoFocus
                     >
-                      <option value="">全部</option>
+                      <option value="">{t(lang, "common.filterAll")}</option>
                       {col.filterOptions.map((opt) => (
                         <option key={opt.value} value={opt.value}>
                           {opt.label}
@@ -172,7 +165,7 @@ export function SortableTableHeader({
                       type="text"
                       value={filters[col.key] || ""}
                       onChange={(e) => onFilterChange(col.key, e.target.value)}
-                      placeholder="筛选..."
+                      placeholder={t(lang, "common.filterPlaceholder")}
                       autoFocus
                     />
                   )}

@@ -133,14 +133,14 @@ export function LogsPage({ language }: Props) {
             className={`icon-button ${paused ? '' : 'active'}`}
             onClick={() => setPaused((p) => !p)}
             type="button"
-            data-tooltip={paused ? "继续滚动" : "暂停滚动"}
+            data-tooltip={t(language, paused ? "logs.resume" : "logs.pause")}
           >
             {paused ? <Play size={16} /> : <Pause size={16} />}
           </button>
-          <button className="icon-button" onClick={copyAll} type="button" data-tooltip="复制全部日志">
+          <button className="icon-button" onClick={copyAll} type="button" data-tooltip={t(language, "logs.copyAll")}>
             <Copy size={16} />
           </button>
-          <button className="icon-button danger" onClick={clearLog} type="button" data-tooltip="清空日志">
+          <button className="icon-button danger" onClick={clearLog} type="button" data-tooltip={t(language, "logs.clear")}>
             <Trash2 size={16} />
           </button>
         </div>
@@ -158,7 +158,7 @@ export function LogsPage({ language }: Props) {
               data-level={lvl}
               onClick={() => { setLevelFilter(lvl); scrollToBottom(); }}
             >
-              <span className="log-filter-lbl">{lvl === "ALL" ? "全部" : lvl}</span>
+              <span className="log-filter-lbl">{lvl === "ALL" ? t(language, "logs.allLevel") : lvl}</span>
               <span className="log-filter-cnt">{count}</span>
             </button>
           );
@@ -166,7 +166,7 @@ export function LogsPage({ language }: Props) {
       </div>
 
       <div className="log-viewer-wrap">
-        {paused && <div className="log-paused-banner">日志已暂停</div>}
+        {paused && <div className="log-paused-banner">{t(language, "logs.paused")}</div>}
         <div
           className="log-viewer"
           ref={containerRef}
@@ -190,10 +190,10 @@ export function LogsPage({ language }: Props) {
           </div>
         </div>
         <div className="log-footer">
-          <span>{filteredEntries.length.toLocaleString()} 行{levelFilter !== "ALL" ? ` / ${entries.length.toLocaleString()} 全部` : ""}</span>
+          <span>{t(language, "logs.lines", { count: filteredEntries.length })}{levelFilter !== "ALL" ? ` ${t(language, "logs.linesWithTotal", { count: entries.length })}` : ""}</span>
           {!followRef.current && (
             <button className="text-button" onClick={scrollToBottom} type="button">
-              回到底部
+              {t(language, "logs.scrollToBottom")}
             </button>
           )}
         </div>
