@@ -758,6 +758,68 @@ select {
   font-size: 12px;
 }
 
+/* ── Output directory selector (pre-pack) ── */
+.packages-output-dir {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.packages-output-dir-label {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.packages-output-dir-path {
+  flex: 1;
+  font-family: var(--font-mono, "Consolas", monospace);
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 4px 8px;
+  background: var(--bg-muted);
+  border-radius: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.packages-output-dir-btn {
+  flex-shrink: 0;
+  padding: 4px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.packages-output-dir-btn:hover {
+  background: var(--accent);
+  color: var(--accent-text, #fff);
+  border-color: var(--accent);
+}
+
+/* ── Pre-pack preview wrapper ── */
+.packages-middle-preview {
+  display: flex;
+  flex-direction: column;
+}
+
+.packages-mod-list-ready {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
 /* ── Layer 3: Deploy buttons ── */
 .packages-bottom {
   margin-top: auto;

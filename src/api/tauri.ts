@@ -314,12 +314,13 @@ export async function generatePackFromJob(
   jobId: string,
   targetLanguage: string,
   dryRun: boolean,
+  outputDir?: string,
 ): Promise<PackResult> {
   if (!isTauriRuntime()) {
     return { outputDir: "", zipPath: "", modCount: 0, entryCount: 0, conflicts: [] };
   }
   return tauriInvoke<PackResult>("generate_pack_from_job", {
-    jobId, targetLanguage, dryRun,
+    jobId, targetLanguage, dryRun, outputDir: outputDir ?? null,
   });
 }
 

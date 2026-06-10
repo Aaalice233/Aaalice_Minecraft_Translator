@@ -18,8 +18,9 @@ pub fn generate_pack_from_job(
     job_id: String,
     target_language: String,
     dry_run: bool,
+    output_dir: Option<String>,
 ) -> Result<packer::PackResult, String> {
-    info!("generate_pack_from_job: job_id={}, target_language={}, dry_run={}", job_id, target_language, dry_run);
+    info!("generate_pack_from_job: job_id={}, target_language={}, dry_run={}, output_dir={:?}", job_id, target_language, dry_run, output_dir);
     let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let manager = crate::core::jobs::JobManager::new(root.clone());
 
@@ -52,7 +53,9 @@ pub fn generate_pack_from_job(
         );
     }
 
-    let output_dir = paths::build_output_dir(&root);
+    let output_dir = output_dir
+        .map(|p| std::path::PathBuf::from(p))
+        .unwrap_or_else(|| paths::build_output_dir(&root));
     std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
     let options = packer::PackOptions {

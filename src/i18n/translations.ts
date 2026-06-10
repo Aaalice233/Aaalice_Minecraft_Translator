@@ -218,6 +218,10 @@ export type TranslationKey =
   | "packages.saveLocally"
   | "packages.saveLocallyTooltip"
   | "packages.zipFilter"
+  | "packages.outputDir"
+  | "packages.outputDirDefault"
+  | "packages.outputDirBrowse"
+  | "packages.readyToPack"
   | "packages.copySuccess"
   | "packages.copyFailed"
   | "packages.replaced"
@@ -646,6 +650,10 @@ const zhCn: TranslationMap = {
   "packages.ready": "已就绪",
   "packages.regenerate": "重新生成",
   "packages.regenerateTooltip": "重新生成资源包",
+  "packages.outputDir": "输出目录",
+  "packages.outputDirDefault": "默认位置",
+  "packages.outputDirBrowse": "浏览...",
+  "packages.readyToPack": "翻译已就绪，点击「生成资源包」开始打包",
   "packages.reviewRequired": "当前翻译任务尚未完成校对。请前往「校对」页面完成校对后再打包。",
   "packages.saveLocally": "保存本地",
   "packages.saveLocallyTooltip": "选择保存位置",
@@ -1110,8 +1118,13 @@ const enUs: TranslationMap = {
   "packages.packing": "Packing...",
   "packages.packingPercent": "Packing ({percent}%)",
   "packages.ready": "Ready",
+  "packages.generate": "Generate Resource Pack",
   "packages.regenerate": "Regenerate",
   "packages.regenerateTooltip": "Regenerate resource pack",
+  "packages.outputDir": "Output directory",
+  "packages.outputDirDefault": "Default location",
+  "packages.outputDirBrowse": "Browse...",
+  "packages.readyToPack": "Ready to pack. Click 'Generate' to create the resource pack.",
   "packages.reviewRequired": "The current translation job has not been reviewed. Please review it on the Validate page first.",
   "packages.saveLocally": "Save Locally",
   "packages.saveLocallyTooltip": "Choose save location",
@@ -1375,8 +1388,13 @@ const jaJp: TranslationMap = {
   "packages.packing": "パッケージ中...",
   "packages.packingPercent": "パッケージ中 ({percent}%)",
   "packages.ready": "準備完了",
+  "packages.generate": "リソースパックを生成",
   "packages.regenerate": "再生成",
   "packages.regenerateTooltip": "リソースパックを再生成",
+  "packages.outputDir": "出力先",
+  "packages.outputDirDefault": "既定の場所",
+  "packages.outputDirBrowse": "参照...",
+  "packages.readyToPack": "翻訳完了。「生成」をクリックしてパックを作成",
   "packages.reviewRequired": "現在の翻訳ジョブはまだレビューされていません。先に「レビュー」ページでレビューを完了してください。",
   "packages.saveLocally": "ローカル保存",
   "packages.saveLocallyTooltip": "保存場所を選択",
@@ -1639,8 +1657,13 @@ const koKr: TranslationMap = {
   "packages.packing": "패키징 중...",
   "packages.packingPercent": "패키징 중 ({percent}%)",
   "packages.ready": "준비됨",
+  "packages.generate": "리소스팩 생성",
   "packages.regenerate": "재생성",
   "packages.regenerateTooltip": "리소스 팩 재생성",
+  "packages.outputDir": "출력 폴더",
+  "packages.outputDirDefault": "기본 위치",
+  "packages.outputDirBrowse": "찾아보기...",
+  "packages.readyToPack": "번역 완료. '생성'을 클릭하여 팩 만들기",
   "packages.reviewRequired": "현재 번역 작업이 아직 검토되지 않았습니다. '검토' 페이지에서 검토를 완료해주세요.",
   "packages.saveLocally": "로컬 저장",
   "packages.saveLocallyTooltip": "저장 위치 선택",
@@ -1994,6 +2017,10 @@ const ruRu: TranslationMap = {
   "packages.ready": "Готово",
   "packages.regenerate": "Перегенерировать",
   "packages.regenerateTooltip": "Перегенерировать ресурс-пак",
+  "packages.outputDir": "Каталог вывода",
+  "packages.outputDirDefault": "По умолчанию",
+  "packages.outputDirBrowse": "Обзор...",
+  "packages.readyToPack": "Перевод готов. Нажмите «Сгенерировать» для создания пака",
   "packages.reviewRequired": "Текущий перевод не был проверен. Проверьте его на странице «Проверка».",
   "packages.saveLocally": "Сохранить локально",
   "packages.saveLocallyTooltip": "Выберите место сохранения",
