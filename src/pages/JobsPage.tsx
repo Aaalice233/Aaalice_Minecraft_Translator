@@ -12,7 +12,7 @@ import { toErrorMessage } from "../utils";
 import { CompletionSummary } from "../components/CompletionSummary";
 import { PageHeader } from "../components/PageHeader";
 import type { ColumnConfig } from "../components/SortableTableHeader";
-import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress } from "../types";
+import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress, TranslationResult } from "../types";
 
 function csvQuote(val: string): string {
   if (val.indexOf(",") >= 0 || val.indexOf('"') >= 0 || val.indexOf(" ") >= 0) {
@@ -31,6 +31,17 @@ function sourceTypeLabel(sourceType: string, lang: AppLanguage): string {
   const key = `jobs.sourceType.${sourceType}` as any;
   const label = t(lang, key);
   return label || sourceType;
+}
+
+/** Map TranslationResult[] (from JSONL) to TranslateLogEntry[] for log display. */
+function toTranslateLogEntries(results: TranslationResult[]): TranslateLogEntry[] {
+  return results.map((r) => ({
+    key: r.key,
+    sourceText: r.sourceText,
+    targetText: r.targetText,
+    modName: r.modName,
+    sourceType: r.sourceType,
+  }));
 }
 
 function stageLabel(progress: TranslateProgress | null, lang: AppLanguage): string {
@@ -294,13 +305,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       }
       loadTranslationResults(job.jobId).then((results) => {
         if (cancelled) return;
-        const entries: TranslateLogEntry[] = results.map((r) => ({
-          key: r.key,
-          sourceText: r.sourceText,
-          targetText: r.targetText,
-          modName: r.modName,
-          sourceType: r.sourceType,
-        }));
+        const entries = toTranslateLogEntries(results);
         if (entries.length > 0) {
           logRef.current = entries;
           setLogVersion((v) => v + 1);
@@ -359,12 +364,14 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
       setTranslateElapsedMs(elapsed);
 
-      // Look up jobId and store in AppContext for cross-page access
+      // Load results from JSONL so logRef has authoritative source_type data
+      // for the summary (pipeline events may not all have arrived yet).
       if ("__TAURI_INTERNALS__" in window) {
-        await Promise.all([
-          loadLatestTranslationJobMeta().then((job) => {
-            if (job) dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
-          }).catch((err) => console.warn("get translation job ID failed:", err)),
+        const [job] = await Promise.all([
+          loadLatestTranslationJobMeta().then((j) => {
+            if (j) dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: j.jobId });
+            return j;
+          }).catch((err) => { console.warn("get translation job ID failed:", err); return null; }),
           (async () => {
             try {
               const { scanInstance } = await import("../api/tauri");
@@ -375,6 +382,17 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
             }
           })(),
         ]);
+        // Load the full results into logRef for accurate source-type breakdown
+        if (job) {
+          try {
+            const results = await loadTranslationResults(job.jobId);
+            const entries = toTranslateLogEntries(results);
+            logRef.current = entries;
+            setLogVersion((v) => v + 1);
+          } catch (e) {
+            console.warn("load translation results for summary failed:", e);
+          }
+        }
       }
     } catch (err) {
       setTranslationError(toErrorMessage(err));
@@ -458,6 +476,19 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     });
     return c;
   }, [entryProgressVersion]);
+
+  /** Source-type counts from log entries (single pass over the array).
+   *  Replaces the old `completed - dictionaryHit` formula that overcounted LLM
+   *  by including "existing" entries in the "completed" status bucket. */
+  const sourceTypeCounts = useMemo(() => {
+    const c = { llm: 0, existing: 0, skipped: 0 };
+    for (const e of logRef.current) {
+      if (e.sourceType === "llm") c.llm++;
+      else if (e.sourceType === "existing") c.existing++;
+      else if (e.sourceType === "skipped") c.skipped++;
+    }
+    return c;
+  }, [logVersion]);
 
   const visibleStatuses = (scanSummary?.actualPendingEntries ?? 0) > 0
     ? STATUS_META.filter((s) => entryCounts[s.key] > 0)
@@ -790,10 +821,16 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               template: t(language, "summary.dictionary"),
               count: entryCounts.dictionaryHit,
             },
+            ...(sourceTypeCounts.existing > 0
+              ? [{ icon: <CheckCircle size={15} />, template: t(language, "summary.existing"), count: sourceTypeCounts.existing }]
+              : []),
+            ...(sourceTypeCounts.skipped > 0
+              ? [{ icon: <FileText size={15} />, template: t(language, "summary.skipped"), count: sourceTypeCounts.skipped }]
+              : []),
             {
               icon: <Bot size={15} />,
               template: t(language, "summary.llm"),
-              count: Math.max(0, (translationResult ?? entryCounts.completed) - entryCounts.dictionaryHit),
+              count: sourceTypeCounts.llm,
             },
             ...(Math.max(entryCounts.failed, savedFailedEntriesRef.current) > 0
               ? [{ icon: <XCircle size={15} />, template: t(language, "summary.failed"), count: Math.max(entryCounts.failed, savedFailedEntriesRef.current) }]

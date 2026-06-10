@@ -364,6 +364,8 @@ export type TranslationKey =
   | "summary.entries"
   | "summary.entriesSpeed"
   | "summary.dictionary"
+  | "summary.existing"
+  | "summary.skipped"
   | "summary.llm"
   | "summary.failed"
   | "validate.title"
@@ -782,8 +784,10 @@ const zhCn: TranslationMap = {
   "summary.entries": "{count} 条翻译",
   "summary.entriesSpeed": "{speed} 条/秒",
   "summary.dictionary": "词典 {count}",
+  "summary.existing": "已有 {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "失败 {count}",
+  "summary.skipped": "跳过 {count}",
   "validate.title": "校对工作台",
   "validate.description": "逐条审核 LLM 翻译结果，校对完成后可进入打包阶段",
   "validate.col.modName": "Mod 名称",
@@ -1020,6 +1024,8 @@ const enUs: TranslationMap = {
   "summary.entries": "{count} entries",
   "summary.entriesSpeed": "{speed} entries/s",
   "summary.dictionary": "Dict {count}",
+  "summary.existing": "Existing {count}",
+  "summary.skipped": "Skip {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "Failed {count}",
   "validate.title": "Validate Translations",
@@ -1288,6 +1294,8 @@ const jaJp: TranslationMap = {
   "summary.entries": "{count} 項目",
   "summary.entriesSpeed": "{speed} 項目/秒",
   "summary.dictionary": "辞書 {count}",
+  "summary.existing": "既存 {count}",
+  "summary.skipped": "スキップ {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "失敗 {count}",
   "common.filterAll": "すべて",
@@ -1549,6 +1557,8 @@ const koKr: TranslationMap = {
   "summary.entries": "{count} 항목",
   "summary.entriesSpeed": "{speed} 항목/초",
   "summary.dictionary": "사전 {count}",
+  "summary.existing": "기존 {count}",
+  "summary.skipped": "건너뜀 {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "실패 {count}",
   "common.filterAll": "전체",
@@ -1899,6 +1909,8 @@ const ruRu: TranslationMap = {
   "summary.entries": "{count} записей",
   "summary.entriesSpeed": "{speed} записей/с",
   "summary.dictionary": "Словарь {count}",
+  "summary.existing": "Готово {count}",
+  "summary.skipped": "Пропуск {count}",
   "summary.llm": "LLM {count}",
   "summary.failed": "Ошибок {count}",
   "common.filterAll": "Все",

@@ -61,10 +61,6 @@ export function DataTable<T>(props: DataTableProps<T>) {
     virtuosoRef,
   } = props;
 
-  if (data.length === 0) {
-    return <div className="log-panel-empty">{emptyMessage}</div>;
-  }
-
   return (
     <TableVirtuoso
       ref={virtuosoRef}
@@ -79,7 +75,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
           <div ref={ref} style={{ ...style, overflowX: "hidden" }} {...rest} />
         )),
         Table: ({ children, ...rest }) => (
-          <table {...rest}>
+          <table {...rest} style={{ tableLayout: "fixed", width: "100%", borderCollapse: "collapse" }}>
             <colgroup>
               {colWidths.map((w, i) => (
                 <col key={i} style={{ width: w }} />
@@ -87,6 +83,9 @@ export function DataTable<T>(props: DataTableProps<T>) {
             </colgroup>
             {children}
           </table>
+        ),
+        EmptyPlaceholder: () => (
+          <div className="log-panel-empty">{emptyMessage}</div>
         ),
         TableRow: RowWrapper
           ? ({ children, ...rest }) => {
