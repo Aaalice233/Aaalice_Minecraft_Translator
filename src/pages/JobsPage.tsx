@@ -216,12 +216,11 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         // global state, causing ValidatePage to display old results.
         const scanMatches = scanSummary && job.scanJobId === scanSummary.jobId;
         if (!scanMatches) return;
-        dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: job.jobId });
+        // 恢复翻译完成计数和重试状态，但不清空日志或自动加载翻译结果。
+        // 日志只应在用户点击「开始翻译」后出现，避免磁盘上残留的旧任务自动显示。
         if (job.status === "completed") {
-          setStatus("completed");
           setTranslationResult(job.completedEntries);
           savedFailedEntriesRef.current = job.failedEntries ?? 0;
-          onCompleteChange?.(true);
         }
       })
       .catch((err) => console.warn("restore translation state failed:", err));
