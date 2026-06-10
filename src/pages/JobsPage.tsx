@@ -253,6 +253,10 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       setLogVersion(0);
       entryProgressMapRef.current = new Map();
       setEntryProgressVersion((v) => v + 1);
+      savedFailedEntriesRef.current = 0;
+      // 清除旧的翻译任务 ID，防止加载上一次的翻译结果
+      dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: null });
+      useAppStore.getState().setTranslationJobId(null);
     }
   }, [scanSummary?.jobId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -281,6 +285,12 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     loadLatestTranslationJobMeta().then((job) => {
       if (cancelled || !job) return;
       if (logRef.current.length > 0) return; // 已经有日志（来自事件）
+      // 只加载与当前扫描匹配的翻译结果，避免显示上一次启动的旧日志
+      if (scanSummary && job.scanJobId !== scanSummary.jobId) {
+        dispatch({ type: "SET_TRANSLATION_JOB_ID", payload: null });
+        useAppStore.getState().setTranslationJobId(null);
+        return;
+      }
       loadTranslationResults(job.jobId).then((results) => {
         if (cancelled) return;
         const entries: TranslateLogEntry[] = results.map((r) => ({
@@ -297,7 +307,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       });
     });
     return () => { cancelled = true; };
-  }, [isRunning]);
+  }, [isRunning, scanSummary?.jobId]);
 
   useTauriEvent<TranslateProgress>("translate-progress", (progress) => {
     if (cancelledRef.current) return;
