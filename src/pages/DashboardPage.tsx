@@ -656,26 +656,23 @@ export const DashboardPage = React.memo(function DashboardPage({
         <section className="panel">
           <div className="panel-title">
             <h2>{t(language, "dashboard.modsTitle")}</h2>
-            <div className="panel-title-right">
-              <div className="mod-search-wrap">
-                <input
-                  type="text"
-                  className="mod-search-input"
-                  placeholder={t(language, "dashboard.filterSearch")}
-                  value={searchText}
-                  onChange={(e) => setSearchText(e.target.value)}
-                />
-                {searchText && (
-                  <button
-                    className="mod-search-clear"
-                    onClick={() => setSearchText("")}
-                    type="button"
-                  >
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-              <span>{scanSummary ? `${processedMods.length} / ${scanSummary.mods.length}` : t(language, "dashboard.waiting")}</span>
+            <div className="mod-search-wrap">
+              <input
+                type="text"
+                className="mod-search-input"
+                placeholder={t(language, "dashboard.filterSearch")}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+              />
+              {searchText && (
+                <button
+                  className="mod-search-clear"
+                  onClick={() => setSearchText("")}
+                  type="button"
+                >
+                  <X size={13} />
+                </button>
+              )}
             </div>
           </div>
           <div className="table-wrap">
