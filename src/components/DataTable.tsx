@@ -26,7 +26,6 @@ export interface DataTableProps<T> {
     children: React.ReactNode;
     [key: string]: any;
   }>;
-  emptyMessage?: string;
   className?: string;
   followOutput?: boolean;
   virtuosoRef?: React.Ref<any>;
@@ -55,7 +54,6 @@ export function DataTable<T>(props: DataTableProps<T>) {
     renderRow,
     colWidths,
     RowWrapper,
-    emptyMessage,
     className,
     followOutput,
     virtuosoRef,
@@ -83,9 +81,6 @@ export function DataTable<T>(props: DataTableProps<T>) {
             </colgroup>
             {children}
           </table>
-        ),
-        EmptyPlaceholder: () => (
-          <div className="log-panel-empty">{emptyMessage}</div>
         ),
         TableRow: RowWrapper
           ? ({ children, ...rest }) => {

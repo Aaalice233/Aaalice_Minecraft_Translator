@@ -479,13 +479,16 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
 
   /** Source-type counts from log entries (single pass over the array).
    *  Replaces the old `completed - dictionaryHit` formula that overcounted LLM
-   *  by including "existing" entries in the "completed" status bucket. */
+   *  by including "existing" entries in the "completed" status bucket.
+   *  All counts come from the authoritative JSONL file, not event channels,
+   *  so they are accurate even when late EntryProgress events haven't arrived. */
   const sourceTypeCounts = useMemo(() => {
-    const c = { llm: 0, existing: 0, skipped: 0 };
+    const c = { llm: 0, existing: 0, skipped: 0, dictionary: 0 };
     for (const e of logRef.current) {
       if (e.sourceType === "llm") c.llm++;
       else if (e.sourceType === "existing") c.existing++;
       else if (e.sourceType === "skipped") c.skipped++;
+      else if (e.sourceType === "dictionary") c.dictionary++;
     }
     return c;
   }, [logVersion]);
@@ -819,7 +822,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
             {
               icon: <BookOpen size={15} />,
               template: t(language, "summary.dictionary"),
-              count: entryCounts.dictionaryHit,
+              count: sourceTypeCounts.dictionary,
             },
             ...(sourceTypeCounts.existing > 0
               ? [{ icon: <CheckCircle size={15} />, template: t(language, "summary.existing"), count: sourceTypeCounts.existing }]
@@ -854,7 +857,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
           />
         </div>
         <div className="log-panel-body">
-          {filteredEntries.length === 0 || !isActive ? (
+          {!isActive ? (
             <div className="log-panel-empty">{t(language, "jobs.logPanel.noEntries")}</div>
           ) : (
             <DataTable
@@ -889,7 +892,6 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                   {children}
                 </tr>
               )}
-              emptyMessage={t(language, "jobs.logPanel.noEntries")}
               followOutput
               virtuosoRef={virtuosoRef}
             />

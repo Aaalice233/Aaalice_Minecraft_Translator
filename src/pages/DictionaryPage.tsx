@@ -379,7 +379,6 @@ export function DictionaryPage({ language }: Props) {
                 />
               )}
               colWidths={["25%", "25%", "15%", "20%", "7%", "8%"]}
-              emptyMessage={t(language, "dictionary.empty")}
             />
           </div>
         </div>

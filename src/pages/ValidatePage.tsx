@@ -335,7 +335,6 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
               />
             )}
             colWidths={["16%", "12%", "28%", "30%", "14%"]}
-            emptyMessage={t(language, "validate.noMatch")}
           />
           </div>
           </>
