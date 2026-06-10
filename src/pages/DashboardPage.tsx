@@ -439,8 +439,8 @@ export const DashboardPage = React.memo(function DashboardPage({
       className: "primary-button",
       disabled: false,
       icon: <ScanLine size={18} />,
-      text: t(language, "dashboard.scan"),
-      tooltipKey: "tooltip.scan",
+      text: scanSummary ? t(language, "dashboard.rescan") : t(language, "dashboard.scan"),
+      tooltipKey: scanSummary ? "tooltip.rescan" : "tooltip.scan",
     };
   }
 
@@ -457,7 +457,7 @@ export const DashboardPage = React.memo(function DashboardPage({
           <button
             className={scanBtn.className}
             disabled={scanBtn.disabled}
-            onClick={isScanning ? handleCancel : handleScan}
+            onClick={isScanning ? handleCancel : (scanSummary ? handleRescan : handleScan)}
             type="button"
             data-tooltip={t(language, scanBtn.tooltipKey)}
           >
@@ -496,10 +496,6 @@ export const DashboardPage = React.memo(function DashboardPage({
         >
         <FolderOpen size={17} />
         {t(language, "dashboard.pickInstance")}
-        </button>
-        <button className="ghost-button" disabled={isScanning} onClick={handleRescan} type="button" data-tooltip={t(language, "tooltip.rescan")}>
-          <RefreshCcw size={17} />
-          {t(language, "dashboard.rescan")}
         </button>
       </div>
 
