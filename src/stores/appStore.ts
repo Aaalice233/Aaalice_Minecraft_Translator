@@ -30,12 +30,16 @@ interface AppState {
   scanElapsedMs: number | null;
   translateElapsedMs: number | null;
 
+  // — Review coordination (version counter for cross-page sync) —
+  reviewCount: number;
+
   // — Actions —
   setSettings: (s: Settings) => void;
   setScanSummary: (s: ScanSummary | null) => void;
   setNavState: (key: PageKey, status: PageNavStatus) => void;
   setTranslationStatus: (status: TranslationPageStatus, result?: number | null, error?: string) => void;
   setTranslationJobId: (id: string | null) => void;
+  setReviewCount: (c: number) => void;
   setScanElapsedMs: (ms: number | null) => void;
   setTranslateElapsedMs: (ms: number | null) => void;
 }
@@ -53,10 +57,12 @@ export const useAppStore = create<AppState>()(
       translationError: "",
       scanElapsedMs: null,
       translateElapsedMs: null,
+      reviewCount: 0,
 
       // Actions
       setSettings: (s) => set({ settings: s }),
       setScanSummary: (s) => set({ scanSummary: s }),
+      setReviewCount: (c) => set({ reviewCount: c }),
 
       setNavState: (key, status) =>
         set((state) => {

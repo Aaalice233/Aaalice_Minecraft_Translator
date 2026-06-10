@@ -66,7 +66,6 @@ export const PackagesPage = React.memo(function PackagesPage({
   const [translationJob, setTranslationJob] = useState<TranslationJobListItem | null>(null);
 
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
-  const [didAutoGenerate, setDidAutoGenerate] = useState(false);
   const [reviewRequired, setReviewRequired] = useState(false);
 
   const animFrameRef = useRef<number>(0);
@@ -157,6 +156,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   }, [packResult?.zipPath]);
 
   const translationJobId = useAppStore((s) => s.translationJobId);
+  const reviewCount = useAppStore((s) => s.reviewCount);
 
   const toggleModExpand = useCallback((modId: string) => {
     setExpandedMods((prev) => {
@@ -197,19 +197,9 @@ export const PackagesPage = React.memo(function PackagesPage({
       })
       .catch((err) => console.warn("load latest translation job failed:", err));
     return () => { cancelled = true; };
-  }, [translationJobId]);
+  }, [translationJobId, reviewCount]);
 
-  // 2. Auto-pre-generate when a reviewed translation job becomes available
-  useEffect(() => {
-    if (didAutoGenerate || loading || packResult || !translationJob) return;
-    if (reviewRequired) return;  // 未校对不自动生成
-    if (translationJob.completedEntries > 0) {
-      setDidAutoGenerate(true);
-      generateFromJob(false);
-    }
-  }, [translationJob, reviewRequired, generateFromJob]);
-
-  // 3. Sync busy state to sidebar
+  // 2. Sync busy state to sidebar
   useEffect(() => {
     onBusyChange?.(loading);
   }, [loading, onBusyChange]);

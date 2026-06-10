@@ -29,6 +29,7 @@ import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translatio
 import type { TranslationKey } from "../i18n/translations";
 import type { ScanSummary, Settings, WarmupProgress } from "../types";
 import type { PageKey } from "../stores/appStore";
+import { useAppStore } from "../stores/appStore";
 
 interface NavItem {
   key: PageKey;
@@ -273,7 +274,7 @@ function AppShell() {
       case "jobs":
         return <JobsPage isActive={activePage === page} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
       case "validate":
-        return <ValidatePage language={language} onReviewComplete={() => { setActivePage("packages"); validateCompleted(true); }} />;
+        return <ValidatePage language={language} onReviewComplete={() => { setActivePage("packages"); validateCompleted(true); useAppStore.getState().setReviewCount(useAppStore.getState().reviewCount + 1); }} />;
       case "packages":
         return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} onPackComplete={packsCompleted} />;
       default:
