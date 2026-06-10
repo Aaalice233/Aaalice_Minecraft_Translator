@@ -61,6 +61,27 @@
   --muted: #5c5f66;
 }
 
+/* ── 全局滚动条样式 ───────────────────── */
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+  transition: background 0.12s;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
 /* ── Accent: Green (default) ── */
 [data-accent="green"] {
   --accent: #1f8a5b;
