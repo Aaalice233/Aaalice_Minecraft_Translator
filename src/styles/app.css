@@ -2913,6 +2913,8 @@ button.essb-legend-item:hover {
    ── Translation Edit Panel ────────────────────────────────
    ═══════════════════════════════════════════════════════════ */
 
+/* ── Overlay ── */
+
 .edit-panel-overlay {
   position: fixed;
   inset: 0;
@@ -2922,19 +2924,33 @@ button.essb-legend-item:hover {
   justify-content: center;
   background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 200ms ease;
 }
+
+.edit-panel-overlay.open {
+  opacity: 1;
+}
+
+/* ── Modal ── */
 
 .edit-panel-modal {
   display: flex;
   flex-direction: column;
-  width: 80vw;
-  height: 80vh;
-  max-width: 1200px;
+  width: 72vw;
+  height: 75vh;
+  max-width: 1100px;
   background: var(--bg-surface);
   border: 1px solid var(--border-input);
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
   overflow: hidden;
+  transform: scale(0.95);
+  transition: transform 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.edit-panel-modal.open {
+  transform: scale(1);
 }
 
 /* ── Header ── */
@@ -2943,38 +2959,66 @@ button.essb-legend-item:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 16px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0 12px 0 16px;
   border-bottom: 1px solid var(--border-input);
-  background: var(--bg-muted);
   flex-shrink: 0;
 }
 
-.edit-panel-header-info {
+.edit-panel-header-left {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  min-width: 0;
   font-size: 13px;
+}
+
+.edit-panel-mod-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  flex-shrink: 0;
 }
 
 .edit-panel-modname {
   font-weight: 600;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
 .edit-panel-modid {
   color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.edit-panel-entry-key {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  background: var(--bg-muted);
+  border-radius: 3px;
+  margin-left: 4px;
 }
 
 .edit-panel-header-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .edit-panel-progress {
   font-size: 12px;
   color: var(--text-muted);
   font-family: "JetBrains Mono", monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .edit-panel-close {
@@ -2988,10 +3032,11 @@ button.essb-legend-item:hover {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
 
 .edit-panel-close:hover {
-  background: var(--bg-hover);
+  background: var(--bg-muted);
   color: var(--text-primary);
 }
 
@@ -3008,50 +3053,102 @@ button.essb-legend-item:hover {
   flex: 1;
   display: flex;
   flex-direction: column;
-  padding: 12px 16px;
+  padding: 16px;
   overflow-y: auto;
+  gap: 10px;
 }
 
 .edit-panel-source {
   border-right: 1px solid var(--border-input);
 }
 
-.edit-panel-section-header {
+/* ── Source Card ── */
+
+.edit-panel-source-card {
+  background: var(--bg-muted);
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.edit-panel-source-card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  flex-shrink: 0;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-input);
+  background: var(--bg-surface);
 }
 
-.edit-panel-text-content {
+.edit-panel-lang-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: "JetBrains Mono", monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  border-radius: 3px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+.edit-panel-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.edit-panel-icon-btn:hover {
+  background: var(--bg-muted);
+  color: var(--text-primary);
+}
+
+.edit-panel-source-text {
+  padding: 10px 12px;
+  font-family: "JetBrains Mono", monospace;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
 }
 
+/* ── Target Label ── */
+
+.edit-panel-target-label {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* ── Textarea ── */
+
 .edit-panel-textarea {
   width: 100%;
-  min-height: 80px;
-  padding: 8px 10px;
+  min-height: 120px;
+  padding: 10px 12px;
   font-family: inherit;
   font-size: 13px;
-  line-height: 1.6;
+  line-height: 1.7;
   border: 1px solid var(--border-input);
-  border-radius: 4px;
-  background: var(--bg-app);
+  border-radius: 6px;
+  background: var(--bg-app, var(--bg-surface));
   color: var(--text-primary);
-  resize: vertical;
+  resize: none;
   outline: none;
   box-sizing: border-box;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .edit-panel-textarea:focus {
@@ -3060,83 +3157,216 @@ button.essb-legend-item:hover {
 }
 
 .edit-panel-textarea.dirty {
-  border-color: var(--accent);
+  border-color: var(--warning);
+  box-shadow: 0 0 0 2px var(--warning-bg);
 }
 
-/* ── Suggestion Bar ── */
+/* ── LLM Card ── */
 
-.suggestion-bar {
-  margin-top: 8px;
-  padding: 8px 10px;
-  border-radius: 4px;
+.edit-panel-llm-card {
+  border-radius: 6px;
+  padding: 10px 12px;
   font-size: 12px;
   line-height: 1.5;
   flex-shrink: 0;
+  animation: llm-slide-down 200ms ease;
 }
 
-.suggestion-bar.loading {
+.edit-panel-llm-card.loading {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: var(--accent-bg);
-  color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 500;
 }
 
-.suggestion-bar.error {
+.edit-panel-llm-card.error {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: #fef2f2;
-  color: #dc2626;
+  background: var(--danger-bg);
+  border: 1px solid var(--danger, #dc2626);
+  color: var(--danger-hover, #dc2626);
 }
 
-[data-theme="dark"] .suggestion-bar.error {
+[data-theme="dark"] .edit-panel-llm-card.error {
   background: #3b1010;
+  border-color: #dc2626;
   color: #fca5a5;
 }
 
-.suggestion-bar:not(.loading):not(.error) {
+.edit-panel-llm-card.done {
   background: var(--accent-bg);
   border: 1px solid var(--accent);
 }
 
-.suggestion-text {
+.edit-panel-llm-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--accent);
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.edit-panel-llm-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-text);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
   margin-bottom: 6px;
+}
+
+.edit-panel-llm-text {
+  margin-bottom: 8px;
   font-size: 12px;
   line-height: 1.5;
   color: var(--text-primary);
 }
 
-.suggestion-actions {
+.edit-panel-llm-actions {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-/* ── Bottom Toolbar ── */
+.edit-panel-llm-actions .primary-button {
+  height: 28px;
+  font-size: 12px;
+  padding: 0 10px;
+}
+
+.edit-panel-llm-actions .ghost-button {
+  height: 28px;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.edit-panel-llm-error-text {
+  flex: 1;
+  font-size: 12px;
+}
+
+/* ── Toolbar ── */
 
 .edit-panel-toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: 2px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 8px;
   border-top: 1px solid var(--border-input);
   background: var(--bg-muted);
   flex-shrink: 0;
+}
+
+.edit-panel-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.edit-panel-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.edit-panel-tool-btn:hover:not(:disabled) {
+  background: var(--bg-surface);
+}
+
+.edit-panel-tool-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .edit-panel-toolbar-divider {
   width: 1px;
   height: 20px;
   background: var(--border-input);
-  margin: 0 4px;
+  margin: 0 6px;
 }
 
-.edit-panel-toolbar .primary-button.flash-saved {
+.edit-panel-toolbar-spacer {
+  flex: 1;
+}
+
+.edit-panel-toolbar .edit-panel-save-btn {
+  height: 28px;
+  font-size: 12px;
+  padding: 0 12px;
+  gap: 4px;
+  transition: background 0.15s, opacity 0.2s;
+}
+
+.edit-panel-toolbar .edit-panel-save-btn.flash-saved {
   background: var(--accent);
   opacity: 0.85;
-  transition: opacity 0.2s;
+}
+
+/* ── Shortcut hints ── */
+
+.edit-panel-shortcuts {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0 12px;
+  background: var(--bg-muted);
+  border-top: 1px solid var(--border-input);
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.edit-panel-shortcuts kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-input);
+  border-radius: 3px;
+  color: var(--text-primary);
+  margin-right: 2px;
+}
+
+/* ── Keyframes ── */
+
+@keyframes llm-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .splash-overlay.visible {

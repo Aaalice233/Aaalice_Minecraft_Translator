@@ -1350,13 +1350,26 @@ pub fn translate_single_entry(
     llm_cfg: &LlmConfig,
     cancel: Option<&CancelToken>,
 ) -> Result<String, String> {
-    let _ = root; // unused but kept for interface consistency
-
     let client = build_llm_client(llm_cfg, 1);
     client.validate()?;
 
     if let Some(jid) = job_id {
         register_translation_task(jid);
+    }
+
+    // ── Load dictionary references for higher translation quality ──
+    let mut references: Vec<(String, String)> = Vec::new();
+    let dict_db_path = paths::dictionary_db_path(root);
+    if let Ok(dict_conn) = dictionary::open(&dict_db_path) {
+        if let Ok(mem_dict) = dictionary::MemoryDictionary::load(&dict_conn) {
+            let matches = mem_dict.fuzzy_search(source_text, source_language, target_language, 5);
+            let mut seen = std::collections::HashSet::new();
+            for m in &matches {
+                if seen.insert(m.source_text.clone()) {
+                    references.push((m.source_text.clone(), m.target_text.clone()));
+                }
+            }
+        }
     }
 
     let sr = shield::protect(source_text);
@@ -1367,7 +1380,7 @@ pub fn translate_single_entry(
         mod_id: mod_id.to_string(),
         source_lang: source_language.to_string(),
         target_lang: target_language.to_string(),
-        references: Vec::new(),
+        references,
     };
 
     let (results, _token) = if let Some(c) = cancel {

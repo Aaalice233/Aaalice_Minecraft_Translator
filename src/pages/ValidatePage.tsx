@@ -438,7 +438,7 @@ const ValidateRow = React.memo(function ValidateRow({
       </td>
       <td
         style={{ ...hStyle, cursor: "pointer", wordBreak: "break-word" }}
-        onDoubleClick={onOpenPanel}
+        onClick={onOpenPanel}
         title={t(language, "validate.doubleClickEdit")}
       >
         <span style={{ lineHeight: 1.5 }}>

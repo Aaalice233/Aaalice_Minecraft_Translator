@@ -51,10 +51,12 @@ export function TranslationEditPanel({
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [animState, setAnimState] = useState<"opening" | "open" | "closing">("opening");
 
   // Refs for focus trapping and stable callback access
   const panelRef = useRef<HTMLDivElement>(null);
   const saveBtnRef = useRef<HTMLButtonElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const handleCloseRef = useRef<() => Promise<void>>(async () => {});
   const handlePrevRef = useRef<() => Promise<void>>(async () => {});
   const handleNextRef = useRef<() => Promise<void>>(async () => {});
@@ -72,6 +74,16 @@ export function TranslationEditPanel({
     [currentEntry, editText],
   );
 
+  // Open animation: mount → immediately trigger open state
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      setAnimState("open");
+    });
+    // Lock body scroll while the panel is open
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = ""; };
+  }, []);
+
   // Reset state when navigating to a new entry
   useEffect(() => {
     if (currentEntry) {
@@ -81,6 +93,15 @@ export function TranslationEditPanel({
     setSaved(false);
     setSaveError(null);
   }, [currentKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-resize textarea when content changes
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = "auto";
+      ta.style.height = `${Math.max(80, ta.scrollHeight)}px`;
+    }
+  }, [editText]);
 
   // ── Auto-save current edit before navigation ──
   const saveCurrent = useCallback(async () => {
@@ -98,11 +119,9 @@ export function TranslationEditPanel({
   // ── Handlers ──
   const handlePrev = useCallback(async () => {
     if (!canGoPrev) return;
-    // Save current before navigating
     if (isDirty) {
       try { await saveCurrent(); } catch { return; }
     }
-    // Safety check: currentIndex is guaranteed valid because canGoPrev checks it
     const prevEntry = entries[currentIndex - 1];
     if (prevEntry) setCurrentKey(prevEntry.navKey);
   }, [canGoPrev, isDirty, saveCurrent, entries, currentIndex]);
@@ -122,7 +141,6 @@ export function TranslationEditPanel({
     try {
       await onSave(currentEntry, editText);
       setSaved(true);
-      // Flash effect: reset saved after 2s
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -147,12 +165,12 @@ export function TranslationEditPanel({
   const handleAcceptSuggestion = useCallback(async () => {
     if (!currentEntry || !llmSuggestion.text) return;
     setSaveError(null);
-    // Accept = fill textarea with suggestion + save
     setEditText(llmSuggestion.text);
     try {
       await onSave(currentEntry, llmSuggestion.text);
       setSaved(true);
       setLlmSuggestion({ text: "", loading: false, error: null });
+      textareaRef.current?.focus();
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -178,9 +196,20 @@ export function TranslationEditPanel({
     }
   }, [currentEntry]);
 
+  // ── Close handler with auto-save and closing animation ──
+  const handleClose = useCallback(async () => {
+    if (isDirty && currentEntry) {
+      try { await onSave(currentEntry, editText); } catch { /* best-effort */ }
+    }
+    setAnimState("closing");
+    setTimeout(() => onClose(), 200);
+  }, [isDirty, currentEntry, editText, onSave, onClose]);
+
   // ── Keyboard handler (uses refs to avoid stale closures without re-registration) ──
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't hijack arrow keys when editing text
+      if (document.activeElement?.tagName === "TEXTAREA" || document.activeElement?.tagName === "INPUT") return;
       switch (e.key) {
         case "ArrowLeft":
           e.preventDefault();
@@ -219,27 +248,22 @@ export function TranslationEditPanel({
       }
     };
     panel.addEventListener("keydown", trap);
-    first?.focus();
+    // Focus the ← button so keyboard shortcuts keep working after navigation.
+    (panel.querySelector<HTMLElement>(".edit-panel-toolbar-group button") ?? first)?.focus();
     return () => panel.removeEventListener("keydown", trap);
   }, [currentKey]);
-
-  // ── Close handler with auto-save ──
-  const handleClose = useCallback(async () => {
-    if (isDirty && currentEntry) {
-      try { await onSave(currentEntry, editText); } catch { /* best-effort */ }
-    }
-    onClose();
-  }, [isDirty, currentEntry, editText, onSave, onClose]);
 
   // Sync refs so keyboard handler always calls latest callbacks
   handleCloseRef.current = handleClose;
   handlePrevRef.current = handlePrev;
   handleNextRef.current = handleNext;
 
+  const isPanelOpen = animState === "open";
+
   // ── Guard: entry not found ──
   if (!currentEntry) {
     return createPortal(
-      <div className="edit-panel-overlay" onClick={onClose}>
+      <div className={`edit-panel-overlay ${isPanelOpen ? "open" : ""}`} onClick={onClose}>
         <div className="edit-panel-modal" onClick={(e) => e.stopPropagation()}>
           <div className="empty-state">
             <p>{t(language, "editPanel.entryNotFound")}</p>
@@ -251,10 +275,13 @@ export function TranslationEditPanel({
     );
   }
 
-  const panelContent = (
-    <div className="edit-panel-overlay" onClick={handleClose}>
+  return createPortal(
+    <div
+      className={`edit-panel-overlay ${isPanelOpen ? "open" : ""}`}
+      onClick={handleClose}
+    >
       <div
-        className="edit-panel-modal"
+        className={`edit-panel-modal ${isPanelOpen ? "open" : ""}`}
         ref={panelRef}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -263,10 +290,16 @@ export function TranslationEditPanel({
       >
         {/* ── Header ── */}
         <div className="edit-panel-header">
-          <div className="edit-panel-header-info">
+          <div className="edit-panel-header-left">
+            <span className="edit-panel-mod-dot" />
             <span className="edit-panel-modname">{currentEntry.modName ?? currentEntry.modId}</span>
             {currentEntry.modName && currentEntry.modId && (
               <span className="edit-panel-modid">· {currentEntry.modId}</span>
+            )}
+            {currentEntry.key && (
+              <span className="edit-panel-entry-key" title={currentEntry.key}>
+                {currentEntry.key}
+              </span>
             )}
           </div>
           <div className="edit-panel-header-right">
@@ -279,7 +312,7 @@ export function TranslationEditPanel({
               type="button"
               aria-label={t(language, "editPanel.ariaClose")}
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
         </div>
@@ -288,33 +321,43 @@ export function TranslationEditPanel({
         <div className="edit-panel-body">
           {/* Source */}
           <div className="edit-panel-source">
-            <div className="edit-panel-section-header">
-              <span>{t(language, "editPanel.sourceTitle")}</span>
-              <button
-                className="ghost-button"
-                onClick={handleCopySource}
-                type="button"
-                data-tooltip={copied ? t(language, "editPanel.copied") : t(language, "editPanel.copySource")}
-              >
-                {copied ? <Check size={14} /> : <ClipboardCopy size={14} />}
-              </button>
-            </div>
-            <div className="edit-panel-text-content">
-              {currentEntry.sourceText}
+            <div className="edit-panel-source-card">
+              <div className="edit-panel-source-card-header">
+                <span className="edit-panel-lang-badge">
+                  {pageType === "validate" ? (language === "zh_cn" ? "en_us" : language) : currentEntry.sourceType || "source"}
+                </span>
+                <button
+                  className="edit-panel-icon-btn"
+                  onClick={handleCopySource}
+                  type="button"
+                  data-tooltip={copied ? t(language, "editPanel.copied") : t(language, "editPanel.copySource")}
+                  aria-label={t(language, "editPanel.copySource")}
+                >
+                  {copied ? <Check size={14} /> : <ClipboardCopy size={14} />}
+                </button>
+              </div>
+              <div className="edit-panel-source-text">
+                {currentEntry.sourceText}
+              </div>
             </div>
           </div>
 
           {/* Target */}
           <div className="edit-panel-target">
-            <div className="edit-panel-section-header">
-              <span>{t(language, "editPanel.targetTitle")}</span>
+            <div className="edit-panel-target-label">
+              <span className="edit-panel-lang-badge">
+                {pageType === "validate" ? language : "target"}
+              </span>
             </div>
+
             {saveError && (
               <div className="alert error" style={{ marginBottom: 8, fontSize: 12, padding: "4px 8px" }}>
                 {saveError}
               </div>
             )}
+
             <textarea
+              ref={textareaRef}
               className={`edit-panel-textarea ${isDirty ? "dirty" : ""}`}
               value={editText}
               onChange={(e) => setEditText(e.target.value)}
@@ -322,30 +365,33 @@ export function TranslationEditPanel({
               aria-label={t(language, "editPanel.ariaTargetEdit")}
             />
 
-            {/* Suggestion bar */}
+            {/* LLM suggestion card */}
             {llmSuggestion.loading && (
-              <div className="suggestion-bar loading">
-                <span className="spin" style={{ display: "inline-block" }}>⟳</span>
-                {t(language, "editPanel.translating")}
+              <div className="edit-panel-llm-card loading">
+                <span className="edit-panel-llm-spinner" />
+                <span>{t(language, "editPanel.translating")}</span>
               </div>
             )}
             {llmSuggestion.error && (
-              <div className="suggestion-bar error">
-                <span>{llmSuggestion.error}</span>
+              <div className="edit-panel-llm-card error">
+                <span className="edit-panel-llm-error-text">{llmSuggestion.error}</span>
                 <button className="text-button" onClick={handleLlmTranslate} type="button">
                   {t(language, "editPanel.retry")}
                 </button>
               </div>
             )}
             {llmSuggestion.text && !llmSuggestion.loading && (
-              <div className="suggestion-bar">
-                <div className="suggestion-text">{llmSuggestion.text}</div>
-                <div className="suggestion-actions">
+              <div className="edit-panel-llm-card done">
+                <div className="edit-panel-llm-label">
+                  <Sparkles size={12} />
+                  {t(language, "editPanel.llmTranslate")}
+                </div>
+                <div className="edit-panel-llm-text">{llmSuggestion.text}</div>
+                <div className="edit-panel-llm-actions">
                   <button
                     className="primary-button"
                     onClick={handleAcceptSuggestion}
                     type="button"
-                    style={{ fontSize: 12, padding: "3px 10px" }}
                   >
                     <CornerDownLeft size={12} />
                     {t(language, "editPanel.accept")}
@@ -354,7 +400,6 @@ export function TranslationEditPanel({
                     className="ghost-button"
                     onClick={handleLlmTranslate}
                     type="button"
-                    style={{ fontSize: 12 }}
                   >
                     {t(language, "editPanel.retranslate")}
                   </button>
@@ -366,53 +411,59 @@ export function TranslationEditPanel({
 
         {/* ── Bottom Toolbar ── */}
         <div className="edit-panel-toolbar">
+          <div className="edit-panel-toolbar-group">
+            <button
+              className="edit-panel-tool-btn"
+              onClick={handlePrev}
+              disabled={!canGoPrev}
+              type="button"
+              data-tooltip={t(language, "editPanel.prevTooltip")}
+              aria-label={t(language, "editPanel.prevTooltip")}
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <button
+              className="edit-panel-tool-btn"
+              onClick={handleNext}
+              disabled={!canGoNext}
+              type="button"
+              data-tooltip={t(language, "editPanel.nextTooltip")}
+              aria-label={t(language, "editPanel.nextTooltip")}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
+
+          <div className="edit-panel-toolbar-divider" />
+
           <button
-            className="ghost-button"
+            className="edit-panel-tool-btn"
+            onClick={handleCopySource}
+            type="button"
+            data-tooltip={copied ? t(language, "editPanel.copied") : t(language, "editPanel.copySource")}
+          >
+            <ClipboardCopy size={14} />
+            <span>{t(language, "editPanel.copySource")}</span>
+          </button>
+
+          <div className="edit-panel-toolbar-divider" />
+
+          <button
+            className="edit-panel-tool-btn"
             onClick={handleLlmTranslate}
             type="button"
             disabled={llmSuggestion.loading || !onLlmTranslate}
             data-tooltip={t(language, "editPanel.llmTranslateTooltip")}
           >
-            <Sparkles size={16} />
-            {t(language, "editPanel.llmTranslate")}
+            <Sparkles size={14} />
+            <span>{t(language, "editPanel.llmTranslate")}</span>
           </button>
 
-          <div className="edit-panel-toolbar-divider" />
-
-          <button
-            className="ghost-button"
-            onClick={handlePrev}
-            disabled={!canGoPrev}
-            type="button"
-            data-tooltip={t(language, "editPanel.prevTooltip")}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            className="ghost-button"
-            onClick={handleNext}
-            disabled={!canGoNext}
-            type="button"
-            data-tooltip={t(language, "editPanel.nextTooltip")}
-          >
-            <ChevronRight size={16} />
-          </button>
-
-          <div className="edit-panel-toolbar-divider" />
-
-          <button
-            className="ghost-button"
-            onClick={handleCopySource}
-            type="button"
-            data-tooltip={copied ? t(language, "editPanel.copied") : t(language, "editPanel.copySource")}
-          >
-            {copied ? <Check size={16} /> : <ClipboardCopy size={16} />}
-            {t(language, "editPanel.copySource")}
-          </button>
+          <div className="edit-panel-toolbar-spacer" />
 
           <button
             ref={saveBtnRef}
-            className={`primary-button ${saved ? "flash-saved" : ""}`}
+            className={`primary-button edit-panel-save-btn ${saved ? "flash-saved" : ""}`}
             onClick={handleSave}
             disabled={!isDirty}
             type="button"
@@ -421,9 +472,15 @@ export function TranslationEditPanel({
             {t(language, "editPanel.save")}
           </button>
         </div>
-      </div>
-    </div>
-  );
 
-  return createPortal(panelContent, document.body);
+        {/* ── Shortcut hints ── */}
+        <div className="edit-panel-shortcuts">
+          <span><kbd>←</kbd> {t(language, "editPanel.shortcutPrev")}</span>
+          <span><kbd>→</kbd> {t(language, "editPanel.shortcutNext")}</span>
+          <span><kbd>Esc</kbd> {t(language, "editPanel.shortcutClose")}</span>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }

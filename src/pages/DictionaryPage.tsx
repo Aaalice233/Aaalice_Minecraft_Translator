@@ -49,8 +49,8 @@ const DictionaryRow = React.memo(function DictionaryRow({
       <td title={entry.sourceText}>{entry.sourceText}</td>
       <td
         style={{ cursor: entry.id != null ? "pointer" : "default" }}
-        onDoubleClick={entry.id != null ? onOpenPanel : undefined}
-        title={entry.id != null ? t(language, "dictionary.doubleClickEdit") : t(language, "dictionary.readOnly")}
+        onClick={entry.id != null ? onOpenPanel : undefined}
+        title={entry.id != null ? t(language, "dictionary.clickToEdit") : t(language, "dictionary.readOnly")}
       >
         <span style={{ color: highlighted ? "var(--accent)" : undefined }}>
           {entry.targetText}
@@ -189,12 +189,17 @@ export function DictionaryPage({ language }: Props) {
     try {
       await updateDictionaryEntry(entry.id, newText);
       setMessage(t(language, "dictionary.saved"));
-      fetchEntries();
+      // Optimistic update: avoid full re-fetch loading flash
+      setEntries((prev) =>
+        prev.map((e) => (e.id === entry.id ? { ...e, targetText: newText } : e)),
+      );
+      // Silent background refresh
+      fetchEntriesSilent();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       throw err;
     }
-  }, [language, fetchEntries]);
+  }, [language, fetchEntriesSilent]);
 
   const handleLlmTranslate = useCallback(async (entry: EditPanelEntry) => {
     const settings: Settings = await getSettings();
@@ -407,7 +412,6 @@ export function DictionaryPage({ language }: Props) {
             onSave={handleSave}
             onClose={() => {
               setPanelOpen(false);
-              fetchEntries();
             }}
             onLlmTranslate={handleLlmTranslate}
             pageType="dictionary"

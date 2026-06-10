@@ -114,8 +114,9 @@ export type TranslationKey =
   | "editPanel.retranslate"
   | "editPanel.retry"
   | "editPanel.save"
-  | "editPanel.sourceTitle"
-  | "editPanel.targetTitle"
+  | "editPanel.shortcutPrev"
+  | "editPanel.shortcutNext"
+  | "editPanel.shortcutClose"
   | "editPanel.translating"
   | "editPanel.accept"
   | "jobs.title"
@@ -542,10 +543,11 @@ const zhCn: TranslationMap = {
   "editPanel.retranslate": "重新翻译",
   "editPanel.retry": "重试",
   "editPanel.save": "保存",
-  "editPanel.sourceTitle": "原文",
-  "editPanel.targetTitle": "译文",
   "editPanel.translating": "翻译中...",
   "editPanel.accept": "采纳",
+  "editPanel.shortcutPrev": "上一项",
+  "editPanel.shortcutNext": "下一项",
+  "editPanel.shortcutClose": "关闭",
   "jobs.title": "翻译任务",
   "jobs.subtitle": "管理翻译流程，查看进度和结果",
   "jobs.start": "开始翻译",
@@ -799,7 +801,7 @@ const zhCn: TranslationMap = {
   "validate.noJob": "未找到翻译任务。请先在「翻译任务」页面完成一次翻译。",
   "validate.jobPending": "翻译任务尚未完成，请等待翻译完成后进入校对。",
   "validate.entries": "{count} 条",
-  "validate.doubleClickEdit": "双击打开编辑面板",
+  "validate.doubleClickEdit": "单击打开编辑面板",
   "validate.loading": "加载中...",
   "validate.markDone": "校对完成",
   "validate.noMatch": "没有匹配的条目",
@@ -1049,6 +1051,9 @@ const enUs: TranslationMap = {
   "dictionary.doubleClickEdit": "Double-click to edit",
   "dictionary.readOnly": "Read-only",
   "editPanel.accept": "Accept",
+  "editPanel.shortcutPrev": "Previous",
+  "editPanel.shortcutNext": "Next",
+  "editPanel.shortcutClose": "Close",
   "editPanel.ariaClose": "Close",
   "editPanel.ariaLabel": "Translation Editor",
   "editPanel.ariaTargetEdit": "Edit translation",
@@ -1064,8 +1069,6 @@ const enUs: TranslationMap = {
   "editPanel.retranslate": "Retranslate",
   "editPanel.retry": "Retry",
   "editPanel.save": "Save",
-  "editPanel.sourceTitle": "Source",
-  "editPanel.targetTitle": "Translation",
   "editPanel.translating": "Translating...",
   "jobs.cancelFailed": "Cancel failed: {error}",
   "jobs.clearFilter": "Clear filter",
@@ -1314,6 +1317,9 @@ const jaJp: TranslationMap = {
   "dictionary.doubleClickEdit": "ダブルクリックで編集",
   "dictionary.readOnly": "読み取り専用",
   "editPanel.accept": "採用",
+  "editPanel.shortcutPrev": "前へ",
+  "editPanel.shortcutNext": "次へ",
+  "editPanel.shortcutClose": "閉じる",
   "editPanel.ariaClose": "閉じる",
   "editPanel.ariaLabel": "翻訳エディター",
   "editPanel.ariaTargetEdit": "訳文編集",
@@ -1328,8 +1334,6 @@ const jaJp: TranslationMap = {
   "editPanel.retranslate": "再翻訳",
   "editPanel.retry": "リトライ",
   "editPanel.save": "保存",
-  "editPanel.sourceTitle": "原文",
-  "editPanel.targetTitle": "訳文",
   "editPanel.translating": "翻訳中...",
   "jobs.cancelFailed": "キャンセル失敗: {error}",
   "jobs.clearFilter": "フィルターをクリア",
@@ -1576,11 +1580,12 @@ const koKr: TranslationMap = {
   "dashboard.resourceFilesEntries": "{files}개 파일 / {entries}개 항목",
   "dictionary.doubleClickEdit": "더블클릭하여 편집",
   "dictionary.readOnly": "읽기 전용",
-  "editPanel.sourceTitle": "원문",
-  "editPanel.targetTitle": "번역문",
   "editPanel.translating": "번역 중...",
   "editPanel.retry": "재시도",
   "editPanel.accept": "적용",
+  "editPanel.shortcutPrev": "이전",
+  "editPanel.shortcutNext": "다음",
+  "editPanel.shortcutClose": "닫기",
   "editPanel.save": "저장",
   "editPanel.close": "닫기",
   "editPanel.copied": "복사됨",
@@ -1928,11 +1933,12 @@ const ruRu: TranslationMap = {
   "dashboard.resourceFilesEntries": "{files} файлов / {entries} записей",
   "dictionary.doubleClickEdit": "Двойной щелчок для редактирования",
   "dictionary.readOnly": "Только чтение",
-  "editPanel.sourceTitle": "Исходный текст",
-  "editPanel.targetTitle": "Перевод",
   "editPanel.translating": "Перевод...",
   "editPanel.retry": "Повторить",
   "editPanel.accept": "Принять",
+  "editPanel.shortcutPrev": "Назад",
+  "editPanel.shortcutNext": "Вперёд",
+  "editPanel.shortcutClose": "Закрыть",
   "editPanel.save": "Сохранить",
   "editPanel.close": "Закрыть",
   "editPanel.copied": "Скопировано",
