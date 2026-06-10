@@ -528,25 +528,6 @@ select {
   font-weight: 500;
 }
 
-/* ── Layer 1: Job selector ── */
-.packages-job-selector {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.packages-job-selector label {
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--text-secondary);
-}
-
-.packages-job-selector .job-selector {
-  max-width: 460px;
-}
-
 /* ── Layer 2: Empty states ── */
 .packages-middle-empty {
   display: flex;
@@ -818,60 +799,6 @@ select {
   font-size: 12px;
   color: var(--text-muted);
   font-weight: 400;
-}
-
-/* ── Layer 3: Deploy buttons ── */
-.packages-bottom {
-  margin-top: auto;
-}
-
-.packages-deploy-buttons {
-  display: flex;
-  gap: 12px;
-}
-
-.packages-deploy-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex: 1;
-  height: 44px;
-  padding: 0 20px;
-  border: 1px solid var(--border-input);
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.packages-deploy-btn:hover {
-  background: var(--bg-muted);
-  border-color: var(--border-input);
-}
-
-.packages-deploy-primary {
-  background: var(--accent);
-  color: #fff;
-  border-color: var(--accent-hover);
-  font-weight: 700;
-}
-
-.packages-deploy-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  color: #fff;
-}
-
-.packages-deploy-btn svg {
-  flex-shrink: 0;
-}
-
-.packages-deploy-primary svg {
-  color: #fff;
 }
 
 /* ── Page-header ── */

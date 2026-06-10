@@ -3,8 +3,6 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Copy,
-  Download,
   FileArchive,
   FileText,
   FolderOpen,
@@ -15,8 +13,6 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  copyFile,
-  copyPackToInstance,
   generatePackFromJob,
   loadLatestTranslationJobMeta,
 } from "../api/tauri";
@@ -28,7 +24,6 @@ import { t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
 import type {
   AppLanguage,
-  CopyResult,
   PackResult,
   ScanSummary,
   TranslationJobListItem,
@@ -57,7 +52,6 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   // ── State ──────────────────────────────────────────────────
   const [packResult, setPackResult] = useState<PackResult | null>(null);
-  const [copyResult, setCopyResult] = useState<CopyResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [animationProgress, setAnimationProgress] = useState(0);
@@ -67,7 +61,9 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
   const [reviewRequired, setReviewRequired] = useState(false);
-  const [outputDir, setOutputDir] = useState<string | null>(null);
+  const [outputDir, setOutputDir] = useState<string | null>(() =>
+    settings.instancePath ? `${settings.instancePath.replace(/\\/g, "/")}/resourcepacks` : null,
+  );
 
   const animFrameRef = useRef<number>(0);
 
@@ -80,8 +76,8 @@ export const PackagesPage = React.memo(function PackagesPage({
       if (!translationJob) return;
       const animStart = Date.now();
       setLoading(true);
+      setAnimationProgress(0);
       setError("");
-      setCopyResult(null);
       setPackResult(null);
       try {
         const targetLang =
@@ -123,55 +119,6 @@ export const PackagesPage = React.memo(function PackagesPage({
       generateFromJob(false);
     }
   }, [translationJob, generateFromJob]);
-
-  const handleCopyToInstance = useCallback(async () => {
-    if (!packResult?.zipPath) return;
-    setError("");
-    try {
-      const result = await copyPackToInstance(
-        packResult.zipPath,
-        settings.instancePath,
-        true,
-      );
-      setCopyResult(result);
-    } catch (err) {
-      setError(toErrorMessage(err));
-    }
-  }, [packResult?.zipPath, settings.instancePath]);
-
-  const handleOpenFolder = useCallback(async () => {
-    if (!packResult?.outputDir) return;
-    setError("");
-    try {
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("open_path", { path: packResult.outputDir });
-    } catch (err) {
-      setError(toErrorMessage(err));
-    }
-  }, [packResult?.outputDir]);
-
-  const handleSaveLocally = useCallback(async () => {
-    if (!packResult?.zipPath) return;
-    setError("");
-    try {
-      const { save } = await import("@tauri-apps/plugin-dialog");
-      const zipName =
-        packResult.zipPath.split(/[/\\]/).pop() || "translation-pack.zip";
-      const dest = await save({
-        defaultPath: zipName,
-        filters: [{ name: t(language, "packages.zipFilter"), extensions: ["zip"] }],
-      });
-      if (!dest) return; // user cancelled
-      await copyFile(packResult.zipPath, dest);
-      setCopyResult({
-        success: true,
-        targetPath: dest,
-        replaced: false,
-      });
-    } catch (err) {
-      setError(toErrorMessage(err));
-    }
-  }, [packResult?.zipPath]);
 
   const translationJobId = useAppStore((s) => s.translationJobId);
   const reviewCount = useAppStore((s) => s.reviewCount);
@@ -247,6 +194,16 @@ export const PackagesPage = React.memo(function PackagesPage({
       const timer = setTimeout(() => {
         setPackComplete(true);
         onPackComplete?.(true);
+        // 自动在资源管理器中打开输出文件夹
+        if (packResult.outputDir && ("__TAURI_INTERNALS__" in window)) {
+          import("@tauri-apps/api/core").then(({ invoke }) => {
+            invoke("open_path", { path: packResult.outputDir }).catch((err) => {
+              setError(`打开输出文件夹失败: ${toErrorMessage(err)}`);
+            });
+          }).catch((err) => {
+            setError(`打开输出文件夹失败: ${toErrorMessage(err)}`);
+          });
+        }
       }, 1200);
       return () => clearTimeout(timer);
     }
@@ -472,28 +429,30 @@ export const PackagesPage = React.memo(function PackagesPage({
           </div>
         )}
 
-        {/* ── Pre-pack: output dir + mod list preview ──────── */}
+        {/* ── Output directory selector (always visible after scan+translate) ── */}
+        {translationJob && scanSummary && !loading && (
+          <div className="packages-output-dir">
+            <FolderOpen size={16} />
+            <span className="packages-output-dir-label">
+              {t(language, "packages.outputDir")}:
+            </span>
+            <code className="packages-output-dir-path">
+              {outputDir}
+            </code>
+            <button
+              className="packages-output-dir-btn"
+              onClick={handleSelectOutputDir}
+              type="button"
+              data-tooltip={t(language, "packages.outputDirBrowse")}
+            >
+              {t(language, "packages.outputDirBrowse")}
+            </button>
+          </div>
+        )}
+
+        {/* ── Pre-pack: mod list preview ──────── */}
         {translationJob && scanSummary && !loading && !packResult && (
           <div className="packages-middle-preview">
-            {/* Output directory selector */}
-            <div className="packages-output-dir">
-              <FolderOpen size={16} />
-              <span className="packages-output-dir-label">
-                {t(language, "packages.outputDir")}:
-              </span>
-              <code className="packages-output-dir-path">
-                {outputDir || t(language, "packages.outputDirDefault")}
-              </code>
-              <button
-                className="packages-output-dir-btn"
-                onClick={handleSelectOutputDir}
-                type="button"
-                data-tooltip={t(language, "packages.outputDirBrowse")}
-              >
-                {t(language, "packages.outputDirBrowse")}
-              </button>
-            </div>
-
             <div className="packages-mod-list">
                 <div className="packages-mod-list-header">
                   <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
@@ -510,69 +469,30 @@ export const PackagesPage = React.memo(function PackagesPage({
 
         {/* ── Generation complete: mod list ─────────────────── */}
         {packResult && packComplete && scanSummary && (
-          <div className="packages-mod-list">
-            <div className="packages-mod-list-header">
-              <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
+          <>
+            {/* Zip path notification */}
+            <div className="alert success" style={{ marginBottom: 12 }}>
+              <FileArchive size={16} />
+              <span>
+                资源包已生成：<code style={{ wordBreak: "break-all" }}>{packResult.zipPath}</code>
+              </span>
             </div>
-            <div className="packages-mod-list-body">
-              {renderModItems()}
+            <div className="packages-mod-list">
+              <div className="packages-mod-list-header">
+                <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
+              </div>
+              <div className="packages-mod-list-body">
+                {renderModItems()}
+              </div>
             </div>
-          </div>
+          </>
         )}
       </div>
 
       {/* ══════════════════════════════════════════════════════
-          LAYER 3: 部署按钮
+          LAYER 3: 打包完成后自动打开文件夹，无需显示按钮
           ══════════════════════════════════════════════════════ */}
-      {packResult && packComplete && (
-        <div className="packages-layer packages-bottom">
-          <div className="packages-deploy-buttons">
-            <button
-              className="packages-deploy-btn"
-              onClick={handleSaveLocally}
-              type="button"
-              data-tooltip={t(language, "packages.saveLocallyTooltip")}
-            >
-              <Download size={18} />
-              <span>{t(language, "packages.saveLocally")}</span>
-            </button>
-            <button
-              className="packages-deploy-btn packages-deploy-primary"
-              onClick={handleCopyToInstance}
-              type="button"
-              data-tooltip={t(language, "packages.copyToInstanceTooltip")}
-            >
-              <Copy size={18} />
-              <span>{t(language, "packages.copyToInstanceBtn")}</span>
-            </button>
-            <button
-              className="packages-deploy-btn"
-              onClick={handleOpenFolder}
-              type="button"
-              data-tooltip={t(language, "packages.openFolderTooltip")}
-            >
-              <FolderOpen size={18} />
-              <span>{t(language, "packages.openFolder")}</span>
-            </button>
-          </div>
-
-          {copyResult && (
-            <div
-              className={`alert ${copyResult.success ? "success" : "error"}`}
-              style={{ marginTop: 12 }}
-            >
-              {copyResult.success
-                ? t(language, "packages.copySuccess", {
-                    path: copyResult.targetPath,
-                    replaced: copyResult.replaced
-                      ? t(language, "packages.replaced")
-                      : "",
-                  })
-                : t(language, "packages.copyFailed")}
-            </div>
-          )}
-        </div>
-      )}
+      {/* 底部部署按钮已移除 — 打包完成后自动在资源管理器中打开输出目录 */}
     </section>
   );
 });

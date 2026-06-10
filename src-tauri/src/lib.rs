@@ -32,7 +32,6 @@ pub fn run() {
             commands::cancel_scan,
             commands::pick_instance_folder,
             commands::open_path,
-            commands::copy_file,
             commands::fetch_llm_models,
             commands::list_fonts,
             commands::read_logs,

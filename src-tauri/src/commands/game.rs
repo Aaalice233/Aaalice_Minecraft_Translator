@@ -1,22 +1,9 @@
-use std::fs;
 use tracing::info;
 
 #[tauri::command]
 pub fn open_path(path: String) -> Result<(), String> {
     info!("open_path: path={}", path);
     open::that(path).map_err(|e| e.to_string())
-}
-
-/// Copy a file from src to dest (used by "保存本地" feature).
-#[tauri::command]
-pub fn copy_file(src: String, dest: String) -> Result<(), String> {
-    info!("copy_file: src={}, dest={}", src, dest);
-    // Ensure parent directory exists
-    if let Some(parent) = std::path::Path::new(&dest).parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
-    }
-    fs::copy(&src, &dest).map_err(|e| format!("复制文件失败: {}", e))?;
-    Ok(())
 }
 
 /// Placeholder — returns empty list; actual implementation deferred.

@@ -181,20 +181,9 @@ export type TranslationKey =
   | "jobs.sourceType.reviewed"
   | "packages.title"
   | "packages.subtitle"
-  | "packages.dryRun"
   | "packages.generate"
   | "packages.noScan"
-  | "packages.result"
-  | "packages.mods"
-  | "packages.entries"
-  | "packages.conflicts"
-  | "packages.conflictDetail"
-  | "packages.confirmTitle"
-  | "packages.confirmMessage"
-  | "packages.copyToInstance"
   | "packages.allMods"
-  | "packages.copyToInstanceBtn"
-  | "packages.copyToInstanceTooltip"
   | "packages.detailKey"
   | "packages.detailSource"
   | "packages.entries_label"
@@ -206,8 +195,6 @@ export type TranslationKey =
   | "packages.moreEntries"
   | "packages.noLangFiles"
   | "packages.noTranslation"
-  | "packages.openFolder"
-  | "packages.openFolderTooltip"
   | "packages.packDone"
   | "packages.packing"
   | "packages.packingPercent"
@@ -215,16 +202,9 @@ export type TranslationKey =
   | "packages.regenerate"
   | "packages.regenerateTooltip"
   | "packages.reviewRequired"
-  | "packages.saveLocally"
-  | "packages.saveLocallyTooltip"
-  | "packages.zipFilter"
   | "packages.outputDir"
-  | "packages.outputDirDefault"
   | "packages.outputDirBrowse"
   | "packages.readyToPack"
-  | "packages.copySuccess"
-  | "packages.copyFailed"
-  | "packages.replaced"
   | "settings.title"
   | "settings.subtitle"
   | "settings.systemPrompt"
@@ -614,23 +594,9 @@ const zhCn: TranslationMap = {
   "jobs.totalCount": "总计 {count} 条",
   "packages.title": "资源包打包",
   "packages.subtitle": "生成翻译资源包并部署到实例",
-  "packages.dryRun": "预览",
   "packages.generate": "生成资源包",
   "packages.noScan": "请先扫描并翻译模组",
-  "packages.result": "打包摘要",
-  "packages.mods": "模组数",
-  "packages.entries": "条目数",
-  "packages.conflicts": "冲突数",
-  "packages.conflictDetail": "冲突详情",
-  "packages.confirmTitle": "确认部署",
-  "packages.confirmMessage": "将资源包复制到实例 resourcepacks 目录：{path}",
-  "packages.copyToInstance": "复制到实例",
-  "packages.copySuccess": "已复制到 {path} {replaced}",
-  "packages.copyFailed": "复制失败",
-  "packages.replaced": "（已替换旧版本）",
   "packages.allMods": "全部模组 ({count})",
-  "packages.copyToInstanceBtn": "复制到实例",
-  "packages.copyToInstanceTooltip": "复制到游戏实例 resourcepacks 目录",
   "packages.detailKey": "键",
   "packages.detailSource": "原文",
   "packages.entries_label": "{count} 条目",
@@ -642,8 +608,6 @@ const zhCn: TranslationMap = {
   "packages.moreEntries": "...还有 {count} 条",
   "packages.noLangFiles": "无语言文件",
   "packages.noTranslation": "暂无可用的翻译结果，请先完成翻译",
-  "packages.openFolder": "打开文件夹",
-  "packages.openFolderTooltip": "在文件管理器中打开",
   "packages.packDone": "打包完成",
   "packages.packing": "正在打包...",
   "packages.packingPercent": "正在打包 ({percent}%)",
@@ -651,13 +615,9 @@ const zhCn: TranslationMap = {
   "packages.regenerate": "重新生成",
   "packages.regenerateTooltip": "重新生成资源包",
   "packages.outputDir": "输出目录",
-  "packages.outputDirDefault": "默认位置",
   "packages.outputDirBrowse": "浏览...",
   "packages.readyToPack": "翻译已就绪，点击「生成资源包」开始打包",
   "packages.reviewRequired": "当前翻译任务尚未完成校对。请前往「校对」页面完成校对后再打包。",
-  "packages.saveLocally": "保存本地",
-  "packages.saveLocallyTooltip": "选择保存位置",
-  "packages.zipFilter": "ZIP 资源包",
   "settings.title": "设置中心",
   "settings.subtitle": "常用选项会持久化保存到本地设置文件。",
   "settings.systemPrompt": "系统提示词",
@@ -1099,8 +1059,6 @@ const enUs: TranslationMap = {
   "logs.resume": "Resume scrolling",
   "logs.scrollToBottom": "Scroll to bottom",
   "packages.allMods": "All mods ({count})",
-  "packages.copyToInstanceBtn": "Copy to Instance",
-  "packages.copyToInstanceTooltip": "Copy to instance resourcepacks directory",
   "packages.detailKey": "Key",
   "packages.detailSource": "Source",
   "packages.entries_label": "{count} entries",
@@ -1112,8 +1070,6 @@ const enUs: TranslationMap = {
   "packages.moreEntries": "...and {count} more",
   "packages.noLangFiles": "No language files",
   "packages.noTranslation": "No translation results available. Please complete a translation first.",
-  "packages.openFolder": "Open Folder",
-  "packages.openFolderTooltip": "Open in file manager",
   "packages.packDone": "Pack complete",
   "packages.packing": "Packing...",
   "packages.packingPercent": "Packing ({percent}%)",
@@ -1122,13 +1078,9 @@ const enUs: TranslationMap = {
   "packages.regenerate": "Regenerate",
   "packages.regenerateTooltip": "Regenerate resource pack",
   "packages.outputDir": "Output directory",
-  "packages.outputDirDefault": "Default location",
   "packages.outputDirBrowse": "Browse...",
   "packages.readyToPack": "Ready to pack. Click 'Generate' to create the resource pack.",
   "packages.reviewRequired": "The current translation job has not been reviewed. Please review it on the Validate page first.",
-  "packages.saveLocally": "Save Locally",
-  "packages.saveLocallyTooltip": "Choose save location",
-  "packages.zipFilter": "ZIP Pack",
   "settings.providerOpenai": "OpenAI Compatible",
   "splash.firstLaunch": "First launch, initializing…",
   "splash.offline": "Offline mode",
@@ -1369,8 +1321,6 @@ const jaJp: TranslationMap = {
   "logs.resume": "スクロール再開",
   "logs.scrollToBottom": "最下部へ",
   "packages.allMods": "すべての Mod ({count})",
-  "packages.copyToInstanceBtn": "インスタンスにコピー",
-  "packages.copyToInstanceTooltip": "インスタンスの resourcepacks ディレクトリにコピー",
   "packages.detailKey": "キー",
   "packages.detailSource": "原文",
   "packages.entries_label": "{count} 項目",
@@ -1382,8 +1332,6 @@ const jaJp: TranslationMap = {
   "packages.moreEntries": "...他 {count} 件",
   "packages.noLangFiles": "言語ファイルなし",
   "packages.noTranslation": "翻訳結果がありません。先に翻訳を完了してください。",
-  "packages.openFolder": "フォルダを開く",
-  "packages.openFolderTooltip": "ファイルマネージャーで開く",
   "packages.packDone": "パッケージ完了",
   "packages.packing": "パッケージ中...",
   "packages.packingPercent": "パッケージ中 ({percent}%)",
@@ -1392,13 +1340,9 @@ const jaJp: TranslationMap = {
   "packages.regenerate": "再生成",
   "packages.regenerateTooltip": "リソースパックを再生成",
   "packages.outputDir": "出力先",
-  "packages.outputDirDefault": "既定の場所",
   "packages.outputDirBrowse": "参照...",
   "packages.readyToPack": "翻訳完了。「生成」をクリックしてパックを作成",
   "packages.reviewRequired": "現在の翻訳ジョブはまだレビューされていません。先に「レビュー」ページでレビューを完了してください。",
-  "packages.saveLocally": "ローカル保存",
-  "packages.saveLocallyTooltip": "保存場所を選択",
-  "packages.zipFilter": "ZIP パック",
   "settings.providerOpenai": "OpenAI 互換",
   "splash.firstLaunch": "初回起動、初期化中…",
   "splash.offline": "オフラインモード",
@@ -1638,8 +1582,6 @@ const koKr: TranslationMap = {
   "logs.linesWithTotal": "/ 총 {count}",
   "logs.scrollToBottom": "맨 아래로",
   "packages.allMods": "모든 모드 ({count})",
-  "packages.copyToInstanceBtn": "인스턴스에 복사",
-  "packages.copyToInstanceTooltip": "인스턴스 resourcepacks 디렉토리에 복사",
   "packages.detailKey": "키",
   "packages.detailSource": "원문",
   "packages.entries_label": "{count}개 항목",
@@ -1651,8 +1593,6 @@ const koKr: TranslationMap = {
   "packages.moreEntries": "...외 {count}개",
   "packages.noLangFiles": "언어 파일 없음",
   "packages.noTranslation": "번역 결과가 없습니다. 먼저 번역을 완료해주세요.",
-  "packages.openFolder": "폴더 열기",
-  "packages.openFolderTooltip": "파일 관리자에서 열기",
   "packages.packDone": "패키징 완료",
   "packages.packing": "패키징 중...",
   "packages.packingPercent": "패키징 중 ({percent}%)",
@@ -1661,13 +1601,9 @@ const koKr: TranslationMap = {
   "packages.regenerate": "재생성",
   "packages.regenerateTooltip": "리소스 팩 재생성",
   "packages.outputDir": "출력 폴더",
-  "packages.outputDirDefault": "기본 위치",
   "packages.outputDirBrowse": "찾아보기...",
   "packages.readyToPack": "번역 완료. '생성'을 클릭하여 팩 만들기",
   "packages.reviewRequired": "현재 번역 작업이 아직 검토되지 않았습니다. '검토' 페이지에서 검토를 완료해주세요.",
-  "packages.saveLocally": "로컬 저장",
-  "packages.saveLocallyTooltip": "저장 위치 선택",
-  "packages.zipFilter": "ZIP 팩",
   "settings.providerOpenai": "OpenAI 호환",
   "splash.phase.settings": "설정",
   "splash.phase.local": "로컬",
@@ -1812,20 +1748,8 @@ const ruRu: TranslationMap = {
   "jobs.logPanel.colType": "Тип",
   "packages.title": "Упаковка перевода",
   "packages.subtitle": "Генерация ресурс-пака с переводами.",
-  "packages.dryRun": "Тестовый запуск",
   "packages.generate": "Сгенерировать пак",
   "packages.noScan": "Сначала выполните сканирование.",
-  "packages.result": "Результат: {mods} модов, {entries} записей",
-  "packages.mods": "Модов: {count}",
-  "packages.entries": "Записей: {count}",
-  "packages.conflicts": "Конфликтов: {count}",
-  "packages.conflictDetail": "{mod}: {key}",
-  "packages.confirmTitle": "Подтверждение копирования",
-  "packages.confirmMessage": "Скопировать ресурс-пак в экземпляр?",
-  "packages.copyToInstance": "Копировать в экземпляр",
-  "packages.copySuccess": "Ресурс-пак скопирован в экземпляр.",
-  "packages.copyFailed": "Не удалось скопировать в экземпляр.",
-  "packages.replaced": "Заменен существующий файл.",
   "settings.title": "Настройки",
   "settings.subtitle": "Общие параметры сохраняются в локальный файл.",
   "settings.save": "Сохранить настройки",
@@ -1996,8 +1920,6 @@ const ruRu: TranslationMap = {
   "logs.linesWithTotal": "/ {count} всего",
   "logs.scrollToBottom": "Вниз",
   "packages.allMods": "Все моды ({count})",
-  "packages.copyToInstanceBtn": "Копировать в экземпляр",
-  "packages.copyToInstanceTooltip": "Копировать в каталог resourcepacks экземпляра",
   "packages.detailKey": "Ключ",
   "packages.detailSource": "Исходный",
   "packages.entries_label": "{count} записей",
@@ -2009,8 +1931,6 @@ const ruRu: TranslationMap = {
   "packages.moreEntries": "...и ещё {count}",
   "packages.noLangFiles": "Нет языковых файлов",
   "packages.noTranslation": "Результаты перевода отсутствуют. Сначала выполните перевод.",
-  "packages.openFolder": "Открыть папку",
-  "packages.openFolderTooltip": "Открыть в проводнике",
   "packages.packDone": "Упаковка завершена",
   "packages.packing": "Упаковка...",
   "packages.packingPercent": "Упаковка ({percent}%)",
@@ -2018,13 +1938,9 @@ const ruRu: TranslationMap = {
   "packages.regenerate": "Перегенерировать",
   "packages.regenerateTooltip": "Перегенерировать ресурс-пак",
   "packages.outputDir": "Каталог вывода",
-  "packages.outputDirDefault": "По умолчанию",
   "packages.outputDirBrowse": "Обзор...",
   "packages.readyToPack": "Перевод готов. Нажмите «Сгенерировать» для создания пака",
   "packages.reviewRequired": "Текущий перевод не был проверен. Проверьте его на странице «Проверка».",
-  "packages.saveLocally": "Сохранить локально",
-  "packages.saveLocallyTooltip": "Выберите место сохранения",
-  "packages.zipFilter": "ZIP-пак",
   "settings.providerOpenai": "OpenAI Совместимый",
   "splash.phase.settings": "Настройки",
   "splash.phase.local": "Локальный",
