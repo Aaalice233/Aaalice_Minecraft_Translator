@@ -77,7 +77,9 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "app-store",
-      // Only persist elapsed time values (transient data survives restarts)
+      // Persist elapsed time counters only (跨重启保留扫描/翻译耗时）。
+      // 不持久化 translationJobId——该 ID 应在每次启动时重新获取，
+      // 否则 ValidatePage 等页面在启动时读到旧 ID 将自动加载历史翻译结果。
       partialize: (state) => ({
         scanElapsedMs: state.scanElapsedMs,
         translateElapsedMs: state.translateElapsedMs,
