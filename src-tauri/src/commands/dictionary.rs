@@ -1,4 +1,4 @@
-use crate::core::{dictionary, jobs, paths};
+use crate::core::{dictionary, paths};
 use tracing::info;
 
 #[tauri::command]
@@ -71,70 +71,4 @@ pub fn get_dictionary_stats() -> Result<dictionary::DictionaryStats, String> {
     let total = dictionary::count(&conn).map_err(|e| e.to_string())?;
     let mod_ids = dictionary::distinct_mod_ids(&conn).map_err(|e| e.to_string())?;
     Ok(dictionary::DictionaryStats { total, mod_ids })
-}
-
-/// Import existing translation results into the dictionary.
-/// Reads the latest completed translation job and saves all LLM/reviewed entries.
-/// Useful for migrating existing translations after enabling dictionary auto-save.
-#[tauri::command]
-pub fn import_translation_results_to_dictionary() -> Result<dictionary::ImportResult, String> {
-    info!("import_translation_results_to_dictionary");
-    let root = paths::runtime_root().map_err(|e| e.to_string())?;
-    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(|e| e.to_string())?;
-    let manager = jobs::JobManager::new(root.clone());
-
-    // Find the latest completed translation job
-    let job = manager.load_latest()
-        .map_err(|e| format!("加载翻译任务失败: {e}"))?
-        .ok_or_else(|| "没有找到已完成的翻译任务".to_string())?;
-
-    let results = manager.load_results(&job.job_id)
-        .map_err(|e| format!("加载翻译结果失败: {e}"))?;
-
-    let total = results.len();
-    let skipped = results.iter().filter(|r| {
-        r.source_type != "llm" && r.source_type != "reviewed" || r.target_text.trim().is_empty()
-    }).count();
-
-    let mut imported = 0usize;
-    let mut conflicts = Vec::new();
-    for r in &results {
-        if r.source_type != "llm" && r.source_type != "reviewed" {
-            continue;
-        }
-        if r.target_text.trim().is_empty() {
-            continue;
-        }
-        let entry = dictionary::DictionaryEntry {
-            id: None,
-            source_text: r.source_text.clone(),
-            target_text: r.target_text.clone(),
-            source_lang: String::new(),
-            target_lang: job.target_language.clone(),
-            source_type: r.source_type.clone(),
-            mod_id: Some(r.mod_id.clone()),
-            translation_key: Some(r.key.clone()),
-            context: None,
-            confidence: 1.0,
-            created_at: None,
-            updated_at: None,
-        };
-        match dictionary::upsert(&conn, &entry) {
-            Ok((_, is_new)) => {
-                if is_new {
-                    imported += 1;
-                }
-            }
-            Err(e) => {
-                conflicts.push(format!("条目 {} 导入失败: {e}", r.key));
-            }
-        }
-    }
-
-    info!(imported, total, "翻译结果导入词典完成");
-    Ok(dictionary::ImportResult {
-        imported,
-        skipped,
-        conflicts,
-    })
 }

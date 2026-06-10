@@ -579,13 +579,6 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         </div>
       </div>
 
-      {!scanSummary && (
-        <div className="empty-state">
-          <FileText size={32} />
-          <p>{t(language, "jobs.noScan")}</p>
-        </div>
-      )}
-
       {scanSummary && scanSummary.actualPendingEntries === 0 && status === "idle" && (
         <div className="empty-state">
           <CheckCircle size={32} />

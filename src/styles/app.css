@@ -198,16 +198,8 @@ select {
   margin: 0;
 }
 
-.sidebar.collapsed .sidebar-footer-left span {
-  display: none;
-}
-
 .sidebar.collapsed .sidebar-footer {
   justify-content: center;
-}
-
-.sidebar.collapsed .sidebar-footer-left {
-  gap: 0;
 }
 
 .sidebar.collapsed .dark-toggle-btn {
@@ -312,11 +304,8 @@ select {
   gap: 8px;
 }
 
-.sidebar-footer-left {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+.sidebar.collapsed .sidebar-footer {
+  justify-content: center;
 }
 
 /* ── Dark mode toggle in sidebar footer ── */
@@ -980,6 +969,52 @@ p {
   font-weight: 700;
 }
 
+/* Search field — icon inline with input */
+.search-field {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border-input);
+  border-radius: 5px;
+  padding: 0 10px;
+  background: var(--bg-surface);
+  color: var(--text-muted);
+  font-weight: 400;
+  min-height: 34px;
+}
+
+.search-field:focus-within {
+  border-color: var(--accent);
+}
+
+.search-field input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 400;
+  padding: 6px 0;
+  min-width: 0;
+}
+
+.search-field input::placeholder {
+  color: var(--muted);
+}
+
+/* Dictionary search bar row — flex layout replacing instance-row grid */
+.dictionary-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.dictionary-search-row .search-field {
+  flex: 1;
+  min-width: 0;
+}
+
 input,
 select {
   height: 36px;
@@ -1407,6 +1442,13 @@ select optgroup option {
   padding: 16px;
 }
 
+/* 扫描页表格边框样式——与校对/词库页的 log-panel 一致 */
+.dashboard-grid .panel {
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--bg-surface);
+}
+
 .panel-title {
   display: flex;
   align-items: center;
@@ -1578,49 +1620,101 @@ th.sorted-default .sort-indicator {
 /* ── Filter popover ──────────────────────── */
 .filter-popover {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 8px);
   left: 0;
   z-index: 100;
-  min-width: 180px;
+  min-width: 190px;
   background: var(--bg-surface);
-  border: 1px solid var(--border-input);
-  border-radius: 6px;
-  padding: 10px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  border: 0;
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
+  animation: popover-in 0.12s ease-out;
 }
 .filter-popover.popover-right {
   right: 0;
   left: auto;
 }
 
+/* Arrow pointing up to the filter button */
+.filter-popover::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: 16px;
+  width: 10px;
+  height: 10px;
+  background: var(--bg-surface);
+  transform: rotate(45deg);
+  box-shadow: -2px -2px 4px rgba(0, 0, 0, 0.04);
+  border-radius: 2px;
+}
+.filter-popover.popover-right::before {
+  left: auto;
+  right: 16px;
+}
+
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .filter-popover input[type="text"],
 .filter-popover select {
   width: 100%;
-  height: 32px;
+  height: 34px;
   border: 1px solid var(--border-input);
-  border-radius: 5px;
-  padding: 0 28px 0 8px;
-  font-size: 12px;
-  background-color: var(--bg-surface);
+  border-radius: 8px;
+  padding: 0 30px 0 12px;
+  font-size: 13px;
+  background: var(--bg-surface);
   color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.filter-popover select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b665d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 14px;
+}
+.filter-popover input[type="text"]:focus,
+.filter-popover select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
 .filter-popover input[type="number"] {
-  width: 68px;
+  width: 72px;
   height: 32px;
   border: 1px solid var(--border-input);
-  border-radius: 5px;
+  border-radius: 8px;
   padding: 0 8px;
   font-size: 12px;
   background: var(--bg-surface);
   color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+.filter-popover input[type="number"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
 }
 
 .filter-popover .number-range-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 4px;
+  gap: 8px;
+  margin-top: 6px;
 }
 
 .filter-popover .number-range-row span {
@@ -1631,38 +1725,9 @@ th.sorted-default .sort-indicator {
 .filter-popover .filter-label {
   display: block;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--text-muted);
-  margin-bottom: 4px;
-}
-
-/* ── Filter popover header ───────────────── */
-.filter-popover-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.filter-popover-header span {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--text-secondary);
-}
-
-.filter-popover-clear {
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 11px;
-  padding: 2px 4px;
-  border-radius: 3px;
-}
-
-.filter-popover-clear:hover {
-  color: var(--danger);
-  background: var(--danger-bg);
+  margin-bottom: 6px;
 }
 
 /* ── Filter column wrapper (for positioning) ─ */
@@ -2207,18 +2272,103 @@ th.sorted-default .sort-indicator {
   white-space: nowrap;
 }
 
-/* Validate & Dictionary pages: override log-panel-body so cell content isn't clipped */
+/* Validate, Dictionary & Jobs pages: cell content wraps and centers vertically */
 .validate-page .log-panel-body td,
-.dictionary-page .log-panel-body td {
+.dictionary-page .log-panel-body td,
+.page-jobs .log-panel-body td {
   overflow: visible;
   white-space: normal;
+  overflow-wrap: break-word;
+  vertical-align: middle;
 }
-
-
 
 .log-panel-body .copy-log-row {
   cursor: pointer;
   transition: background 0.1s;
+}
+
+/* ═══════════════════════════════════════════════
+   Dictionary page — action buttons redesign
+   ═══════════════════════════════════════════════ */
+/* Header toolbar: compact pill buttons with colored icons */
+.dictionary-page .page-header-button button {
+  min-width: 0;
+  padding: 6px 14px;
+  height: auto;
+  border: none;
+  border-radius: 8px;
+  background: var(--bg-muted);
+  color: var(--text-secondary);
+  font-size: 13px;
+  gap: 6px;
+  transition: background 0.15s, color 0.15s;
+}
+.dictionary-page .page-header-button button:hover:not(:disabled) {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+.dictionary-page .page-header-button button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+/* Distinct icon color per action */
+.dictionary-page .page-header-button button svg {
+  color: var(--accent);
+  opacity: 0.8;
+}
+
+/* Table row delete button: compact outline */
+.dictionary-page .log-panel-body td .ghost-button {
+  min-width: 0;
+  padding: 3px 10px;
+  height: auto;
+  font-size: 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.dictionary-page .log-panel-body td .ghost-button:hover:not(:disabled) {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.dictionary-page .log-panel-body td .ghost-button svg {
+  display: none;
+}
+
+/* Row & cell hover feedback for dictionary & validate tables */
+.dictionary-page .log-panel-body tbody tr:hover,
+.validate-page .log-panel-body tbody tr:hover {
+  background: var(--bg-muted);
+}
+.dictionary-page .log-panel-body td:hover,
+.validate-page .log-panel-body td:hover {
+  background: rgba(128,128,128,0.06);
+}
+
+/* Jobs page cell hover: add subtle highlight on top of row hover */
+.page-jobs .log-panel-body td:hover {
+  background: rgba(128,128,128,0.06);
+}
+
+/* Dashboard mod table: 与校对/词库页表格一致的样式 */
+.dashboard-grid .table-wrap table {
+  font-size: 12px;
+  table-layout: fixed;
+}
+.dashboard-grid .table-wrap th {
+  padding: 8px 10px;
+  font-weight: 600;
+  font-size: 11px;
+  height: auto;
+}
+.dashboard-grid .table-wrap td {
+  padding: 8px 10px;
+  height: auto;
+  vertical-align: middle;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Dashboard mod table: virtual-scroll optimization (native <table>, no TableVirtuoso) */
@@ -2311,6 +2461,19 @@ th.sorted-default .sort-indicator {
 
 [data-tooltip]:not(:hover)::after {
   animation: tooltip-out 0s 0s forwards;
+}
+
+/* Tooltip near left edge: anchor to element's left */
+[data-tooltip-align="left"]::after {
+  left: 0;
+  transform: translateX(0);
+}
+
+/* Tooltip near right edge: anchor to element's right */
+[data-tooltip-align="right"]::after {
+  left: auto;
+  right: 0;
+  transform: translateX(0);
 }
 
 /* Tooltip pointing down (for top-bar buttons etc.) */

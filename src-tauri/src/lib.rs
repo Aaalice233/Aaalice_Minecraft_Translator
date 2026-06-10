@@ -43,7 +43,6 @@ pub fn run() {
             commands::export_dictionary,
             commands::import_dictionary,
             commands::get_dictionary_stats,
-            commands::import_translation_results_to_dictionary,
             // P4: Pack
             commands::copy_pack_to_instance,
             // Translation

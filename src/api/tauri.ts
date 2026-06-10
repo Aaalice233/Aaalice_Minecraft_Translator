@@ -59,7 +59,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
 
 export async function validateInstance(path: string): Promise<InstanceValidation> {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器预览模式下不可用，请在 Tauri 桌面端中运行");
+    throw new Error("Not available in browser preview mode, please run in Tauri desktop");
   }
   return tauriInvoke<InstanceValidation>("validate_instance", { path });
 }
@@ -70,7 +70,7 @@ export async function scanInstance(
   targetLanguage: string,
 ): Promise<ScanSummary> {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器预览模式下不可用，请在 Tauri 桌面端中运行");
+    throw new Error("Not available in browser preview mode, please run in Tauri desktop");
   }
   return tauriInvoke<ScanSummary>("scan_instance", { path, sourceLanguage, targetLanguage });
 }
@@ -83,7 +83,7 @@ export async function scanAndDiff(
   targetLanguage: string,
 ): Promise<ScanDiffResult> {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器预览模式下不可用");
+    throw new Error("Not available in browser preview mode");
   }
   return tauriInvoke<ScanDiffResult>("scan_and_diff", { path, sourceLanguage, targetLanguage });
 }
@@ -169,14 +169,6 @@ export async function getDictionaryStats(): Promise<DictionaryStats> {
   return tauriInvoke<DictionaryStats>("get_dictionary_stats");
 }
 
-/** Import existing translation results into the dictionary (migration). */
-export async function importTranslationResultsToDictionary(): Promise<ImportResult> {
-  if (!isTauriRuntime()) {
-    return { imported: 0, skipped: 0, conflicts: [] };
-  }
-  return tauriInvoke<ImportResult>("import_translation_results_to_dictionary");
-}
-
 // ── P4: Pack API ──────────────────────────────────────────────────
 
 export async function startTranslation(
@@ -186,7 +178,7 @@ export async function startTranslation(
   scanJobId?: string,
 ): Promise<number> {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器预览模式下不可用，请在 Tauri 桌面端中运行");
+    throw new Error("Not available in browser preview mode, please run in Tauri desktop");
   }
   return tauriInvoke<number>("start_translation", {
     path,
@@ -207,7 +199,7 @@ export async function retryFailedEntries(
   targetLanguage: string,
 ): Promise<number> {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器预览模式下不可用");
+    throw new Error("Not available in browser preview mode");
   }
   return tauriInvoke<number>("retry_failed_entries", { jobId, sourceLanguage, targetLanguage });
 }
@@ -222,7 +214,7 @@ export async function translateSingleEntry(
   targetLanguage: string,
 ): Promise<string> {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器预览模式下不可用");
+    throw new Error("Not available in browser preview mode");
   }
   return tauriInvoke<string>("translate_single_entry", {
     jobId,
@@ -313,7 +305,7 @@ export async function copyPackToInstance(
 /** Copy a file from src to dest (used by "保存本地" feature). */
 export async function copyFile(src: string, dest: string): Promise<void> {
   if (!isTauriRuntime()) {
-    throw new Error("浏览器预览模式下不可用");
+    throw new Error("Not available in browser preview mode");
   }
   return tauriInvoke<void>("copy_file", { src, dest });
 }
@@ -322,13 +314,12 @@ export async function generatePackFromJob(
   jobId: string,
   targetLanguage: string,
   dryRun: boolean,
-  updateDictionary?: boolean,
 ): Promise<PackResult> {
   if (!isTauriRuntime()) {
     return { outputDir: "", zipPath: "", modCount: 0, entryCount: 0, conflicts: [] };
   }
   return tauriInvoke<PackResult>("generate_pack_from_job", {
-    jobId, targetLanguage, dryRun, updateDictionary: updateDictionary ?? false,
+    jobId, targetLanguage, dryRun,
   });
 }
 

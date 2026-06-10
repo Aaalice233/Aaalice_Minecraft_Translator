@@ -268,6 +268,7 @@ ScanExtractPhase → DictionaryPhase → LlmPhase → FinalizePhase
 - i18n：`TranslationKey` 联合类型保证编译期检查；4+1 语言字典（zh_cn → en_us → ja_jp → ko_kr → ru_ru）
 - 状态管理渐近迁移中：`AppContext (useReducer)` → `Zustand (appStore.ts)`
 - CSS：全局样式在 `app.css`，`6px` 圆角、lucide-react 图标、`data-theme` 属性换主题
+- 表格布局：`table-layout: fixed`（默认）+ 百分比 `<col>` 各列求和 100%，文本列给足宽度用 `overflow-wrap: break-word` 换行，TableVirtuoso 的 `Scroller` 加 `overflowX: "hidden"` 避免横向滚动条
 
 ### 测试
 
