@@ -1452,7 +1452,7 @@ select optgroup option {
 .panel-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 16px;
   margin-bottom: 16px;
 }
 
@@ -1481,7 +1481,7 @@ select optgroup option {
 
 .mod-search-input {
   height: 30px;
-  width: 200px;
+  width: 320px;
   border: 1px solid var(--border-input);
   border-radius: 5px;
   background: var(--bg-surface);
