@@ -345,14 +345,26 @@ export const PackagesPage = React.memo(function PackagesPage({
     !reviewRequired &&
     (translationJob?.completedEntries ?? 0) > 0;
 
+  /** Filtered mod count — only mods with translation results when the map is loaded. */
+  const filteredModCount = useMemo(() => {
+    if (!scanSummary) return 0;
+    const hasTranslations = entryTranslations && entryTranslations.size > 0;
+    if (!hasTranslations) return scanSummary.mods.length;
+    return scanSummary.mods.filter(mod => mod.entries.some(e => entryTranslations.has(e.key))).length;
+  }, [scanSummary, entryTranslations]);
+
   // ═══════════════════════════════════════════════════════════
   // Render helpers
   // ═══════════════════════════════════════════════════════════
 
-  /** Memoized mod items — deps: scanSummary, expandedMods, language, toggleModExpand, entryTranslations. */
+  /** Memoized mod items — only shows mods that have translation results (excludes native-Chinese mods). */
   const modItems = useMemo(() => {
     if (!scanSummary) return null;
-    return scanSummary.mods.map((mod) => (
+    const hasTranslations = entryTranslations && entryTranslations.size > 0;
+    const relevantMods = hasTranslations
+      ? scanSummary.mods.filter(mod => mod.entries.some(e => entryTranslations.has(e.key)))
+      : scanSummary.mods;
+    return relevantMods.map((mod) => (
       <ModRow
         key={mod.modId}
         mod={mod}
@@ -509,7 +521,7 @@ export const PackagesPage = React.memo(function PackagesPage({
           <div className="packages-middle-preview">
             <div className="packages-mod-list">
                 <div className="packages-mod-list-header">
-                  <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
+                  <h2>{t(language, "packages.allMods", { count: filteredModCount })}</h2>
                   <span className="packages-mod-list-ready">
                     {t(language, "packages.readyToPack")}
                   </span>
@@ -533,7 +545,7 @@ export const PackagesPage = React.memo(function PackagesPage({
             </div>
             <div className="packages-mod-list">
               <div className="packages-mod-list-header">
-                <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
+                <h2>{t(language, "packages.allMods", { count: filteredModCount })}</h2>
               </div>
               <div className="packages-mod-list-body">
                 {modItems}
