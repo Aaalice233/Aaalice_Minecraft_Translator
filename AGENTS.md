@@ -69,6 +69,7 @@ Aaalice_Minecraft_Translator/
 | Rust 测试（直接） | `cd src-tauri && cargo test` | 含 settings 反序列化等单元测试 |
 | 生成安装器 | `npm run package:exe` | 前端 build → Rust release → NSIS 安装器 |
 | 生成 release exe | `npm run package:app` | 同上，但跳过 NSIS 打包（`-NoBundle`） |
+| 发布新版本 | `git tag vX.Y.Z && git push origin vX.Y.Z` | 推送 tag 触发 GitHub Actions 自动构建、签名、发布。需先配置 `UPDATER_SIGN_PRIVATE_KEY` 和 `UPDATER_SIGN_PRIVATE_KEY_PASSWORD` 到 GitHub Secrets。CI 工作流位于 `.github/workflows/release.yml`。 |
 | 一键打包 | 双击 `scripts/package-exe.bat` | |
 
 ### 产物路径
