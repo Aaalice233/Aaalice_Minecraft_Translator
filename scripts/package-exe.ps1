@@ -1,4 +1,4 @@
-param(
+﻿param(
   [switch]$NoBundle
 )
 
@@ -12,7 +12,7 @@ if (Test-Path $cargoBin) {
 }
 
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
-  throw "未找到 cargo。请先安装 Rust 工具链，或确认 $cargoBin 存在。"
+  throw "cargo not found. Please install the Rust toolchain or verify $cargoBin exists."
 }
 
 if (-not (Test-Path "node_modules")) {
@@ -23,7 +23,7 @@ npm run build
 
 $tauri = Join-Path $root "node_modules/.bin/tauri.cmd"
 if (-not (Test-Path $tauri)) {
-  throw "未找到 Tauri CLI：$tauri"
+  throw "Tauri CLI not found: $tauri"
 }
 
 if ($NoBundle) {
