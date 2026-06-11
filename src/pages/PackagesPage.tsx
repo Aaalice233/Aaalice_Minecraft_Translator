@@ -310,11 +310,16 @@ export const PackagesPage = React.memo(function PackagesPage({
   // 4c. Load translation results when translationJob is known,
   //  so ModRow can show target text even before pack is generated.
   useEffect(() => {
-    if (!translationJob || !("__TAURI_INTERNALS__" in window)) return;
+    if (!translationJob || !("__TAURI_INTERNALS__" in window)) {
+      console.log("[debug] effect 4c: skipped — translationJob:", !!translationJob, "tauri:", "__TAURI_INTERNALS__" in window);
+      return;
+    }
+    console.log("[debug] effect 4c: loading results for job", translationJob.jobId);
     let cancelled = false;
     loadTranslationResults(translationJob.jobId)
       .then((results) => {
         if (cancelled) return;
+        console.log("[debug] effect 4c: got", results.length, "results, sample keys:", results.slice(0, 3).map(r => r.key));
         const map = new Map<string, string>();
         for (const r of results) {
           map.set(r.key, r.targetText);
