@@ -373,7 +373,20 @@ export type TranslationKey =
   | "validate.noMatch"
   | "validate.noResults"
   | "validate.reviewed"
-  | "validate.searchPlaceholder";
+  | "validate.searchPlaceholder"
+  // ── Updater ────────────────────────────────────────────────
+  | "settings.tab.about"
+  | "settings.aboutAndUpdate"
+  | "settings.currentVersion"
+  | "settings.checkUpdate"
+  | "settings.upToDate"
+  | "settings.updateAvailable"
+  | "settings.downloading"
+  | "settings.downloadComplete"
+  | "settings.installNow"
+  | "settings.checkFailed"
+  | "settings.updaterError"
+  | "settings.updateReleaseNotes";
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -706,6 +719,19 @@ const zhCn: TranslationMap = {
   "settings.placeholderHint": "可使用 {{mc_version}} 占位符自动替换为实例版本号",
   "settings.futureAdvanced": "词典、打包和实验功能设置会在对应阶段接入。",
   "settings.providerOpenai": "OpenAI 兼容",
+  // ── Updater ────────────────────────────────────────────
+  "settings.tab.about": "关于",
+  "settings.aboutAndUpdate": "关于与更新",
+  "settings.currentVersion": "当前版本",
+  "settings.checkUpdate": "检查更新",
+  "settings.upToDate": "已是最新版本",
+  "settings.updateAvailable": "发现新版本 v{version}",
+  "settings.downloading": "正在下载更新 ({percent}%)",
+  "settings.downloadComplete": "下载完成",
+  "settings.installNow": "立即重启安装",
+  "settings.checkFailed": "检查更新失败",
+  "settings.updaterError": "更新错误: {error}",
+  "settings.updateReleaseNotes": "更新说明",
   "splash.phase.settings": "设置",
   "splash.phase.local": "本地",
   "splash.phase.dictionary": "词典",
@@ -1092,6 +1118,19 @@ const enUs: TranslationMap = {
   "packing.translationPack": "Translation Pack",
   "packing.packed": "Packed ✓",
   "settings.providerOpenai": "OpenAI Compatible",
+  // ── Updater ────────────────────────────────────────────
+  "settings.tab.about": "About",
+  "settings.aboutAndUpdate": "About & Updates",
+  "settings.currentVersion": "Current Version",
+  "settings.checkUpdate": "Check for Updates",
+  "settings.upToDate": "You're up to date",
+  "settings.updateAvailable": "New version v{version} available",
+  "settings.downloading": "Downloading update ({percent}%)",
+  "settings.downloadComplete": "Download complete",
+  "settings.installNow": "Restart & Install",
+  "settings.checkFailed": "Check for updates failed",
+  "settings.updaterError": "Update error: {error}",
+  "settings.updateReleaseNotes": "Release Notes",
   "splash.firstLaunch": "First launch, initializing…",
   "splash.offline": "Offline mode",
   "splash.phase.dictionary": "Dictionary",
@@ -1357,6 +1396,19 @@ const jaJp: TranslationMap = {
   "packing.translationPack": "翻訳リソースパック",
   "packing.packed": "パック完了 ✓",
   "settings.providerOpenai": "OpenAI 互換",
+  // ── Updater ────────────────────────────────────────────
+  "settings.tab.about": "バージョン情報",
+  "settings.aboutAndUpdate": "バージョン情報と更新",
+  "settings.currentVersion": "現在のバージョン",
+  "settings.checkUpdate": "更新を確認",
+  "settings.upToDate": "最新です",
+  "settings.updateAvailable": "新しいバージョン v{version} があります",
+  "settings.downloading": "更新をダウンロード中 ({percent}%)",
+  "settings.downloadComplete": "ダウンロード完了",
+  "settings.installNow": "今すぐ再起動してインストール",
+  "settings.checkFailed": "更新の確認に失敗しました",
+  "settings.updaterError": "更新エラー: {error}",
+  "settings.updateReleaseNotes": "リリースノート",
   "splash.firstLaunch": "初回起動、初期化中…",
   "splash.offline": "オフラインモード",
   "splash.phase.dictionary": "辞書",
@@ -1735,6 +1787,19 @@ const koKr: TranslationMap = {
   "packing.translationPack": "번역 리소스팩",
   "packing.packed": "패킹 완료 ✓",
   "settings.providerOpenai": "OpenAI 호환",
+  // ── Updater ────────────────────────────────────────────
+  "settings.tab.about": "정보",
+  "settings.aboutAndUpdate": "정보 및 업데이트",
+  "settings.currentVersion": "현재 버전",
+  "settings.checkUpdate": "업데이트 확인",
+  "settings.upToDate": "최신 버전입니다",
+  "settings.updateAvailable": "새 버전 v{version} 사용 가능",
+  "settings.downloading": "업데이트 다운로드 중 ({percent}%)",
+  "settings.downloadComplete": "다운로드 완료",
+  "settings.installNow": "지금 다시 시작하여 설치",
+  "settings.checkFailed": "업데이트 확인 실패",
+  "settings.updaterError": "업데이트 오류: {error}",
+  "settings.updateReleaseNotes": "릴리즈 노트",
   "splash.phase.settings": "설정",
   "splash.phase.local": "로컬",
   "splash.phase.dictionary": "사전",
@@ -2189,6 +2254,19 @@ const ruRu: TranslationMap = {
   "packing.translationPack": "Ресурс-пак перевода",
   "packing.packed": "Упаковано ✓",
   "settings.providerOpenai": "OpenAI Совместимый",
+  // ── Updater ────────────────────────────────────────────
+  "settings.tab.about": "О программе",
+  "settings.aboutAndUpdate": "О программе и обновления",
+  "settings.currentVersion": "Текущая версия",
+  "settings.checkUpdate": "Проверить обновления",
+  "settings.upToDate": "У вас актуальная версия",
+  "settings.updateAvailable": "Доступна новая версия v{version}",
+  "settings.downloading": "Загрузка обновления ({percent}%)",
+  "settings.downloadComplete": "Загрузка завершена",
+  "settings.installNow": "Перезапустить и установить",
+  "settings.checkFailed": "Не удалось проверить обновления",
+  "settings.updaterError": "Ошибка обновления: {error}",
+  "settings.updateReleaseNotes": "Примечания к выпуску",
   "splash.phase.settings": "Настройки",
   "splash.phase.local": "Локальный",
   "splash.phase.dictionary": "Словарь",

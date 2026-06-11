@@ -15,6 +15,25 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
   throw "cargo not found. Please install the Rust toolchain or verify $cargoBin exists."
 }
 
+# ── 自动从 .env.local 加载签名密钥 ──────────────────────────
+$envFile = Join-Path $root ".env.local"
+if (Test-Path $envFile) {
+  $lines = Get-Content $envFile
+  foreach ($line in $lines) {
+    if ($line -match '^TAURI_SIGNING_PRIVATE_KEY=(.+)') {
+      if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+        $env:TAURI_SIGNING_PRIVATE_KEY = $Matches[1]
+      }
+    }
+    if ($line -match '^TAURI_SIGNING_PRIVATE_KEY_PASSWORD=(.+)') {
+      if (-not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
+        $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $Matches[1]
+      }
+    }
+  }
+}
+# ──────────────────────────────────────────────────────────
+
 if (-not (Test-Path "node_modules")) {
   npm install
 }

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Cloud,
   Cpu,
+  Info,
   Palette,
   Database,
   FileText,
@@ -15,7 +16,15 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { fetchLlmModels, getSystemFonts, saveSettings } from "../api/tauri";
+import {
+  checkUpdate as updaterCheck,
+  downloadAndInstallUpdate,
+  getAppVersion,
+  relaunchApp,
+  fetchLlmModels,
+  getSystemFonts,
+  saveSettings,
+} from "../api/tauri";
 import { Toggle } from "../components/Toggle";
 import { Field } from "../components/Field";
 import { PageHeader } from "../components/PageHeader";
@@ -34,7 +43,7 @@ interface Props {
   onSettingsChange: (settings: Settings) => void;
 }
 
-type SettingsTab = "language" | "appearance" | "api" | "performance" | "reuse" | "logs" | "advanced";
+type SettingsTab = "language" | "appearance" | "api" | "performance" | "reuse" | "logs" | "advanced" | "about";
 
 const tabs = [
   { key: "language", labelKey: "settings.tab.language", icon: Languages },
@@ -44,6 +53,7 @@ const tabs = [
   { key: "reuse", labelKey: "settings.tab.reuse", icon: Boxes },
   { key: "logs", labelKey: "settings.tab.logs", icon: FileText },
   { key: "advanced", labelKey: "settings.tab.advanced", icon: Database },
+  { key: "about", labelKey: "settings.tab.about", icon: Info },
 ] as const satisfies ReadonlyArray<{ key: SettingsTab; labelKey: TranslationKey; icon: LucideIcon }>;
 
 /** 预设字体键名列表 — 与 CSS [data-font] 选择器对应 */
@@ -79,6 +89,30 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   const [fonts, setFonts] = useState<string[]>([]);
   const [isLoadingFonts, setIsLoadingFonts] = useState(false);
   const [saveIndicator, setSaveIndicator] = useState<"saved" | "saving" | "unsaved">("saved");
+
+  // ── Updater state ────────────────────────────────────────
+  const [appVersion, setAppVersion] = useState("...");
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "available" | "downloading" | "downloaded" | "uptodate" | "error">("idle");
+  const [updateInfo, setUpdateInfo] = useState<{ version: string; body?: string } | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [updateError, setUpdateError] = useState("");
+
+  useEffect(() => {
+    getAppVersion().then(setAppVersion).catch(() => setAppVersion("?"));
+  }, []);
+
+  // Silent check on mount
+  useEffect(() => {
+    updaterCheck()
+      .then((info) => {
+        if (info) {
+          setUpdateInfo(info);
+          setUpdateStatus("available");
+        }
+      })
+      .catch(() => { /* silent */ });
+  }, []);
+
   const language = normalizeAppLanguage(draft.appLanguage);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -526,6 +560,86 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                   </div>
                 </div>
               </>
+            )}
+
+            {activeTab === "about" && (
+              <div className="settings-card">
+                <h3 className="settings-card-header">{t(language, "settings.aboutAndUpdate")}</h3>
+                <div className="settings-card-body">
+                  <div className="field">
+                    <span>{t(language, "settings.currentVersion")}</span>
+                    <span style={{ fontWeight: 600 }}>v{appVersion}</span>
+                  </div>
+
+                  {updateStatus === "idle" && (
+                    <button className="ghost-button" onClick={async () => {
+                      setUpdateStatus("checking");
+                      setUpdateError("");
+                      try {
+                        const info = await updaterCheck();
+                        if (info) {
+                          setUpdateInfo(info);
+                          setUpdateStatus("available");
+                        } else {
+                          setUpdateStatus("uptodate");
+                        }
+                      } catch (err) {
+                        setUpdateError(toErrorMessage(err));
+                        setUpdateStatus("error");
+                      }
+                    }}>
+                      {t(language, "settings.checkUpdate")}
+                    </button>
+                  )}
+
+                  {updateStatus === "checking" && <span>{t(language, "settings.checkUpdate")}…</span>}
+
+                  {updateStatus === "available" && updateInfo && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <span>{t(language, "settings.updateAvailable", { version: updateInfo.version })}</span>
+                      {updateInfo.body && <small>{t(language, "settings.updateReleaseNotes")}: {updateInfo.body}</small>}
+                      <progress value={downloadProgress} max={100} style={{ width: "100%" }} />
+                      <button className="ghost-button" onClick={async () => {
+                        setUpdateStatus("downloading");
+                        setDownloadProgress(0);
+                        try {
+                          await downloadAndInstallUpdate((p) => setDownloadProgress(p));
+                          setUpdateStatus("downloaded");
+                        } catch (err) {
+                          setUpdateError(toErrorMessage(err));
+                          setUpdateStatus("error");
+                        }
+                      }}>
+                        {t(language, "settings.checkUpdate")}
+                      </button>
+                    </div>
+                  )}
+
+                  {updateStatus === "downloading" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <span>{t(language, "settings.downloading", { percent: downloadProgress })}</span>
+                      <progress value={downloadProgress} max={100} style={{ width: "100%" }} />
+                    </div>
+                  )}
+
+                  {updateStatus === "downloaded" && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      <span>{t(language, "settings.downloadComplete")}</span>
+                      <button className="ghost-button" onClick={async () => {
+                        try { await relaunchApp(); } catch (err) { setUpdateError(toErrorMessage(err)); }
+                      }}>
+                        {t(language, "settings.installNow")}
+                      </button>
+                    </div>
+                  )}
+
+                  {updateStatus === "uptodate" && <span>{t(language, "settings.upToDate")}</span>}
+
+                  {updateStatus === "error" && updateError && (
+                    <div className="alert error" style={{ marginTop: 8 }}>{updateError}</div>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </section>

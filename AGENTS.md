@@ -70,6 +70,7 @@ Aaalice_Minecraft_Translator/
 | 生成安装器 | `npm run package:exe` | 前端 build → Rust release → NSIS 安装器 |
 | 生成 release exe | `npm run package:app` | 同上，但跳过 NSIS 打包（`-NoBundle`） |
 | 发布新版本 | `git tag vX.Y.Z && git push origin vX.Y.Z` | 推送 tag 触发 GitHub Actions 自动构建、签名、发布。需先配置 `UPDATER_SIGN_PRIVATE_KEY` 和 `UPDATER_SIGN_PRIVATE_KEY_PASSWORD` 到 GitHub Secrets。CI 工作流位于 `.github/workflows/release.yml`。 |
+| 本地构建（带签名） | `npm run package:exe` | 脚本自动从 `.env.local` 加载签名密钥，无需手动设置环境变量。 |
 | 一键打包 | 双击 `scripts/package-exe.bat` | |
 
 ### 产物路径

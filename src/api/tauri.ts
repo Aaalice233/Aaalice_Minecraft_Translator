@@ -368,3 +368,63 @@ export async function readLogs(): Promise<ReadLogsResult> {
   }
   return tauriInvoke<ReadLogsResult>("read_logs");
 }
+
+// ── Updater API ─────────────────────────────────────────────
+
+/** Get the current app version from the Tauri runtime. */
+export async function getAppVersion(): Promise<string> {
+  if (!isTauriRuntime()) {
+    return "0.1.0";
+  }
+  const { getVersion } = await import("@tauri-apps/api/app");
+  return getVersion();
+}
+
+/** Check for updates. Returns update info or null if up-to-date. */
+export async function checkUpdate(): Promise<{ version: string; body?: string } | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (!update) return null;
+  return { version: update.version, body: update.body };
+}
+
+/**
+ * Download and install the available update.
+ * @param onProgress Callback receiving download progress (0-100, estimated from chunks).
+ */
+export async function downloadAndInstallUpdate(
+  onProgress?: (progress: number) => void,
+): Promise<void> {
+  if (!isTauriRuntime()) {
+    throw new Error("Not available in browser preview mode");
+  }
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (!update) return;
+  let totalBytes = 0;
+  let downloadedBytes = 0;
+  await update.downloadAndInstall((event) => {
+    if (event.event === "Started" && event.data.contentLength) {
+      totalBytes = event.data.contentLength;
+    }
+    if (event.event === "Progress" && onProgress) {
+      downloadedBytes += event.data.chunkLength;
+      if (totalBytes > 0) {
+        onProgress(Math.min(99, Math.round((downloadedBytes / totalBytes) * 100)));
+      }
+    }
+  });
+  onProgress?.(100);
+}
+
+/** Relaunch the app (used after installing an update). */
+export async function relaunchApp(): Promise<void> {
+  if (!isTauriRuntime()) {
+    throw new Error("Not available in browser preview mode");
+  }
+  const { relaunch } = await import("@tauri-apps/plugin-process");
+  await relaunch();
+}
