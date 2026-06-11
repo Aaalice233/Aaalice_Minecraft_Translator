@@ -10,7 +10,7 @@
 |------|------|
 | **名称** | Aaalice Minecraft Translator（整合包翻译工具） |
 | **定位** | Windows 桌面端 Minecraft 整合包汉化工具 |
-| **版本** | 0.1.0 |
+| **版本** | 0.2.0 |
 | **本地路径** | `E:/MC Projects/Aaalice_Minecraft_Translator/` |
 | **MC 实例** | `E:/PCL2/.minecraft/versions/Aaalice Craft` |
 | **Git 地址** | `https://github.com/Aaalice233/Aaalice_Minecraft_Translator`（私有） |
@@ -31,11 +31,12 @@ Aaalice_Minecraft_Translator/
 │   └── jobs/                翻译任务状态 + JSONL 结果
 ├── docs/                    规格与设计文档（00-index.md 索引全部）
 ├── logs/                    运行期日志（.gitignore）
+├── .github/workflows/       CI 发布流水线（release.yml）
 ├── scripts/                 package-exe 打包脚本
 ├── src/                     React 前端（Vite + HMR）
 │   ├── main.tsx             入口
 │   ├── types.ts             所有类型定义（⚠️ 与 models.rs 同步）
-│   ├── api/tauri.ts         Tauri invoke 懒加载 + 浏览器 mock
+│   ├── api/tauri.ts         Tauri invoke 懒加载 + 浏览器 mock + updater API
 │   ├── app/                 App 壳 + useReducer 状态（→ Zustand 迁移中）
 │   ├── pages/               8 个功能页面（Dashboard/Jobs/Dict/Packages/Validate/Settings/Logs/FTB）
 │   ├── components/          UI 通用组件（DataTable/SearchInput/SortableTableHeader 等）
@@ -45,7 +46,9 @@ Aaalice_Minecraft_Translator/
 │   └── styles/app.css       全局样式
 ├── src-tauri/               Tauri 2 + Rust 后端
 │   ├── Cargo.toml
-│   ├── tauri.conf.json      窗口 1365x768、NSIS 打包
+│   ├── tauri.conf.json      窗口 1365x768、NSIS 打包、updater 配置
+│   ├── capabilities/        Tauri 2 权限声明（updater/process/dialog）
+│   ├── nsi-hooks/           NSIS 安装器钩子（路径选择器）
 │   ├── icons/
 │   └── src/
 │       ├── commands/        9 个 Tauri command 模块
@@ -67,10 +70,9 @@ Aaalice_Minecraft_Translator/
 | 前端测试 | `npm run test:unit` | `vitest run`（jsdom 环境） |
 | Rust 测试 | `npm run test:rust` | `cd src-tauri && cargo test` |
 | Rust 测试（直接） | `cd src-tauri && cargo test` | 含 settings 反序列化等单元测试 |
-| 生成安装器 | `npm run package:exe` | 前端 build → Rust release → NSIS 安装器 |
-| 生成 release exe | `npm run package:app` | 同上，但跳过 NSIS 打包（`-NoBundle`） |
-| 发布新版本 | `git tag vX.Y.Z && git push origin vX.Y.Z` | 推送 tag 触发 GitHub Actions 自动构建、签名、发布。需先配置 `UPDATER_SIGN_PRIVATE_KEY` 和 `UPDATER_SIGN_PRIVATE_KEY_PASSWORD` 到 GitHub Secrets。CI 工作流位于 `.github/workflows/release.yml`。 |
-| 本地构建（带签名） | `npm run package:exe` | 脚本自动从 `.env.local` 加载签名密钥，无需手动设置环境变量。 |
+| 生成安装器 | `npm run package:exe` | Rust release → NSIS 安装器（自动从 `.env.local` 加载签名密钥） |
+| 生成 exe 便携版 | `npm run package:app` | 同上，跳过 NSIS 打包（`-NoBundle`） |
+| 发布新版本 | `git tag vX.Y.Z && git push origin vX.Y.Z` | 推送 tag → GitHub Actions 自动构建、ed25519 签名、发布到 Releases。需先在 GitHub Secrets 配置 `UPDATER_SIGN_PRIVATE_KEY`。CI 位于 `.github/workflows/release.yml`。 |
 | 一键打包 | 双击 `scripts/package-exe.bat` | |
 
 ### 产物路径
