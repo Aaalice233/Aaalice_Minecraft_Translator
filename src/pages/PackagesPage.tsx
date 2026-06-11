@@ -436,23 +436,14 @@ export const PackagesPage = React.memo(function PackagesPage({
 
         {/* ── Generation complete: mod list ─────────────────── */}
         {packResult && packComplete && scanSummary && (
-          <>
-            {/* Zip path notification */}
-            <div className="alert success" style={{ marginBottom: 12 }}>
-              <FileArchive size={16} />
-              <span>
-                资源包已生成：<code style={{ wordBreak: "break-all" }}>{packResult.zipPath}</code>
-              </span>
+          <div className="packages-mod-list">
+            <div className="packages-mod-list-header">
+              <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
             </div>
-            <div className="packages-mod-list">
-              <div className="packages-mod-list-header">
-                <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
-              </div>
-              <div className="packages-mod-list-body">
-                {modItems}
-              </div>
+            <div className="packages-mod-list-body">
+              {modItems}
             </div>
-          </>
+          </div>
         )}
       </div>
 
