@@ -70,14 +70,7 @@ pub async fn generate_pack_from_job(
                 }
                 Err(_) => s.output_pack_name.clone(),
             };
-            // 追加简短日期戳，避免同一实例多次打包互相覆盖
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
-            // 使用低 32 位的秒级时间戳作为简短后缀（文件名安全：纯数字）
-            let suffix = now & 0xFFFF_FFFF;
-            format!("{base}-{suffix}")
+            base
         };
 
         let options = packer::PackOptions {
