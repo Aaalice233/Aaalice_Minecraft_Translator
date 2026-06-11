@@ -87,6 +87,7 @@ pub async fn generate_pack_from_job(
             dry_run,
             output_dir: output_dir.to_string_lossy().to_string(),
             pack_format: 15,
+            icon_path: None,
         };
 
         packer::generate_pack(&options).map_err(|e| e.to_string())

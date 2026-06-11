@@ -35,9 +35,19 @@ pub struct PackOptions {
     /// Default 15 for backward compatibility.
     #[serde(default = "default_pack_format")]
     pub pack_format: u32,
+
+    /// Optional path to a PNG image used as the resource pack icon (pack.png).
+    /// When provided and the file exists, it is included at the root of the pack.
+    /// Recommended size: 128×128 pixels.
+    #[serde(default)]
+    pub icon_path: Option<String>,
 }
 
 fn default_pack_format() -> u32 { 15 }
+
+/// Default pack icon embedded at compile time.
+/// 128×128 PNG, sourced from assets/pack.png at project root.
+const DEFAULT_PACK_ICON: &[u8] = include_bytes!("../../../assets/pack.png");
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -127,12 +137,17 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
         by_mod.entry(entry.mod_id.clone()).or_default().push(entry);
     }
 
-    // Generate pack.mcmeta
+    // Generate pack.mcmeta with a broad supported_formats range so the pack
+    // works across MC versions without being silently disabled.
+    // Uses array format [min, max] — compatible with MC 1.20.5+ (pack_format 32+)
+    // which first introduced supported_formats support. Object format
+    // {min_inclusive, max_inclusive} was added in 1.21.5 (pack_format 42+).
     std::fs::create_dir_all(&pack_dir)?;
     let mcmeta = serde_json::json!({
         "pack": {
             "pack_format": options.pack_format,
-            "description": format!("{} - {}", options.build_name, options.target_language)
+            "description": format!("{} - {}", options.build_name, options.target_language),
+            "supported_formats": [1, 99]
         }
     });
     std::fs::write(
@@ -140,8 +155,21 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
         serde_json::to_string_pretty(&mcmeta)?,
     )?;
 
-    // Note: 建议在资源包根目录放置 pack.png 作为资源包图标；
-    // 没有图标时 Minecraft 仍可使用该资源包，但不会在选择界面显示预览图。
+    // Write default embedded icon; overwrite with custom path if provided.
+    // Embedding the default icon avoids runtime path-resolution issues
+    // between dev and installed modes.
+    if let Err(e) = std::fs::write(pack_dir.join("pack.png"), DEFAULT_PACK_ICON) {
+        tracing::warn!(error = %e, "Failed to write default pack icon");
+    }
+    if let Some(ref icon_path) = options.icon_path {
+        let icon_src = Path::new(icon_path);
+        if icon_src.exists() {
+            match std::fs::copy(icon_src, pack_dir.join("pack.png")) {
+                Ok(_) => tracing::info!(path = %icon_src.display(), "Custom icon copied to pack"),
+                Err(e) => tracing::warn!(path = %icon_src.display(), error = %e, "Failed to copy custom pack icon"),
+            }
+        }
+    }
 
     // Generate language files per mod
     let mut conflicts = Vec::new();
@@ -189,6 +217,11 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
     // Generate zip (using safe_build_name to prevent path traversal)
     let zip_path = output_dir.join(format!("{}-{}.zip", safe_build_name, options.target_language));
     create_zip(&pack_dir, &zip_path)?;
+
+    // Clean up the source directory; only the zip is needed as final output.
+    if let Err(e) = std::fs::remove_dir_all(&pack_dir) {
+        tracing::warn!(path = %pack_dir.display(), error = %e, "Failed to clean up pack source directory");
+    }
 
     let zip_size = std::fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
     tracing::info!(entry_count = options.entries.len(), mod_count = by_mod.len(), zip_size, "Resource pack generated successfully");
@@ -324,6 +357,7 @@ pub fn copy_to_resourcepacks(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
 
     #[test]
     fn dry_run_returns_stats() {
@@ -337,10 +371,42 @@ mod tests {
             dry_run: true,
             output_dir: std::env::temp_dir().to_string_lossy().to_string(),
             pack_format: 15,
+            icon_path: None,
         };
         let result = generate_pack(&options).unwrap();
         assert_eq!(result.mod_count, 1);
         assert_eq!(result.entry_count, 1);
+    }
+
+    #[test]
+    fn generated_pack_includes_embedded_icon() {
+        let tmp = std::env::temp_dir().join("packer-test-icon");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let entries = vec![
+            PackEntry { mod_id: "testmod".into(), key: "test.key".into(), text: "你好".into(), source_text: "Hello".into() },
+        ];
+        let options = PackOptions {
+            target_language: "zh_cn".into(),
+            entries,
+            build_name: "IconTest".into(),
+            dry_run: false,
+            output_dir: tmp.to_string_lossy().to_string(),
+            pack_format: 15,
+            icon_path: None,
+        };
+        let result = generate_pack(&options).unwrap();
+        assert!(std::path::Path::new(&result.zip_path).exists(), "ZIP file should exist");
+
+        // Verify pack.png exists inside the zip with valid PNG magic bytes
+        let zip_file = std::fs::File::open(&result.zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(zip_file).unwrap();
+        let mut icon_entry = archive.by_name("pack.png").expect("pack.png should be in ZIP");
+        let mut header = [0u8; 8];
+        icon_entry.read_exact(&mut header).unwrap();
+        assert_eq!(header, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], "pack.png must have valid PNG magic bytes");
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]

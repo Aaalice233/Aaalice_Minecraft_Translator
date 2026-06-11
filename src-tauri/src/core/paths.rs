@@ -77,6 +77,13 @@ pub fn translate_job_results_path(root: &std::path::Path, job_id: &str) -> std::
     root.join("data").join("jobs").join(format!("{job_id}_results.jsonl"))
 }
 
+/// Path to the default resource pack icon (pack.png) bundled with the app.
+/// Returns a path under `assets/` relative to the runtime root — the icon
+/// ships with the app and is used when generating resource packs.
+pub fn default_icon_path(root: &std::path::Path) -> std::path::PathBuf {
+    root.join("assets").join("pack.png")
+}
+
 /// Delete all scan_*.json cache files in the jobs directory.
 /// Called on app startup to ensure a fresh scan state.
 pub fn clear_scan_cache(root: &std::path::Path) -> std::io::Result<()> {
