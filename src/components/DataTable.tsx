@@ -62,20 +62,21 @@ export function DataTable<T>(props: DataTableProps<T>) {
     virtuosoRef,
   } = props;
 
-  // Stable refs so useMemo'd components/rows don't force re-initialization
+  // Stable refs for useMemo'd Table/TableRow (avoids forcing re-initialization)
   const dataRef = useRef(data);
   dataRef.current = data;
-
   const colWidthsRef = useRef(colWidths);
   colWidthsRef.current = colWidths;
 
   const rowWrapperRef = useRef(RowWrapper);
   rowWrapperRef.current = RowWrapper;
 
-  // Stable itemContent: reads from dataRef so it never depends on `data`
+  // itemContent depends on `data` so the virtual list re-renders when data changes.
+  // This is safe now that components.Scroller is useMemo'd — itemContent changes
+  // do NOT cause the scroll container to unmount/remount.
   const itemContent = useCallback(
-    (index: number) => renderRow(dataRef.current[index], index),
-    [renderRow],
+    (index: number) => renderRow(data[index], index),
+    [data, renderRow],
   );
 
   // Stable fixed header: only changes when column/sort/filter config changes
