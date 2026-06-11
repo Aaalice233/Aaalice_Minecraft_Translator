@@ -32,11 +32,13 @@ pub fn load_translation_results(job_id: String, mod_id: Option<String>) -> Resul
     info!("load_translation_results: job_id={}, mod_id={:?}", job_id, mod_id);
     let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let manager = jobs::JobManager::new(root);
-    if let Some(mid) = mod_id {
-        manager.load_results_by_mod(&job_id, &mid).map_err(|e| e.to_string())
+    let results = if let Some(mid) = &mod_id {
+        manager.load_results_by_mod(&job_id, mid).map_err(|e| e.to_string())
     } else {
         manager.load_results(&job_id).map_err(|e| e.to_string())
-    }
+    }?;
+    info!("load_translation_results: returned {} results", results.len());
+    Ok(results)
 }
 
 #[tauri::command]
