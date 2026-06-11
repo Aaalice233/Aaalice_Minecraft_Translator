@@ -82,6 +82,20 @@
   scrollbar-color: var(--border) transparent;
 }
 
+/* ── Row highlight for the edit panel (applied via DOM) ── */
+tr.editing-highlighted td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+tr.editing-highlighted td {
+  background: var(--accent-bg);
+}
+
+/* Validate page: page-layer should not scroll — table handles its own scroll */
+.page-layer.active:has(section.validate-page) {
+  overflow: hidden;
+  overflow-y: hidden;
+}
+
 /* ── Accent: Green (default) ── */
 [data-accent="green"] {
   --accent: #1f8a5b;
@@ -579,7 +593,7 @@ select {
   height: 100%;
   background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   border-radius: 3px;
-  transition: width 0.3s ease;
+  transition: width 0.2s ease;
 }
 
 .packages-progress-label {
@@ -2139,26 +2153,7 @@ th.sorted-default .sort-indicator {
 .log-panel-body {
   flex: 1;
   min-height: 0;
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) var(--bg-muted);
   overflow: hidden;
-}
-
-.log-panel-body::-webkit-scrollbar {
-  width: 6px;
-}
-
-.log-panel-body::-webkit-scrollbar-track {
-  background: var(--bg-muted);
-}
-
-.log-panel-body::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 3px;
-}
-
-.log-panel-body::-webkit-scrollbar-thumb:hover {
-  background: var(--muted);
 }
 
 .log-panel-body table {

@@ -608,9 +608,33 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     }
   }, []);
 
+  // Stable renderRow/RowWrapper to avoid DataTable re-initialization
+  const jobsRenderRow = useCallback(
+    (entry: TranslateLogEntry, index: number) => (
+      <LogRow
+        entry={entry}
+        language={language}
+        copyEntry={copyEntry}
+        entryProgressRef={entryProgressMapRef}
+        version={entryProgressVersion}
+      />
+    ),
+    [language, copyEntry, entryProgressVersion],
+  );
 
-
-
+  const jobsRowWrapper = useCallback(
+    ({ item: entry, children, ...rest }: { item: TranslateLogEntry; children: React.ReactNode; [key: string]: any }) => (
+      <tr
+        className="copy-log-row"
+        onClick={() => copyEntry(entry)}
+        title={t(language, "jobs.logPanel.copyEntry")}
+        {...rest}
+      >
+        {children}
+      </tr>
+    ),
+    [language, copyEntry],
+  );
 
   return (
     <section className="page page-jobs">
@@ -872,26 +896,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
               onFilterChange={sf.handleFilterChange}
               defaultSortKey="key"
               language={language}
-              renderRow={(entry, index) => (
-                <LogRow
-                  entry={entry}
-                  language={language}
-                  copyEntry={copyEntry}
-                  entryProgressRef={entryProgressMapRef}
-                  version={entryProgressVersion}
-                />
-              )}
+              renderRow={jobsRenderRow}
               colWidths={["16%", "22%", "22%", "18%", "11%", "11%"]}
-              RowWrapper={({ item: entry, children, ...rest }) => (
-                <tr
-                  className="copy-log-row"
-                  onClick={() => copyEntry(entry)}
-                  title={t(language, "jobs.logPanel.copyEntry")}
-                  {...rest}
-                >
-                  {children}
-                </tr>
-              )}
+              RowWrapper={jobsRowWrapper}
               followOutput
               virtuosoRef={virtuosoRef}
             />

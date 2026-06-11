@@ -47,9 +47,21 @@ export const PackingAnimation = ({ progress }: Props) => {
       delay: rng() * 0.8, // seconds offset
     }));
 
+    // Smoothly interpolated progress for visual smoothness
+    let displayedProgress = 0;
+
     const draw = (timestamp: number) => {
       const t = timestamp / 1000;
-      const p = progressRef.current;
+      const target = progressRef.current;
+
+      // Exponential easing: move 15% of the remaining distance per frame
+      const diff = target - displayedProgress;
+      if (Math.abs(diff) > 0.1) {
+        displayedProgress += diff * 0.18;
+      } else {
+        displayedProgress = target;
+      }
+      const p = Math.max(0, Math.min(100, displayedProgress));
 
       ctx.clearRect(0, 0, W, H);
 

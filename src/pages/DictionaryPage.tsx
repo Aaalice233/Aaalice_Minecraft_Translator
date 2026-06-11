@@ -315,6 +315,27 @@ export function DictionaryPage({ language }: Props) {
     [language],
   );
 
+  // ── Stable renderRow to avoid DataTable re-initialization ──
+
+  const dictRenderRow = useCallback(
+    (entry: DictionaryEntry, index: number) => (
+      <DictionaryRow
+        key={entry.id ?? index}
+        entry={entry}
+        onOpenPanel={() => {
+          if (entry.id != null) {
+            setPanelKey(`dict::${entry.id}`);
+            setPanelOpen(true);
+          }
+        }}
+        highlighted={panelOpen && panelKey === `dict::${entry.id}`}
+        onDelete={handleDelete}
+        language={language}
+      />
+    ),
+    [panelOpen, panelKey, handleDelete, language],
+  );
+
   // ── Render ──
 
   return (
@@ -368,21 +389,7 @@ export function DictionaryPage({ language }: Props) {
               onFilterChange={sf.handleFilterChange}
               defaultSortKey="sourceText"
               language={language}
-              renderRow={(entry, index) => (
-                <DictionaryRow
-                  key={entry.id ?? index}
-                  entry={entry}
-                  onOpenPanel={() => {
-                    if (entry.id != null) {
-                      setPanelKey(`dict::${entry.id}`);
-                      setPanelOpen(true);
-                    }
-                  }}
-                  highlighted={panelOpen && panelKey === `dict::${entry.id}`}
-                  onDelete={handleDelete}
-                  language={language}
-                />
-              )}
+              renderRow={dictRenderRow}
               colWidths={["25%", "25%", "15%", "20%", "7%", "8%"]}
             />
           </div>

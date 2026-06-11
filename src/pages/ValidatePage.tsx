@@ -4,7 +4,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { loadLatestTranslationJobMeta, loadTranslationResults, markJobReviewed, saveTranslationEntry, translateSingleEntry } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
@@ -42,6 +42,16 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
   // ── Edit panel state ──
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelKey, setPanelKey] = useState<string | null>(null);
+  const activeEditKeyRef = useRef<string | null>(null);
+
+  // Clean up DOM highlight when panel closes (safety net for edge cases)
+  useEffect(() => {
+    if (!panelOpen) {
+      document.querySelectorAll("tr.editing-highlighted").forEach((el) =>
+        el.classList.remove("editing-highlighted"),
+      );
+    }
+  }, [panelOpen]);
 
   // ── Load job meta + all results reactively ──
   useEffect(() => {
@@ -183,6 +193,30 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
     return result;
   }, [allEntries, filterTerm, sf.filters, sf.sortConfig]);
 
+  // ── Stable renderRow — panelOpen/panelKey NOT in deps ──
+  // Highlighting is done via DOM data-* attribute + CSS class, not React state.
+  const renderRow = useCallback((entry: TranslationResult, _index: number) => {
+    const key = `${entry.modId}::${entry.key}`;
+    return (
+      <ValidateRow
+        entry={entry}
+        language={language}
+        onOpenPanel={() => {
+          activeEditKeyRef.current = key;
+          // Add highlight class via DOM directly — avoids React re-render
+          document.querySelectorAll("tr.editing-highlighted").forEach((el) =>
+            el.classList.remove("editing-highlighted"),
+          );
+          document
+            .querySelector(`tr[data-entry-key="${CSS.escape(key)}"]`)
+            ?.classList.add("editing-highlighted");
+          setPanelKey(key);
+          setPanelOpen(true);
+        }}
+      />
+    );
+  }, [language]);
+
 
   const validateColumnsMemo: ColumnConfig[] = useMemo(() => [
     { key: "modName", label: t(language, "validate.col.modName"), filterType: "text", thStyle: sortThStyle },
@@ -198,6 +232,16 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
       { value: "reviewed", label: t(language, "jobs.sourceType.reviewed") },
     ], thStyle: sortThStyle },
   ], [language]);
+
+  // ── Row wrapper: adds data-entry-key for DOM-based row highlighting ──
+  const rowWrapper = useCallback(
+    ({ item, children, ...rest }: { item: TranslationResult; children: React.ReactNode; [key: string]: any }) => (
+      <tr {...rest} data-entry-key={`${item.modId}::${item.key}`}>
+        {children}
+      </tr>
+    ),
+    [],
+  );
 
   const hasData = job && job.status === "completed" && filteredEntries.length > 0;
 
@@ -323,17 +367,8 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
             onFilterChange={sf.handleFilterChange}
             defaultSortKey="modName"
             language={language}
-            renderRow={(entry, index) => (
-              <ValidateRow
-                entry={entry}
-                language={language}
-                onOpenPanel={() => {
-                  setPanelKey(`${entry.modId}::${entry.key}`);
-                  setPanelOpen(true);
-                }}
-                highlighted={panelOpen && panelKey === `${entry.modId}::${entry.key}`}
-              />
-            )}
+            renderRow={renderRow}
+            RowWrapper={rowWrapper}
             colWidths={["16%", "12%", "28%", "30%", "14%"]}
           />
           </div>
@@ -360,7 +395,14 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
               if (!orig) throw new Error("Entry no longer in list, cannot save");
               await handleSave(orig, newText);
             }}
-            onClose={() => setPanelOpen(false)}
+            onClose={() => {
+              // Clean up DOM highlight before closing
+              document.querySelectorAll("tr.editing-highlighted").forEach((el) =>
+                el.classList.remove("editing-highlighted"),
+              );
+              activeEditKeyRef.current = null;
+              setPanelOpen(false);
+            }}
             onLlmTranslate={handleLlmTranslate}
             pageType="validate"
             language={language}
