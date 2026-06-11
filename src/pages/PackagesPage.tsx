@@ -246,10 +246,10 @@ export const PackagesPage = React.memo(function PackagesPage({
         if (packResult.outputDir && ("__TAURI_INTERNALS__" in window)) {
           import("@tauri-apps/api/core").then(({ invoke }) => {
             invoke("open_path", { path: packResult.outputDir }).catch((err) => {
-              setError(`打开输出文件夹失败: ${toErrorMessage(err)}`);
+              setError(t(language, "packages.openOutputDirFailed", { error: toErrorMessage(err) }));
             });
           }).catch((err) => {
-            setError(`打开输出文件夹失败: ${toErrorMessage(err)}`);
+            setError(t(language, "packages.openOutputDirFailed", { error: toErrorMessage(err) }));
           });
         }
       }, 600);
@@ -389,7 +389,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         {/* ── Generation in progress / completion animation ── */}
         {(loading || (packResult && !packComplete)) && (
           <div className="packages-animation-area">
-            <PackingAnimation progress={animationProgress} />
+            <PackingAnimation progress={animationProgress} language={language} />
             {loading && (
               <>
                 <div className="packages-progress-track">

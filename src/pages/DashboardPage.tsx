@@ -1,4 +1,4 @@
-import { AlertTriangle, ChevronDown, FolderOpen, Loader2, Package, RefreshCcw, ScanLine, Square, Zap } from "lucide-react";
+import { AlertTriangle, ChevronDown, FolderOpen, Loader2, Package, ScanLine, Square, Zap } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useSortFilter } from "../hooks/useSortFilter";
@@ -301,7 +301,7 @@ export const DashboardPage = React.memo(function DashboardPage({
       }, 3000);
     } catch (err) {
       console.error("cancel scan failed:", err);
-      setError("Cancel scan failed: " + (err instanceof Error ? err.message : String(err)));
+      setError(t(language, "dashboard.cancelScanFailed", { error: err instanceof Error ? err.message : String(err) }));
       setScanElapsedMs(null);
       setIsCancelling(false);
     }

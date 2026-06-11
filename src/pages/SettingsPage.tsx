@@ -434,6 +434,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                   <h3 className="settings-card-header">{t(language, "settings.translationPacks")}</h3>
                   <div className="settings-card-body">
                     <ChipInput
+                      language={language}
                       values={draft.resourcePackNames ?? []}
                       onChange={(newValues) => {
                         setDraft(prev => ({ ...prev, resourcePackNames: newValues }));
@@ -540,9 +541,10 @@ interface ChipInputProps {
   onChange: (values: string[]) => void;
   placeholder: string;
   addLabel: string;
+  language: AppLanguage;
 }
 
-function ChipInput({ values, onChange, placeholder, addLabel }: ChipInputProps) {
+function ChipInput({ values, onChange, placeholder, addLabel, language }: ChipInputProps) {
   const [inputValue, setInputValue] = useState("");
 
   const addChip = () => {
@@ -564,7 +566,7 @@ function ChipInput({ values, onChange, placeholder, addLabel }: ChipInputProps) 
                 className="chip-remove"
                 onClick={() => onChange(values.filter((_, idx) => idx !== i))}
                 type="button"
-                aria-label="Remove"
+                aria-label={t(language, "common.remove")}
               >
                 <X size={12} />
               </button>

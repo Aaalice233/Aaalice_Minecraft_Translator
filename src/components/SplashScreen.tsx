@@ -8,10 +8,10 @@ import type { WarmupPhase, WarmupProgress } from "../types";
 const SPLASH_MIN_MS = 3000;
 const LETTER_REVEAL_MS = 60;
 const BRAND_NAME = "Aaalice";
-const SUBTITLE = "Minecraft Translator";
 const ICON_SIZE = 48;
 
-const PHASE_ORDER: WarmupPhase[] = ["settings", "local", "dictionary", "llm"];
+type SplashPhaseKey = Exclude<WarmupPhase, "completed">;
+const PHASE_ORDER: SplashPhaseKey[] = ["settings", "local", "dictionary", "llm"];
 
 interface SplashScreenProps {
   /** Called when the splash sequence is complete and ready to transition to main UI. */
@@ -157,10 +157,10 @@ export function SplashScreen({
   }, []);
 
   // ── Phase label helpers ──
-  const getPhaseLabel = (phaseKey: WarmupPhase): string =>
+  const getPhaseLabel = (phaseKey: SplashPhaseKey): string =>
     t(splashLang, `splash.phase.${phaseKey}`);
 
-  function getPhaseIcon(phaseKey: WarmupPhase): string {
+  function getPhaseIcon(phaseKey: SplashPhaseKey): string {
     const status = phaseStatuses[phaseKey];
     if (status === "completed") return "\u2713";
     if (status === "failed") return "\u26A0";
@@ -227,7 +227,7 @@ export function SplashScreen({
               animationDelay: `${500 + BRAND_NAME.length * LETTER_REVEAL_MS + 100}ms`,
             }}
           >
-            {SUBTITLE}
+            {t(splashLang, "app.brandSubtitle")}
           </p>
 
           {/* Scan line */}
@@ -302,4 +302,4 @@ export function SplashScreen({
   );
 }
 
-type SplashPhase = "init" | "brand" | "subtitle" | "progress";
+type SplashPhase = "init" | "brand";

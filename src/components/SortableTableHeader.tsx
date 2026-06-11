@@ -132,7 +132,7 @@ export function SortableTableHeader({
                     onToggleFilter(col.key);
                   }}
                   type="button"
-                  aria-label={`Filter ${col.label}`}
+                  aria-label={`${t(lang, "tooltip.filter")} ${col.label}`}
                   data-tooltip={t(lang, "tooltip.filter")}
                 >
                   <Filter size={13} />

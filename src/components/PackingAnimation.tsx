@@ -1,8 +1,12 @@
 import { useEffect, useRef } from "react";
+import type { AppLanguage } from "../types";
+import { normalizeAppLanguage, t } from "../i18n/translations";
 
 interface Props {
   /** 0–100 progress percentage */
   progress: number;
+  /** App language for canvas text i18n. */
+  language?: string;
 }
 
 // ── Constants ────────────────────────────────────────────────────
@@ -25,10 +29,12 @@ const COLORS = [
 
 // ── Component ────────────────────────────────────────────────────
 
-export const PackingAnimation = ({ progress }: Props) => {
+export const PackingAnimation = ({ progress, language }: Props) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const frameRef = useRef(0);
   const progressRef = useRef(progress);
+  const langRef = useRef(normalizeAppLanguage(language));
+  langRef.current = normalizeAppLanguage(language);
   progressRef.current = progress;
 
   useEffect(() => {
@@ -79,7 +85,7 @@ export const PackingAnimation = ({ progress }: Props) => {
       drawItems(ctx, items, filledCount, t, p);
 
       // ── Box walls ──
-      drawBoxWalls(ctx, p);
+      drawBoxWalls(ctx, p, langRef.current);
 
       // ── Falling items (during packing) ──
       if (p > 5 && p < 100) {
@@ -88,7 +94,7 @@ export const PackingAnimation = ({ progress }: Props) => {
 
       // ── Completion effects ──
       if (p >= 100) {
-        drawCompletion(ctx, t);
+        drawCompletion(ctx, timestamp, langRef.current);
       }
 
       frameRef.current = requestAnimationFrame(draw);
@@ -190,7 +196,7 @@ function drawBoxFill(ctx: CanvasRenderingContext2D, progress: number) {
   }
 }
 
-function drawBoxWalls(ctx: CanvasRenderingContext2D, progress: number) {
+function drawBoxWalls(ctx: CanvasRenderingContext2D, progress: number, lang: AppLanguage = "zh_cn") {
   ctx.fillStyle = "#c8a84a";
   // Left wall
   ctx.fillRect(BOX_X, BOX_Y + 4, 5, BOX_H - 4);
@@ -217,7 +223,7 @@ function drawBoxWalls(ctx: CanvasRenderingContext2D, progress: number) {
   ctx.font = "bold 11px sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("TRANSLATION PACK", BOX_X + BOX_W / 2, BOX_Y + 36);
+  ctx.fillText(t(lang, "packing.translationPack"), BOX_X + BOX_W / 2, BOX_Y + 36);
 
   // ── Open flaps (before completion) ──
   if (progress < 100) {
@@ -322,8 +328,8 @@ function drawFallingItem(ctx: CanvasRenderingContext2D, t: number, progress: num
   ctx.restore();
 }
 
-function drawCompletion(ctx: CanvasRenderingContext2D, t: number) {
-  const sealTime = t * 0.8;
+function drawCompletion(ctx: CanvasRenderingContext2D, time: number, lang: AppLanguage = "zh_cn") {
+  const sealTime = time * 0.8;
 
   // ── Close flaps ──
   const flapPhase = Math.min(sealTime * 2, 1);
@@ -407,7 +413,7 @@ function drawCompletion(ctx: CanvasRenderingContext2D, t: number) {
       ctx.font = "bold 20px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("PACKED ✓", 0, 0);
+      ctx.fillText(t(lang, "packing.packed"), 0, 0);
 
       ctx.restore();
     }
