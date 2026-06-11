@@ -265,6 +265,11 @@ export const PackagesPage = React.memo(function PackagesPage({
     !reviewRequired &&
     (translationJob?.completedEntries ?? 0) > 0;
 
+  const showModList =
+    scanSummary &&
+    ((translationJob && !loading && !packResult) || (packResult && packComplete));
+  const isPrePack = showModList && !!(translationJob && !loading && !packResult);
+
   // ═══════════════════════════════════════════════════════════
   // Render helpers
   // ═══════════════════════════════════════════════════════════
@@ -417,31 +422,21 @@ export const PackagesPage = React.memo(function PackagesPage({
           </div>
         )}
 
-        {/* ── Pre-pack: mod list preview ──────── */}
-        {translationJob && scanSummary && !loading && !packResult && (
-          <div className="packages-middle-preview">
+        {/* ── Mod list (pre-pack preview / post-pack summary) ── */}
+        {showModList && (
+          <div className={isPrePack ? "packages-middle-preview" : undefined}>
             <div className="packages-mod-list">
-                <div className="packages-mod-list-header">
-                  <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
+              <div className="packages-mod-list-header">
+                <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
+                {isPrePack && (
                   <span className="packages-mod-list-ready">
                     {t(language, "packages.readyToPack")}
                   </span>
-                </div>
-                <div className="packages-mod-list-body">
-                  {modItems}
-                </div>
+                )}
               </div>
-          </div>
-        )}
-
-        {/* ── Generation complete: mod list ─────────────────── */}
-        {packResult && packComplete && scanSummary && (
-          <div className="packages-mod-list">
-            <div className="packages-mod-list-header">
-              <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
-            </div>
-            <div className="packages-mod-list-body">
-              {modItems}
+              <div className="packages-mod-list-body">
+                {modItems}
+              </div>
             </div>
           </div>
         )}
