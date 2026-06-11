@@ -307,9 +307,10 @@ export const PackagesPage = React.memo(function PackagesPage({
     }
   }, [packResult, loading, onPackComplete]);
 
-  // 4c. Load translation results after pack completes, so ModRow can show target text.
+  // 4c. Load translation results when translationJob is known,
+  //  so ModRow can show target text even before pack is generated.
   useEffect(() => {
-    if (!translationJob || !packComplete || !("__TAURI_INTERNALS__" in window)) return;
+    if (!translationJob || !("__TAURI_INTERNALS__" in window)) return;
     let cancelled = false;
     loadTranslationResults(translationJob.jobId)
       .then((results) => {
@@ -322,7 +323,7 @@ export const PackagesPage = React.memo(function PackagesPage({
       })
       .catch((err) => console.warn("load translation results failed:", err));
     return () => { cancelled = true; };
-  }, [translationJob, packComplete]);
+  }, [translationJob]);
 
   // ═══════════════════════════════════════════════════════════
   // Derived state

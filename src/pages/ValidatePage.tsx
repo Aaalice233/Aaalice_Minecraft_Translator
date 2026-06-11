@@ -1,7 +1,7 @@
 import {
   CheckCircle,
+  CheckCircle2,
   Loader2,
-  PackageCheck,
   Search,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
@@ -279,7 +279,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
               )}
               {!isReviewed && allEntries.length > 0 && (
                 <button className="primary-button" onClick={handleReviewComplete} disabled={submitting} type="button">
-                  {submitting ? <Loader2 size={18} className="spin" /> : <PackageCheck size={18} />}
+                  {submitting ? <Loader2 size={18} className="spin" /> : <CheckCircle2 size={18} />}
                   {t(language, "validate.markDone")}
                 </button>
               )}
