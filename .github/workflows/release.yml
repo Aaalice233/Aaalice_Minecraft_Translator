@@ -1,0 +1,72 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Build Tauri app with updater signature
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.UPDATER_SIGN_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_SIGN_PRIVATE_KEY_PASSWORD }}
+        run: npm run package:exe
+
+      - name: Generate update.json
+        shell: pwsh
+        run: |
+          # Read version from tauri.conf.json (source of truth for getVersion())
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $installerPath = "src-tauri/target/release/bundle/nsis/Aaalice MC Translator_${version}_x64-setup.exe"
+          $sigPath = "${installerPath}.sig"
+
+          # Signature file must exist — fail the build if missing
+          if (-not (Test-Path $sigPath)) {
+            throw "Signature file not found: $sigPath`nCheck: 1) createUpdaterArtifacts: true in tauri.conf.json 2) TAURI_SIGNING_PRIVATE_KEY Secret is configured"
+          }
+          $sig = Get-Content $sigPath -Raw
+
+          $updateJson = @"
+          {
+            "version": "$version",
+            "notes": "See GitHub Release notes for details",
+            "pub_date": "$(Get-Date -Format 'yyyy-MM-ddTHH:mm:ssZ' -AsUTC)",
+            "platforms": {
+              "windows-x86_64": {
+                "signature": "$($sig.Trim())",
+                "url": "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/Aaalice%20MC%20Translator_${version}_x64-setup.exe"
+              }
+            }
+          }
+          "@
+          $updateJson | Set-Content "update.json"
+          Write-Host "update.json generated for version $version"
+
+      - name: Upload assets to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            update.json
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
