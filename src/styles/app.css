@@ -96,6 +96,12 @@ tr.editing-highlighted td {
   overflow-y: hidden;
 }
 
+/* Packages page: page-layer should not scroll — .packages-middle handles scrolling */
+.page-layer.active:has(section.packages-page) {
+  overflow: hidden;
+  overflow-y: hidden;
+}
+
 /* ── Accent: Green (default) ── */
 [data-accent="green"] {
   --accent: #1f8a5b;
@@ -487,10 +493,13 @@ select {
   flex-shrink: 0;
 }
 .packages-middle {
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  margin: 16px 0;
+  overflow-x: hidden;
+  margin: 12px 0 0;
 }
 
 /* ── Layer 1: Stats bar ── */
@@ -603,6 +612,10 @@ select {
 
 /* ── Layer 2: Mod list ── */
 .packages-mod-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -622,8 +635,10 @@ select {
 }
 
 .packages-mod-list-body {
-  max-height: 480px;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .packages-mod-item {
@@ -758,6 +773,8 @@ select {
 .packages-middle-preview {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .packages-mod-list-ready {
@@ -2247,6 +2264,13 @@ th.sorted-default .sort-indicator {
 }
 .dictionary-page .log-panel-body td .ghost-button svg {
   display: none;
+}
+
+/* Validate page: 与扫描页一致的 panel 边框 + 背景 */
+.validate-page .log-panel-body {
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--bg-surface);
 }
 
 /* Row & cell hover feedback for dictionary & validate tables */

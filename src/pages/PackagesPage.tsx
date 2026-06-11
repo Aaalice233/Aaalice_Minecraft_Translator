@@ -112,6 +112,16 @@ export const PackagesPage = React.memo(function PackagesPage({
   );
 
   const animFrameRef = useRef<number>(0);
+  const pageRef = useRef<HTMLElement>(null);
+
+  // 抑制外层 page-layer 滚动 — CSS :has() 后备
+  useEffect(() => {
+    const layer = pageRef.current?.closest<HTMLElement>(".page-layer");
+    if (!layer) return;
+    const prevOverflow = layer.style.overflow;
+    layer.style.overflow = "hidden";
+    return () => { layer.style.overflow = prevOverflow; };
+  }, []);
 
   // ═══════════════════════════════════════════════════════════
   // Handlers (useCallback — must be BEFORE effects that use them)
@@ -287,7 +297,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   // ═══════════════════════════════════════════════════════════
 
   return (
-    <section className="page packages-page">
+    <section ref={pageRef} className="page packages-page">
       {/* ══════════════════════════════════════════════════════
           LAYER 1: 统计 + 操作
           ══════════════════════════════════════════════════════ */}
@@ -336,7 +346,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         {loading && (
           <div className="packages-stats-bar">
             <span className="packages-stat packages-status-generating">
-              <Loader2 size={16} className="spin" />
+              <Loader2 size={16} className="spinning" />
               <span>{t(language, "packages.packing")}</span>
             </span>
           </div>
