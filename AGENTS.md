@@ -79,7 +79,69 @@ Aaalice_Minecraft_Translator/
 
 - 开发模式 exe：`src-tauri/target/debug/aaalice_mc_translator.exe`
 - Release exe：`src-tauri/target/release/aaalice_mc_translator.exe`
-- NSIS 安装器：`src-tauri/target/release/bundle/nsis/Aaalice MC Translator_0.1.0_x64-setup.exe`
+- NSIS 安装器：`src-tauri/target/release/bundle/nsis/Aaalice MC Translator_<version>_x64-setup.exe`
+
+---
+
+## 发布流程
+
+### 版本规范
+
+遵循 [SemVer](https://semver.org/)：`主版本.次版本.修订号`
+- 新功能 → 增加次版本（如 `0.1.0` → `0.2.0`）
+- Bug 修复 → 增加修订号（如 `0.2.0` → `0.2.1`）
+- 破坏性变更 → 增加主版本（如 `0.2.0` → `1.0.0`）
+
+### CHANGELOG 格式模板
+
+每个版本在 `CHANGELOG.md` 顶部新增条目，按此模板写：
+
+```markdown
+## vX.Y.Z (YYYY-MM-DD)
+
+### ✨ 新功能
+- **功能名称**：一句话说明（关联 issue/PR 编号）
+
+### 🔧 改进
+- 技术改进或重构说明
+
+### 🐛 Bug 修复
+- 修复了什么问题
+
+### 升级注意（仅破坏性变更时）
+- 迁移指南或配置变更说明
+```
+
+### 发布步骤
+
+1. **更新版本号** — 修改以下 3 个文件的版本字段：
+   - `src-tauri/tauri.conf.json`
+   - `src-tauri/Cargo.toml`
+   - `package.json`
+
+2. **更新 CHANGELOG** — 按上面模板在文件顶部新增条目
+
+3. **本地验证**（可选）：
+   ```bash
+   npm run test:unit && cd src-tauri && cargo test
+   npm run build
+   ```
+
+4. **提交并打 tag**：
+   ```bash
+   git add src-tauri/tauri.conf.json src-tauri/Cargo.toml package.json CHANGELOG.md
+   git commit -m "chore(release): bump to vX.Y.Z"
+   git tag vX.Y.Z -m "vX.Y.Z — 本次更新的简要描述"
+   git push origin main vX.Y.Z
+   ```
+
+5. **等待 CI 完成** — GitHub Actions 自动执行：
+   - 构建 Rust release + NSIS 安装器
+   - 用 `UPDATER_SIGN_PRIVATE_KEY`（GitHub Secrets）签名
+   - 从 `CHANGELOG.md` 提取当前版本描述作为 Release notes
+   - 上传 `update.json` + 安装器到 GitHub Releases
+
+6. **验证** — 打开应用 → 设置页 → 「关于与更新」→ 检查更新，确认新版本可下载安装
 
 ---
 
