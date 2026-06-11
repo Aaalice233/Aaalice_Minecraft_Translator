@@ -184,16 +184,12 @@ export type TranslationKey =
   | "packages.generate"
   | "packages.noScan"
   | "packages.allMods"
-  | "packages.detailKey"
-  | "packages.detailSource"
-  | "packages.detailTranslated"
   | "packages.entries_label"
   | "packages.entryCount"
   | "packages.failed_label"
   | "packages.files_label"
   | "packages.languageMismatch"
   | "packages.modCount"
-  | "packages.moreEntries"
   | "packages.noLangFiles"
   | "packages.noTranslation"
   | "packages.packDone"
@@ -598,16 +594,12 @@ const zhCn: TranslationMap = {
   "packages.generate": "生成资源包",
   "packages.noScan": "请先扫描并翻译模组",
   "packages.allMods": "全部模组 ({count})",
-  "packages.detailKey": "键",
-  "packages.detailSource": "原文",
-  "packages.detailTranslated": "译文",
   "packages.entries_label": "{count} 条目",
   "packages.entryCount": "{count} 条翻译",
   "packages.failed_label": "失败",
   "packages.files_label": "{count} 文件",
   "packages.languageMismatch": "当前设置的目标语言 ({current}) 与翻译结果的语言 ({job}) 不一致。将使用当前设置的语言打包。",
   "packages.modCount": "{count} 个模组",
-  "packages.moreEntries": "...还有 {count} 条",
   "packages.noLangFiles": "无语言文件",
   "packages.noTranslation": "暂无可用的翻译结果，请先完成翻译",
   "packages.packDone": "打包完成",
@@ -1061,16 +1053,12 @@ const enUs: TranslationMap = {
   "logs.resume": "Resume scrolling",
   "logs.scrollToBottom": "Scroll to bottom",
   "packages.allMods": "All mods ({count})",
-  "packages.detailKey": "Key",
-  "packages.detailSource": "Source",
-  "packages.detailTranslated": "Translation",
   "packages.entries_label": "{count} entries",
   "packages.entryCount": "{count} translations",
   "packages.failed_label": "Failed",
   "packages.files_label": "{count} files",
   "packages.languageMismatch": "Current target language ({current}) differs from the translation language ({job}). Using current language for packaging.",
   "packages.modCount": "{count} mods",
-  "packages.moreEntries": "...and {count} more",
   "packages.noLangFiles": "No language files",
   "packages.noTranslation": "No translation results available. Please complete a translation first.",
   "packages.packDone": "Pack complete",
@@ -1324,16 +1312,12 @@ const jaJp: TranslationMap = {
   "logs.resume": "スクロール再開",
   "logs.scrollToBottom": "最下部へ",
   "packages.allMods": "すべての Mod ({count})",
-  "packages.detailKey": "キー",
-  "packages.detailSource": "原文",
-  "packages.detailTranslated": "訳文",
   "packages.entries_label": "{count} 項目",
   "packages.entryCount": "{count} 翻訳",
   "packages.failed_label": "失敗",
   "packages.files_label": "{count} ファイル",
   "packages.languageMismatch": "現在の対象言語 ({current}) が翻訳結果の言語 ({job}) と異なります。現在の言語でパッケージ化します。",
   "packages.modCount": "{count} 個のMod",
-  "packages.moreEntries": "...他 {count} 件",
   "packages.noLangFiles": "言語ファイルなし",
   "packages.noTranslation": "翻訳結果がありません。先に翻訳を完了してください。",
   "packages.packDone": "パッケージ完了",
@@ -1586,16 +1570,12 @@ const koKr: TranslationMap = {
   "logs.linesWithTotal": "/ 총 {count}",
   "logs.scrollToBottom": "맨 아래로",
   "packages.allMods": "모든 모드 ({count})",
-  "packages.detailKey": "키",
-  "packages.detailSource": "원문",
-  "packages.detailTranslated": "번역문",
   "packages.entries_label": "{count}개 항목",
   "packages.entryCount": "{count}개 번역",
   "packages.failed_label": "실패",
   "packages.files_label": "{count}개 파일",
   "packages.languageMismatch": "현재 대상 언어({current})가 번역 결과 언어({job})와 일치하지 않습니다. 현재 언어로 패키징합니다.",
   "packages.modCount": "{count}개 모드",
-  "packages.moreEntries": "...외 {count}개",
   "packages.noLangFiles": "언어 파일 없음",
   "packages.noTranslation": "번역 결과가 없습니다. 먼저 번역을 완료해주세요.",
   "packages.packDone": "패키징 완료",
@@ -1925,16 +1905,12 @@ const ruRu: TranslationMap = {
   "logs.linesWithTotal": "/ {count} всего",
   "logs.scrollToBottom": "Вниз",
   "packages.allMods": "Все моды ({count})",
-  "packages.detailKey": "Ключ",
-  "packages.detailSource": "Исходный",
-  "packages.detailTranslated": "Перевод",
   "packages.entries_label": "{count} записей",
   "packages.entryCount": "{count} переводов",
   "packages.failed_label": "Ошибка",
   "packages.files_label": "{count} файлов",
   "packages.languageMismatch": "Текущий целевой язык ({current}) отличается от языка перевода ({job}). Используется текущий язык.",
   "packages.modCount": "{count} модов",
-  "packages.moreEntries": "...и ещё {count}",
   "packages.noLangFiles": "Нет языковых файлов",
   "packages.noTranslation": "Результаты перевода отсутствуют. Сначала выполните перевод.",
   "packages.packDone": "Упаковка завершена",

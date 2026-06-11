@@ -1,8 +1,6 @@
 import {
   Boxes,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   FileArchive,
   FileText,
   FolderOpen,
@@ -11,11 +9,10 @@ import {
   Package,
   XCircle,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   generatePackFromJob,
   loadLatestTranslationJobMeta,
-  loadTranslationResults,
 } from "../api/tauri";
 import { AnimatedCount } from "../components/AnimatedCount";
 import { PageHeader } from "../components/PageHeader";
@@ -42,20 +39,13 @@ interface Props {
 // Sub-components
 // ═══════════════════════════════════════════════════════════════
 
-/** A single mod row in the pre-pack / post-pack list — memoized to prevent
- *  unnecessary re-renders when only one mod's expanded state changes. */
+/** A single mod row showing name, file, and entry count — no expandable detail. */
 const ModRow = React.memo(function ModRow({
   mod,
   language,
-  isExpanded,
-  onToggle,
-  entryTranslations,
 }: {
   mod: ScanSummary["mods"][0];
   language: AppLanguage;
-  isExpanded: boolean;
-  onToggle: (modId: string) => void;
-  entryTranslations?: Map<string, string>;
 }) {
   const hasEntries = mod.entries.length > 0;
   const hasErrors = mod.failedLanguageFiles > 0;
@@ -74,57 +64,22 @@ const ModRow = React.memo(function ModRow({
   }
 
   return (
-    <div
-      className={`packages-mod-item ${isExpanded ? "expanded" : ""}`}
-    >
-      <div
-        className="packages-mod-item-row"
-        onClick={() => onToggle(mod.modId)}
-      >
+    <div className="packages-mod-item">
+      <div className="packages-mod-item-row">
         <span className="packages-mod-icon">
           <StatusIcon size={16} className={iconClass} />
         </span>
         <span className="packages-mod-name">{mod.modId}</span>
         <span className="packages-mod-file">{mod.fileName}</span>
         <span className="packages-mod-meta">
-          {mod.entries.length || mod.languageFileCount
-            ? [mod.entries.length ? t(language, "packages.entries_label", { count: mod.entries.length }) : null, mod.languageFileCount ? t(language, "packages.files_label", { count: mod.languageFileCount }) : null].filter(Boolean).join(" · ")
+          {hasEntries || mod.languageFileCount
+            ? [hasEntries ? t(language, "packages.entries_label", { count: mod.entries.length }) : null, mod.languageFileCount ? t(language, "packages.files_label", { count: mod.languageFileCount }) : null].filter(Boolean).join(" · ")
             : t(language, "packages.noLangFiles")}
         </span>
         {hasErrors && (
           <span className="packages-mod-error-badge">{t(language, "packages.failed_label")}</span>
         )}
-        {hasEntries && (
-          <span className="packages-mod-expand">
-            {isExpanded ? (
-              <ChevronDown size={14} />
-            ) : (
-              <ChevronRight size={14} />
-            )}
-          </span>
-        )}
       </div>
-      {isExpanded && hasEntries && (
-        <div className="packages-mod-detail">
-          <div className="packages-mod-detail-row packages-mod-detail-header">
-            <span className="packages-detail-key">{t(language, "packages.detailKey")}</span>
-            <span>{entryTranslations && entryTranslations.size > 0 ? t(language, "packages.detailTranslated") : t(language, "packages.detailSource")}</span>
-          </div>
-          {mod.entries.slice(0, 20).map((entry) => (
-            <div key={entry.key} className="packages-mod-detail-row">
-              <code className="packages-detail-key">{entry.key}</code>
-              <span className="packages-detail-source">
-                {entryTranslations?.get(entry.key) ?? entry.text}
-              </span>
-            </div>
-          ))}
-          {mod.entries.length > 20 && (
-            <div className="packages-mod-detail-more">
-              {t(language, "packages.moreEntries", { count: mod.entries.length - 20 })}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 });
@@ -151,13 +106,11 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const [translationJob, setTranslationJob] = useState<TranslationJobListItem | null>(null);
 
-  const [expandedMods, setExpandedMods] = useState<Set<string>>(new Set());
   const [reviewRequired, setReviewRequired] = useState(false);
   const [outputDir, setOutputDir] = useState<string | null>(() =>
     settings.instancePath ? `${settings.instancePath.replace(/\\/g, "/")}/resourcepacks` : null,
   );
 
-  const [entryTranslations, setEntryTranslations] = useState<Map<string, string>>(new Map());
   const animFrameRef = useRef<number>(0);
 
   // ═══════════════════════════════════════════════════════════
@@ -172,7 +125,6 @@ export const PackagesPage = React.memo(function PackagesPage({
       setAnimationProgress(0);
       setError("");
       setPackResult(null);
-      setEntryTranslations(new Map());
       try {
         const targetLang =
           scanSummary?.targetLanguage || translationJob.targetLanguage;
@@ -217,15 +169,6 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const translationJobId = useAppStore((s) => s.translationJobId);
   const reviewCount = useAppStore((s) => s.reviewCount);
-
-  const toggleModExpand = useCallback((modId: string) => {
-    setExpandedMods((prev) => {
-      const next = new Set(prev);
-      if (next.has(modId)) next.delete(modId);
-      else next.add(modId);
-      return next;
-    });
-  }, []);
 
   // ═══════════════════════════════════════════════════════════
   // Effects
@@ -307,29 +250,6 @@ export const PackagesPage = React.memo(function PackagesPage({
     }
   }, [packResult, loading, onPackComplete]);
 
-  // 4c. Load translation results when translationJob is known,
-  //  so ModRow can show target text even before pack is generated.
-  useEffect(() => {
-    if (!translationJob || !("__TAURI_INTERNALS__" in window)) {
-      console.log("[debug] effect 4c: skipped — translationJob:", !!translationJob, "tauri:", "__TAURI_INTERNALS__" in window);
-      return;
-    }
-    console.log("[debug] effect 4c: loading results for job", translationJob.jobId);
-    let cancelled = false;
-    loadTranslationResults(translationJob.jobId)
-      .then((results) => {
-        if (cancelled) return;
-        console.log("[debug] effect 4c: got", results.length, "results, sample keys:", results.slice(0, 3).map(r => r.key));
-        const map = new Map<string, string>();
-        for (const r of results) {
-          map.set(r.key, r.targetText);
-        }
-        setEntryTranslations(map);
-      })
-      .catch((err) => console.warn("load translation results failed:", err));
-    return () => { cancelled = true; };
-  }, [translationJob]);
-
   // ═══════════════════════════════════════════════════════════
   // Derived state
   // ═══════════════════════════════════════════════════════════
@@ -345,36 +265,14 @@ export const PackagesPage = React.memo(function PackagesPage({
     !reviewRequired &&
     (translationJob?.completedEntries ?? 0) > 0;
 
-  /** Filtered mod count — only mods with translation results when the map is loaded. */
-  const filteredModCount = useMemo(() => {
-    if (!scanSummary) return 0;
-    const hasTranslations = entryTranslations && entryTranslations.size > 0;
-    if (!hasTranslations) return scanSummary.mods.length;
-    return scanSummary.mods.filter(mod => mod.entries.some(e => entryTranslations.has(e.key))).length;
-  }, [scanSummary, entryTranslations]);
-
   // ═══════════════════════════════════════════════════════════
   // Render helpers
   // ═══════════════════════════════════════════════════════════
 
-  /** Memoized mod items — only shows mods that have translation results (excludes native-Chinese mods). */
-  const modItems = useMemo(() => {
-    if (!scanSummary) return null;
-    const hasTranslations = entryTranslations && entryTranslations.size > 0;
-    const relevantMods = hasTranslations
-      ? scanSummary.mods.filter(mod => mod.entries.some(e => entryTranslations.has(e.key)))
-      : scanSummary.mods;
-    return relevantMods.map((mod) => (
-      <ModRow
-        key={mod.modId}
-        mod={mod}
-        language={language}
-        isExpanded={expandedMods.has(mod.modId)}
-        onToggle={toggleModExpand}
-        entryTranslations={entryTranslations}
-      />
-    ));
-  }, [scanSummary, expandedMods, language, toggleModExpand, entryTranslations]);
+  /** Mod rows from scanSummary — simple flat list. */
+  const modItems = scanSummary?.mods.map((mod) => (
+    <ModRow key={mod.modId} mod={mod} language={language} />
+  ));
 
   // ═══════════════════════════════════════════════════════════
   // Render
@@ -521,7 +419,7 @@ export const PackagesPage = React.memo(function PackagesPage({
           <div className="packages-middle-preview">
             <div className="packages-mod-list">
                 <div className="packages-mod-list-header">
-                  <h2>{t(language, "packages.allMods", { count: filteredModCount })}</h2>
+                  <h2>{scanSummary && t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
                   <span className="packages-mod-list-ready">
                     {t(language, "packages.readyToPack")}
                   </span>
@@ -545,7 +443,7 @@ export const PackagesPage = React.memo(function PackagesPage({
             </div>
             <div className="packages-mod-list">
               <div className="packages-mod-list-header">
-                <h2>{t(language, "packages.allMods", { count: filteredModCount })}</h2>
+                <h2>{scanSummary && t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
               </div>
               <div className="packages-mod-list-body">
                 {modItems}
