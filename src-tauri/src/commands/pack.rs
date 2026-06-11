@@ -1,8 +1,6 @@
 use crate::core::{packer, paths};
 use tracing::info;
 
-
-
 #[tauri::command]
 pub fn copy_pack_to_instance(
     pack_zip_path: String,
@@ -14,58 +12,63 @@ pub fn copy_pack_to_instance(
 }
 
 #[tauri::command]
-pub fn generate_pack_from_job(
+pub async fn generate_pack_from_job(
     job_id: String,
     target_language: String,
     dry_run: bool,
     output_dir: Option<String>,
 ) -> Result<packer::PackResult, String> {
     info!("generate_pack_from_job: job_id={}, target_language={}, dry_run={}, output_dir={:?}", job_id, target_language, dry_run, output_dir);
-    let root = paths::runtime_root().map_err(|e| e.to_string())?;
-    let manager = crate::core::jobs::JobManager::new(root.clone());
 
-    manager
-        .load(&job_id)?
-        .ok_or_else(|| format!("翻译任务 {job_id} 未找到"))?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let root = paths::runtime_root().map_err(|e| e.to_string())?;
+        let manager = crate::core::jobs::JobManager::new(root.clone());
 
-    let results = manager.load_results(&job_id)?;
+        manager
+            .load(&job_id)?
+            .ok_or_else(|| format!("翻译任务 {job_id} 未找到"))?;
 
-    let total_results = results.len();
-    let valid_results: Vec<_> = results.into_iter().filter(|r| r.source_type != "failed").collect();
-    let filtered_count = total_results - valid_results.len();
-    if filtered_count > 0 {
-        info!("过滤 {} 个失败条目 (任务 {})", filtered_count, job_id);
-    }
+        let results = manager.load_results(&job_id)?;
 
-    let entries: Vec<packer::PackEntry> = valid_results
-        .into_iter()
-        .map(|r| packer::PackEntry {
-            mod_id: r.mod_id,
-            key: r.key,
-            text: r.target_text,
-            source_text: r.source_text,
-        })
-        .collect();
+        let total_results = results.len();
+        let valid_results: Vec<_> = results.into_iter().filter(|r| r.source_type != "failed").collect();
+        let filtered_count = total_results - valid_results.len();
+        if filtered_count > 0 {
+            info!("过滤 {} 个失败条目 (任务 {})", filtered_count, job_id);
+        }
 
-    if entries.is_empty() {
-        return Err(
-            "翻译结果为空或所有条目均未通过校验，无法生成资源包".to_string(),
-        );
-    }
+        let entries: Vec<packer::PackEntry> = valid_results
+            .into_iter()
+            .map(|r| packer::PackEntry {
+                mod_id: r.mod_id,
+                key: r.key,
+                text: r.target_text,
+                source_text: r.source_text,
+            })
+            .collect();
 
-    let output_dir = output_dir
-        .map(|p| std::path::PathBuf::from(p))
-        .unwrap_or_else(|| paths::build_output_dir(&root));
-    std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
+        if entries.is_empty() {
+            return Err("翻译结果为空或所有条目均未通过校验，无法生成资源包".to_string());
+        }
 
-    let options = packer::PackOptions {
-        target_language,
-        entries,
-        build_name: format!("Aaalice-MC-Translator-{job_id}"),
-        dry_run,
-        output_dir: output_dir.to_string_lossy().to_string(),
-        pack_format: 15,
-    };
+        let output_dir = output_dir
+            .map(|p| std::path::PathBuf::from(p))
+            .unwrap_or_else(|| paths::build_output_dir(&root));
+        std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
-    packer::generate_pack(&options).map_err(|e| e.to_string())
+        let options = packer::PackOptions {
+            target_language,
+            entries,
+            build_name: format!("Aaalice-MC-Translator-{job_id}"),
+            dry_run,
+            output_dir: output_dir.to_string_lossy().to_string(),
+            pack_format: 15,
+        };
+
+        packer::generate_pack(&options).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("打包线程崩溃: {e}"))??;
+
+    Ok(result)
 }

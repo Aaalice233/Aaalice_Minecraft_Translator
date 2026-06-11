@@ -11,7 +11,7 @@ import {
   RefreshCw,
   XCircle,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   generatePackFromJob,
   loadLatestTranslationJobMeta,
@@ -36,6 +36,95 @@ interface Props {
   onBusyChange?: (busy: boolean) => void;
   onPackComplete?: (done: boolean) => void;
 }
+
+// ═══════════════════════════════════════════════════════════════
+// Sub-components
+// ═══════════════════════════════════════════════════════════════
+
+/** A single mod row in the pre-pack / post-pack list — memoized to prevent
+ *  unnecessary re-renders when only one mod's expanded state changes. */
+const ModRow = React.memo(function ModRow({
+  mod,
+  language,
+  isExpanded,
+  onToggle,
+}: {
+  mod: ScanSummary["mods"][0];
+  language: AppLanguage;
+  isExpanded: boolean;
+  onToggle: (modId: string) => void;
+}) {
+  const hasEntries = mod.entries.length > 0;
+  const hasErrors = mod.failedLanguageFiles > 0;
+
+  let StatusIcon: typeof CheckCircle2;
+  let iconClass: string;
+  if (hasErrors) {
+    StatusIcon = XCircle;
+    iconClass = "packages-icon-error";
+  } else if (!hasEntries) {
+    StatusIcon = Minus;
+    iconClass = "packages-icon-muted";
+  } else {
+    StatusIcon = CheckCircle2;
+    iconClass = "packages-icon-success";
+  }
+
+  return (
+    <div
+      className={`packages-mod-item ${isExpanded ? "expanded" : ""}`}
+    >
+      <div
+        className="packages-mod-item-row"
+        onClick={() => onToggle(mod.modId)}
+      >
+        <span className="packages-mod-icon">
+          <StatusIcon size={16} className={iconClass} />
+        </span>
+        <span className="packages-mod-name">{mod.modId}</span>
+        <span className="packages-mod-file">{mod.fileName}</span>
+        <span className="packages-mod-meta">
+          {mod.entries.length || mod.languageFileCount
+            ? [mod.entries.length ? t(language, "packages.entries_label", { count: mod.entries.length }) : null, mod.languageFileCount ? t(language, "packages.files_label", { count: mod.languageFileCount }) : null].filter(Boolean).join(" · ")
+            : t(language, "packages.noLangFiles")}
+        </span>
+        {hasErrors && (
+          <span className="packages-mod-error-badge">{t(language, "packages.failed_label")}</span>
+        )}
+        {hasEntries && (
+          <span className="packages-mod-expand">
+            {isExpanded ? (
+              <ChevronDown size={14} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
+          </span>
+        )}
+      </div>
+      {isExpanded && hasEntries && (
+        <div className="packages-mod-detail">
+          <div className="packages-mod-detail-row packages-mod-detail-header">
+            <span className="packages-detail-key">{t(language, "packages.detailKey")}</span>
+            <span>{t(language, "packages.detailSource")}</span>
+          </div>
+          {mod.entries.slice(0, 20).map((entry) => (
+            <div key={entry.key} className="packages-mod-detail-row">
+              <code className="packages-detail-key">{entry.key}</code>
+              <span className="packages-detail-source">
+                {entry.text}
+              </span>
+            </div>
+          ))}
+          {mod.entries.length > 20 && (
+            <div className="packages-mod-detail-more">
+              {t(language, "packages.moreEntries", { count: mod.entries.length - 20 })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
 
 // ═══════════════════════════════════════════════════════════════
 // Component
@@ -88,10 +177,11 @@ export const PackagesPage = React.memo(function PackagesPage({
           dryRun,
           outputDir ?? undefined,
         );
-        // 确保动画最短 3 秒
+        // 确保动画最短运行时间：干运行 500ms，正常打包 1500ms
+        const minAnimationMs = dryRun ? 500 : 1500;
         const elapsed = Date.now() - animStart;
-        if (elapsed < 3000) {
-          await new Promise((r) => setTimeout(r, 3000 - elapsed));
+        if (elapsed < minAnimationMs) {
+          await new Promise((r) => setTimeout(r, minAnimationMs - elapsed));
         }
         setPackResult(result);
       } catch (err) {
@@ -176,7 +266,7 @@ export const PackagesPage = React.memo(function PackagesPage({
       return;
     }
     const start = Date.now();
-    const duration = 3000;
+    const duration = 1500;
     const animate = () => {
       const elapsed = Date.now() - start;
       const pct = Math.min((elapsed / duration) * 100, 95);
@@ -204,7 +294,7 @@ export const PackagesPage = React.memo(function PackagesPage({
             setError(`打开输出文件夹失败: ${toErrorMessage(err)}`);
           });
         }
-      }, 1200);
+      }, 600);
       return () => clearTimeout(timer);
     }
     if (!loading) {
@@ -231,84 +321,19 @@ export const PackagesPage = React.memo(function PackagesPage({
   // Render helpers
   // ═══════════════════════════════════════════════════════════
 
-  /** Render mod items from scanSummary — shared between pre-pack preview and post-pack list. */
-  function renderModItems() {
+  /** Memoized mod items — only rebuilds when scanSummary, expandedMods, or language changes. */
+  const modItems = useMemo(() => {
     if (!scanSummary) return null;
-    return scanSummary.mods.map((mod) => {
-      const hasEntries = mod.entries.length > 0;
-      const hasErrors = mod.failedLanguageFiles > 0;
-      const isExpanded = expandedMods.has(mod.modId);
-
-      let StatusIcon: typeof CheckCircle2;
-      let iconClass: string;
-      if (hasErrors) {
-        StatusIcon = XCircle;
-        iconClass = "packages-icon-error";
-      } else if (!hasEntries) {
-        StatusIcon = Minus;
-        iconClass = "packages-icon-muted";
-      } else {
-        StatusIcon = CheckCircle2;
-        iconClass = "packages-icon-success";
-      }
-
-      return (
-        <div
-          key={mod.modId}
-          className={`packages-mod-item ${isExpanded ? "expanded" : ""}`}
-        >
-          <div
-            className="packages-mod-item-row"
-            onClick={() => toggleModExpand(mod.modId)}
-          >
-            <span className="packages-mod-icon">
-              <StatusIcon size={16} className={iconClass} />
-            </span>
-            <span className="packages-mod-name">{mod.modId}</span>
-            <span className="packages-mod-file">{mod.fileName}</span>
-            <span className="packages-mod-meta">
-              {mod.entries.length || mod.languageFileCount
-                ? [mod.entries.length ? t(language, "packages.entries_label", { count: mod.entries.length }) : null, mod.languageFileCount ? t(language, "packages.files_label", { count: mod.languageFileCount }) : null].filter(Boolean).join(" · ")
-                : t(language, "packages.noLangFiles")}
-            </span>
-            {hasErrors && (
-              <span className="packages-mod-error-badge">{t(language, "packages.failed_label")}</span>
-            )}
-            {hasEntries && (
-              <span className="packages-mod-expand">
-                {isExpanded ? (
-                  <ChevronDown size={14} />
-                ) : (
-                  <ChevronRight size={14} />
-                )}
-              </span>
-            )}
-          </div>
-          {isExpanded && hasEntries && (
-            <div className="packages-mod-detail">
-              <div className="packages-mod-detail-row packages-mod-detail-header">
-                <span className="packages-detail-key">{t(language, "packages.detailKey")}</span>
-                <span>{t(language, "packages.detailSource")}</span>
-              </div>
-              {mod.entries.slice(0, 20).map((entry) => (
-                <div key={entry.key} className="packages-mod-detail-row">
-                  <code className="packages-detail-key">{entry.key}</code>
-                  <span className="packages-detail-source">
-                    {entry.text}
-                  </span>
-                </div>
-              ))}
-              {mod.entries.length > 20 && (
-                <div className="packages-mod-detail-more">
-                  {t(language, "packages.moreEntries", { count: mod.entries.length - 20 })}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      );
-    });
-  }
+    return scanSummary.mods.map((mod) => (
+      <ModRow
+        key={mod.modId}
+        mod={mod}
+        language={language}
+        isExpanded={expandedMods.has(mod.modId)}
+        onToggle={toggleModExpand}
+      />
+    ));
+  }, [scanSummary, expandedMods, language, toggleModExpand]);
 
   // ═══════════════════════════════════════════════════════════
   // Render
@@ -461,7 +486,7 @@ export const PackagesPage = React.memo(function PackagesPage({
                   </span>
                 </div>
                 <div className="packages-mod-list-body">
-                  {renderModItems()}
+                  {modItems}
                 </div>
               </div>
           </div>
@@ -482,7 +507,7 @@ export const PackagesPage = React.memo(function PackagesPage({
                 <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
               </div>
               <div className="packages-mod-list-body">
-                {renderModItems()}
+                {modItems}
               </div>
             </div>
           </>
