@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.2.0 (2026-06-11)
+
+### ✨ 新功能
+
+- **应用内自动更新**：设置页新增「关于与更新」tab，支持检查更新、下载进度、一键重启安装
+- **NSIS 覆盖安装升级**：安装器支持自动检测旧版本、静默卸载后安装新版，可自定义安装路径
+- **CI 发布流水线**：push tag 自动触发构建、ed25519 签名、生成 update.json、发布到 GitHub Releases
+
+### 🔧 技术改进
+
+- 集成 `tauri-plugin-updater` + `tauri-plugin-process`
+- 所有 5 种 UI 语言（zh_cn/en_us/ja_jp/ko_kr/ru_ru）的更新相关文案全覆盖
+- 打包脚本自动从 `.env.local` 加载签名密钥
+- `package-exe.ps1` 修复 UTF-8 with BOM 编码兼容 CI 环境
+
+---
+
 ## v0.1.0 (2026-06-11)
 
 ### 🎉 首个公开发布
