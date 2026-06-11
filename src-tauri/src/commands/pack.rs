@@ -1,4 +1,4 @@
-use crate::core::{packer, paths};
+use crate::core::{packer, paths, settings};
 use tracing::info;
 
 #[tauri::command]
@@ -56,10 +56,34 @@ pub async fn generate_pack_from_job(
             .unwrap_or_else(|| paths::build_output_dir(&root));
         std::fs::create_dir_all(&output_dir).map_err(|e| e.to_string())?;
 
+        // 从 settings 读取 outputPackName，替换占位符
+        let root_path = root.clone();
+        let build_name = {
+            let s = settings::load_settings(&root_path).map_err(|e| format!("加载设置失败: {e}"))?;
+            let has_placeholder = settings::has_mc_version_placeholder(&s.output_pack_name);
+            let base = match settings::detect_mc_version(&s.instance_path) {
+                Ok(ver) => settings::replace_version_placeholder(&s.output_pack_name, &ver),
+                Err(e) if has_placeholder => {
+                    return Err(format!(
+                        "MC 版本检测失败，且 outputPackName 中包含 {{mc_version}} 占位符: {e}"
+                    ));
+                }
+                Err(_) => s.output_pack_name.clone(),
+            };
+            // 追加简短日期戳，避免同一实例多次打包互相覆盖
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            // 使用低 32 位的秒级时间戳作为简短后缀（文件名安全：纯数字）
+            let suffix = now & 0xFFFF_FFFF;
+            format!("{base}-{suffix}")
+        };
+
         let options = packer::PackOptions {
             target_language,
             entries,
-            build_name: format!("Aaalice-MC-Translator-{job_id}"),
+            build_name,
             dry_run,
             output_dir: output_dir.to_string_lossy().to_string(),
             pack_format: 15,

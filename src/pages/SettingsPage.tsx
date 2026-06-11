@@ -445,6 +445,28 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                     <small style={{ color: "#6b665d", fontSize: 12 }}>
                       {t(language, "settings.resourcePackHint")}
                     </small>
+                    <small style={{ color: "#6b665d", fontSize: 12, display: "block", marginTop: 4 }}>
+                      {t(language, "settings.placeholderHint")}
+                    </small>
+                  </div>
+                </div>
+                <div className="settings-card">
+                  <h3 className="settings-card-header">{t(language, "settings.outputPackName")}</h3>
+                  <div className="settings-card-body">
+                    <label className="field">
+                      <span>{t(language, "settings.outputPackName")}</span>
+                      <input
+                        type="text"
+                        value={draft.outputPackName ?? ""}
+                        onChange={(e) => {
+                          setDraft(prev => ({ ...prev, outputPackName: e.target.value }));
+                          scheduleSave();
+                        }}
+                      />
+                    </label>
+                    <small style={{ color: "#6b665d", fontSize: 12 }}>
+                      {t(language, "settings.placeholderHint")}
+                    </small>
                   </div>
                 </div>
               </>

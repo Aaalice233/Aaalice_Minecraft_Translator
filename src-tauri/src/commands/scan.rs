@@ -95,10 +95,25 @@ pub async fn scan_instance(
     let root_for_save = root.clone();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let pack_names = settings::load_settings(&root)
-            .ok()
-            .map(|s| s.resource_pack_names)
-            .unwrap_or_default();
+        let settings = settings::load_settings(&root).map_err(|e| e.to_string())?;
+        let pack_names = {
+            let has_placeholder = settings.resource_pack_names.iter()
+                .any(|n| n.contains("{{mc_version}}"));
+            match settings::detect_mc_version(&settings.instance_path) {
+                Ok(ver) => {
+                    let replaced = settings::apply_placeholders(&settings, &ver);
+                    replaced.resource_pack_names
+                }
+                Err(e) if has_placeholder => {
+                    return Err(format!(
+                        "MC 版本检测失败，且 resourcePackNames 中包含 {{mc_version}} 占位符: {e}"
+                    ));
+                }
+                Err(_) => {
+                    settings.resource_pack_names.clone()
+                }
+            }
+        };
         scanner::scan_instance(
             safe_path,
             source_language,
@@ -108,7 +123,7 @@ pub async fn scan_instance(
             &|progress: ScanProgress| {
                 let _ = progress_tx_scan.send(progress);
             },
-        )
+        ).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?;

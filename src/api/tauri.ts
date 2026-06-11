@@ -26,6 +26,7 @@ const defaultSettings: Settings = {
     "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
     "VMTranslationPack-Converted-1.21.1.zip",
   ],
+  outputPackName: "Aaalice-MC-Translator-{{mc_version}}",
   systemPrompt: "",
   uiFont: "system",
   uiTheme: "default",

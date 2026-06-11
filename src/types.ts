@@ -27,6 +27,7 @@ export interface Settings {
   enableDebugLog: boolean;
   enableHttpLog: boolean;
   resourcePackNames: string[];
+  outputPackName: string;
   systemPrompt: string;
   uiFont: string;
   uiTheme: string;

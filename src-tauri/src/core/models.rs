@@ -44,9 +44,13 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "你是一个专业 Minecraft 模组汉�
 
 fn default_resource_pack_names() -> Vec<String> {
     vec![
-        "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip".to_string(),
-        "VMTranslationPack-Converted-1.21.1.zip".to_string(),
+        "Minecraft-Mod-Language-Modpack-Converted-{{mc_version}}.zip".to_string(),
+        "VMTranslationPack-Converted-{{mc_version}}.zip".to_string(),
     ]
+}
+
+fn default_output_pack_name() -> String {
+    "Aaalice-MC-Translator-{{mc_version}}".to_string()
 }
 
 fn default_ui_font() -> String {
@@ -87,6 +91,8 @@ pub struct Settings {
     pub enable_http_log: bool,
     #[serde(default = "default_resource_pack_names")]
     pub resource_pack_names: Vec<String>,
+    #[serde(default = "default_output_pack_name")]
+    pub output_pack_name: String,
     pub system_prompt: String,
     #[serde(default = "default_ui_font")]
     pub ui_font: String,
@@ -170,9 +176,10 @@ impl Default for Settings {
             enable_debug_log: false,
             enable_http_log: false,
             resource_pack_names: vec![
-                "Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip".to_string(),
-                "VMTranslationPack-Converted-1.21.1.zip".to_string(),
+                "Minecraft-Mod-Language-Modpack-Converted-{{mc_version}}.zip".to_string(),
+                "VMTranslationPack-Converted-{{mc_version}}.zip".to_string(),
             ],
+            output_pack_name: "Aaalice-MC-Translator-{{mc_version}}".to_string(),
             system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
             ui_font: "system".to_string(),
             ui_theme: "default".to_string(),

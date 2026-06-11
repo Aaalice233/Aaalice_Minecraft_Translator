@@ -132,10 +132,28 @@ pub async fn start_translation(
         }
 
         let settings_load_result = settings::load_settings(&root);
-        let resource_pack_names = settings_load_result
-            .as_ref()
-            .map(|s| s.resource_pack_names.clone())
-            .unwrap_or_default();
+        let resource_pack_names = match &settings_load_result {
+            Ok(s) => {
+                let has_placeholder = s.resource_pack_names.iter()
+                    .any(|n| n.contains("{{mc_version}}"));
+                match settings::detect_mc_version(&s.instance_path) {
+                    Ok(ver) => {
+                        let replaced = settings::apply_placeholders(s, &ver);
+                        replaced.resource_pack_names
+                    }
+                    Err(e) if has_placeholder => {
+                        return Err(format!(
+                            "MC 版本检测失败，且 resourcePackNames 中包含 {{mc_version}} 占位符: {e}"
+                        ));
+                    }
+                    Err(_) => {
+                        // 不含占位符，向后兼容
+                        s.resource_pack_names.clone()
+                    }
+                }
+            }
+            Err(e) => return Err(e.to_string()),
+        };
 
         let llm = settings_load_result.ok().map(|s| LlmConfig {
             base_url: s.base_url,

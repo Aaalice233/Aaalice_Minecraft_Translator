@@ -277,6 +277,8 @@ export type TranslationKey =
   | "settings.removePack"
   | "settings.packPlaceholder"
   | "settings.packDefaultI18n"
+  | "settings.outputPackName"
+  | "settings.placeholderHint"
   | "settings.card.apiParams"
   | "settings.card.concurrency"
   | "settings.card.timeouts"
@@ -691,6 +693,8 @@ const zhCn: TranslationMap = {
   "settings.removePack": "删除",
   "settings.packPlaceholder": "例如: Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
   "settings.packDefaultI18n": "默认含 CFPAOrg (i18n) 和 VM 汉化资源包",
+  "settings.outputPackName": "输出资源包名称",
+  "settings.placeholderHint": "可使用 {{mc_version}} 占位符自动替换为实例版本号",
   "settings.futureAdvanced": "词典、打包和实验功能设置会在对应阶段接入。",
   "settings.providerOpenai": "OpenAI 兼容",
   "splash.phase.settings": "设置",
@@ -907,6 +911,8 @@ const enUs: TranslationMap = {
   "settings.removePack": "Remove",
   "settings.packPlaceholder": "e.g. Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
   "settings.packDefaultI18n": "Defaults include CFPAOrg (i18n) and VM translation packs",
+  "settings.outputPackName": "Output pack name",
+  "settings.placeholderHint": "Use {{mc_version}} as placeholder for the instance version",
   "settings.futureAdvanced": "Dictionary, packaging, and lab settings will be connected in later phases.",
   "logs.title": "Logs",
   "logs.subtitle": "Phase 1 writes main, job, and error logs; full filters arrive later.",
@@ -1214,6 +1220,8 @@ const jaJp: TranslationMap = {
   "settings.removePack": "削除",
   "settings.packPlaceholder": "例: Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
   "settings.packDefaultI18n": "デフォルトで CFPAOrg (i18n) と VM 翻訳パックを含みます",
+  "settings.outputPackName": "出力リソースパック名",
+  "settings.placeholderHint": "{{mc_version}} プレースホルダーでインスタンスバージョンに自動置換",
   "settings.futureAdvanced": "辞書、パッケージング、実験機能の設定は後続フェーズで接続します。",
   "logs.title": "ログ",
   "logs.subtitle": "フェーズ1では main、job、error ログを書き込みます。完全なフィルターは後続フェーズで接続します。",
@@ -1472,6 +1480,8 @@ const koKr: TranslationMap = {
   "settings.removePack": "삭제",
   "settings.packPlaceholder": "예: Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
   "settings.packDefaultI18n": "기본적으로 CFPAOrg (i18n) 및 VM 번역 팩 포함",
+  "settings.outputPackName": "출력 리소스 팩 이름",
+  "settings.placeholderHint": "{{mc_version}} 플레이스홀더로 인스턴스 버전 자동 대체",
   "settings.futureAdvanced": "사전, 패키징, 실험 기능 설정은 이후 단계에서 연결됩니다.",
   "logs.title": "로그",
   "logs.subtitle": "1단계에서는 main, job, error 로그를 기록하며 전체 필터는 이후 단계에서 연결됩니다.",
@@ -1807,6 +1817,8 @@ const ruRu: TranslationMap = {
   "settings.removePack": "Удалить",
   "settings.packPlaceholder": "например Minecraft-Mod-Language-Modpack-Converted-1.21.1.zip",
   "settings.packDefaultI18n": "По умолчанию включает CFPAOrg (i18n) и VM ресурс-паки",
+  "settings.outputPackName": "Имя выходного ресурс-пака",
+  "settings.placeholderHint": "Используйте {{mc_version}} для автоматической замены на версию экземпляра",
   "settings.futureAdvanced": "Настройки словаря и упаковки будут позже.",
   "logs.title": "Логи",
   "logs.subtitle": "Фаза 1 записывает main, job и error логи.",
