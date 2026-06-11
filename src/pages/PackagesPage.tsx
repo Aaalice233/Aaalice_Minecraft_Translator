@@ -9,7 +9,7 @@ import {
   Package,
   XCircle,
 } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   generatePackFromJob,
   loadLatestTranslationJobMeta,
@@ -148,7 +148,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         setLoading(false);
       }
     },
-    [translationJob, scanSummary?.targetLanguage, outputDir],
+    [translationJob, scanSummary, outputDir],
   );
 
   const handleSelectOutputDir = useCallback(async () => {
@@ -269,10 +269,13 @@ export const PackagesPage = React.memo(function PackagesPage({
   // Render helpers
   // ═══════════════════════════════════════════════════════════
 
-  /** Mod rows from scanSummary — simple flat list. */
-  const modItems = scanSummary?.mods.map((mod) => (
-    <ModRow key={mod.modId} mod={mod} language={language} />
-  ));
+  /** Mod rows from scanSummary — memoized to avoid rebuild on every animation frame. */
+  const modItems = useMemo(
+    () => scanSummary?.mods.map((mod) => (
+      <ModRow key={mod.modId} mod={mod} language={language} />
+    )),
+    [scanSummary, language],
+  );
 
   // ═══════════════════════════════════════════════════════════
   // Render
@@ -310,12 +313,12 @@ export const PackagesPage = React.memo(function PackagesPage({
           <div className="packages-stats-bar">
             <span className="packages-stat">
               <Boxes size={16} />
-              <span><AnimatedCount value={packResult.modCount} />{t(language, "packages.modCount").replace("{count}", "")}</span>
+              <span><AnimatedCount value={packResult.modCount} />{t(language, "packages.modCount", { count: 0 }).replace(/^0\s*/, " ")}</span>
             </span>
             <span className="packages-stat-divider" />
             <span className="packages-stat">
               <FileText size={16} />
-              <span><AnimatedCount value={packResult.entryCount} />{t(language, "packages.entryCount").replace("{count}", "")}</span>
+              <span><AnimatedCount value={packResult.entryCount} />{t(language, "packages.entryCount", { count: 0 }).replace(/^0\s*/, " ")}</span>
             </span>
             <span className="packages-stat-divider" />
             <span className="packages-stat packages-status-ready">
@@ -419,7 +422,7 @@ export const PackagesPage = React.memo(function PackagesPage({
           <div className="packages-middle-preview">
             <div className="packages-mod-list">
                 <div className="packages-mod-list-header">
-                  <h2>{scanSummary && t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
+                  <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
                   <span className="packages-mod-list-ready">
                     {t(language, "packages.readyToPack")}
                   </span>
@@ -443,7 +446,7 @@ export const PackagesPage = React.memo(function PackagesPage({
             </div>
             <div className="packages-mod-list">
               <div className="packages-mod-list-header">
-                <h2>{scanSummary && t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
+                <h2>{t(language, "packages.allMods", { count: scanSummary.mods.length })}</h2>
               </div>
               <div className="packages-mod-list-body">
                 {modItems}
