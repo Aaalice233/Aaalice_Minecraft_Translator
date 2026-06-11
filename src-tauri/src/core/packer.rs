@@ -146,7 +146,12 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
     let mcmeta = serde_json::json!({
         "pack": {
             "pack_format": options.pack_format,
-            "description": format!("{} - {}", options.build_name, options.target_language),
+            "description": format!(
+                "§6§n由 Aaalice MC Translator 生成§0-§2§o模组：§c§l{}  §5§n文本：§c§l{}  §9§o版本：§b§l{}",
+                by_mod.len(),
+                options.entries.len(),
+                options.build_name,
+            ),
             "supported_formats": [1, 99]
         }
     });
