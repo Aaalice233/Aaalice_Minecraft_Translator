@@ -1,6 +1,6 @@
 import {
-  CheckCircle,
-  CheckCircle2,
+  BadgeCheck,
+  ClipboardCheck,
   Loader2,
   Search,
 } from "lucide-react";
@@ -273,13 +273,13 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
             <>
               {isReviewed && (
                 <span className="badge success" style={{ fontSize: 12, marginRight: 8 }}>
-                  <CheckCircle size={14} style={{ marginRight: 4 }} />
+                  <BadgeCheck size={14} style={{ marginRight: 4 }} />
                   {t(language, "validate.reviewed")}
                 </span>
               )}
               {!isReviewed && allEntries.length > 0 && (
                 <button className="primary-button" onClick={handleReviewComplete} disabled={submitting} type="button">
-                  {submitting ? <Loader2 size={18} className="spin" /> : <CheckCircle2 size={18} />}
+                  {submitting ? <Loader2 size={18} className="spin" /> : <ClipboardCheck size={18} />}
                   {t(language, "validate.markDone")}
                 </button>
               )}

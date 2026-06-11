@@ -4,8 +4,8 @@ import {
   CheckCircle,
   ChevronLeft,
   ChevronRight,
+  FileSearch,
   FileText,
-  CheckCircle2,
   Home,
   Loader2,
   Moon,
@@ -46,7 +46,7 @@ const MAX_SIDEBAR_WIDTH = 400;
 const navItems: NavItem[] = [
   { key: "dashboard", labelKey: "nav.dashboard", icon: ScanLine },
   { key: "jobs", labelKey: "nav.jobs", icon: FileText },
-  { key: "validate", labelKey: "nav.validate", icon: CheckCircle2 },
+  { key: "validate", labelKey: "nav.validate", icon: FileSearch },
   { key: "packages", labelKey: "nav.packages", icon: Boxes },
   { key: "dictionary", labelKey: "nav.dictionary", icon: BookOpen },
   { key: "settings", labelKey: "nav.settings", icon: SettingsIcon },
