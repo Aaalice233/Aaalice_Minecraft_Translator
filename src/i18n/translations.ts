@@ -186,6 +186,7 @@ export type TranslationKey =
   | "packages.allMods"
   | "packages.detailKey"
   | "packages.detailSource"
+  | "packages.detailTranslated"
   | "packages.entries_label"
   | "packages.entryCount"
   | "packages.failed_label"
@@ -599,6 +600,7 @@ const zhCn: TranslationMap = {
   "packages.allMods": "全部模组 ({count})",
   "packages.detailKey": "键",
   "packages.detailSource": "原文",
+  "packages.detailTranslated": "译文",
   "packages.entries_label": "{count} 条目",
   "packages.entryCount": "{count} 条翻译",
   "packages.failed_label": "失败",
@@ -1061,6 +1063,7 @@ const enUs: TranslationMap = {
   "packages.allMods": "All mods ({count})",
   "packages.detailKey": "Key",
   "packages.detailSource": "Source",
+  "packages.detailTranslated": "Translation",
   "packages.entries_label": "{count} entries",
   "packages.entryCount": "{count} translations",
   "packages.failed_label": "Failed",
@@ -1323,6 +1326,7 @@ const jaJp: TranslationMap = {
   "packages.allMods": "すべての Mod ({count})",
   "packages.detailKey": "キー",
   "packages.detailSource": "原文",
+  "packages.detailTranslated": "訳文",
   "packages.entries_label": "{count} 項目",
   "packages.entryCount": "{count} 翻訳",
   "packages.failed_label": "失敗",
@@ -1584,6 +1588,7 @@ const koKr: TranslationMap = {
   "packages.allMods": "모든 모드 ({count})",
   "packages.detailKey": "키",
   "packages.detailSource": "원문",
+  "packages.detailTranslated": "번역문",
   "packages.entries_label": "{count}개 항목",
   "packages.entryCount": "{count}개 번역",
   "packages.failed_label": "실패",
@@ -1922,6 +1927,7 @@ const ruRu: TranslationMap = {
   "packages.allMods": "Все моды ({count})",
   "packages.detailKey": "Ключ",
   "packages.detailSource": "Исходный",
+  "packages.detailTranslated": "Перевод",
   "packages.entries_label": "{count} записей",
   "packages.entryCount": "{count} переводов",
   "packages.failed_label": "Ошибка",

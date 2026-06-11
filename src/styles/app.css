@@ -577,9 +577,8 @@ select {
 
 .packages-progress-fill {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   border-radius: 3px;
-  transition: width 0.3s ease;
 }
 
 .packages-progress-label {
@@ -784,8 +783,8 @@ select {
 }
 
 .packages-output-dir-btn:hover {
-  background: var(--accent);
-  color: var(--accent-text, #fff);
+  background: var(--accent-bg);
+  color: var(--accent);
   border-color: var(--accent);
 }
 

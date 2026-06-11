@@ -8,13 +8,14 @@ import {
   FolderOpen,
   Loader2,
   Minus,
-  RefreshCw,
+  Package,
   XCircle,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   generatePackFromJob,
   loadLatestTranslationJobMeta,
+  loadTranslationResults,
 } from "../api/tauri";
 import { AnimatedCount } from "../components/AnimatedCount";
 import { PageHeader } from "../components/PageHeader";
@@ -48,11 +49,13 @@ const ModRow = React.memo(function ModRow({
   language,
   isExpanded,
   onToggle,
+  entryTranslations,
 }: {
   mod: ScanSummary["mods"][0];
   language: AppLanguage;
   isExpanded: boolean;
   onToggle: (modId: string) => void;
+  entryTranslations?: Map<string, string>;
 }) {
   const hasEntries = mod.entries.length > 0;
   const hasErrors = mod.failedLanguageFiles > 0;
@@ -105,13 +108,13 @@ const ModRow = React.memo(function ModRow({
         <div className="packages-mod-detail">
           <div className="packages-mod-detail-row packages-mod-detail-header">
             <span className="packages-detail-key">{t(language, "packages.detailKey")}</span>
-            <span>{t(language, "packages.detailSource")}</span>
+            <span>{entryTranslations && entryTranslations.size > 0 ? t(language, "packages.detailTranslated") : t(language, "packages.detailSource")}</span>
           </div>
           {mod.entries.slice(0, 20).map((entry) => (
             <div key={entry.key} className="packages-mod-detail-row">
               <code className="packages-detail-key">{entry.key}</code>
               <span className="packages-detail-source">
-                {entry.text}
+                {entryTranslations?.get(entry.key) ?? entry.text}
               </span>
             </div>
           ))}
@@ -154,6 +157,7 @@ export const PackagesPage = React.memo(function PackagesPage({
     settings.instancePath ? `${settings.instancePath.replace(/\\/g, "/")}/resourcepacks` : null,
   );
 
+  const [entryTranslations, setEntryTranslations] = useState<Map<string, string>>(new Map());
   const animFrameRef = useRef<number>(0);
 
   // ═══════════════════════════════════════════════════════════
@@ -168,6 +172,7 @@ export const PackagesPage = React.memo(function PackagesPage({
       setAnimationProgress(0);
       setError("");
       setPackResult(null);
+      setEntryTranslations(new Map());
       try {
         const targetLang =
           scanSummary?.targetLanguage || translationJob.targetLanguage;
@@ -177,8 +182,8 @@ export const PackagesPage = React.memo(function PackagesPage({
           dryRun,
           outputDir ?? undefined,
         );
-        // 确保动画最短运行时间：干运行 500ms，正常打包 1500ms
-        const minAnimationMs = dryRun ? 500 : 1500;
+        // 确保动画最短 3 秒
+        const minAnimationMs = 3000;
         const elapsed = Date.now() - animStart;
         if (elapsed < minAnimationMs) {
           await new Promise((r) => setTimeout(r, minAnimationMs - elapsed));
@@ -266,7 +271,7 @@ export const PackagesPage = React.memo(function PackagesPage({
       return;
     }
     const start = Date.now();
-    const duration = 1500;
+    const duration = 3000;
     const animate = () => {
       const elapsed = Date.now() - start;
       const pct = Math.min((elapsed / duration) * 100, 95);
@@ -302,6 +307,23 @@ export const PackagesPage = React.memo(function PackagesPage({
     }
   }, [packResult, loading, onPackComplete]);
 
+  // 4c. Load translation results after pack completes, so ModRow can show target text.
+  useEffect(() => {
+    if (!translationJob || !packComplete || !("__TAURI_INTERNALS__" in window)) return;
+    let cancelled = false;
+    loadTranslationResults(translationJob.jobId)
+      .then((results) => {
+        if (cancelled) return;
+        const map = new Map<string, string>();
+        for (const r of results) {
+          map.set(r.key, r.targetText);
+        }
+        setEntryTranslations(map);
+      })
+      .catch((err) => console.warn("load translation results failed:", err));
+    return () => { cancelled = true; };
+  }, [translationJob, packComplete]);
+
   // ═══════════════════════════════════════════════════════════
   // Derived state
   // ═══════════════════════════════════════════════════════════
@@ -321,7 +343,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   // Render helpers
   // ═══════════════════════════════════════════════════════════
 
-  /** Memoized mod items — only rebuilds when scanSummary, expandedMods, or language changes. */
+  /** Memoized mod items — deps: scanSummary, expandedMods, language, toggleModExpand, entryTranslations. */
   const modItems = useMemo(() => {
     if (!scanSummary) return null;
     return scanSummary.mods.map((mod) => (
@@ -331,9 +353,10 @@ export const PackagesPage = React.memo(function PackagesPage({
         language={language}
         isExpanded={expandedMods.has(mod.modId)}
         onToggle={toggleModExpand}
+        entryTranslations={entryTranslations}
       />
     ));
-  }, [scanSummary, expandedMods, language, toggleModExpand]);
+  }, [scanSummary, expandedMods, language, toggleModExpand, entryTranslations]);
 
   // ═══════════════════════════════════════════════════════════
   // Render
@@ -359,7 +382,7 @@ export const PackagesPage = React.memo(function PackagesPage({
               {loading ? (
                 <Loader2 size={18} className="spin" />
               ) : (
-                <RefreshCw size={18} />
+                <Package size={18} />
               )}
               {t(language, packResult ? "packages.regenerate" : "packages.generate")}
             </button>
