@@ -38,7 +38,7 @@ if (-not (Test-Path "node_modules")) {
   npm install
 }
 
-npm run build
+# 注意：不在这里显式 npm run build——tauri build 会自动执行 beforeBuildCommand
 
 $tauri = Join-Path $root "node_modules/.bin/tauri.cmd"
 if (-not (Test-Path $tauri)) {
