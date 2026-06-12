@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "aaalice_mc_translator"
-version = "0.1.0"
+version = "0.2.1"
 dependencies = [
  "font-kit",
  "open",

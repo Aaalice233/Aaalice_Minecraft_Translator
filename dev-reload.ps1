@@ -129,9 +129,9 @@ Log-Step "━━━ [1/4] 清理旧进程 ━━━"
 # 关闭占用 1420 端口的进程
 $conns = Get-NetTCPConnection -LocalPort 1420 -ErrorAction SilentlyContinue |
     Where-Object State -Eq "Listen"
-foreach ($c in $conns) {
-    Write-Host "    - 端口 1420 被 PID $($c.OwningProcess) 占用，正在关闭..." -ForegroundColor $C.Yellow
-    Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+foreach ($conn in $conns) {
+    Write-Host "    - 端口 1420 被 PID $($conn.OwningProcess) 占用，正在关闭..." -ForegroundColor $C.Yellow
+    Stop-Process -Id $conn.OwningProcess -Force -ErrorAction SilentlyContinue
 }
 
 # 关闭相关进程
