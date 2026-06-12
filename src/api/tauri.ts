@@ -386,9 +386,19 @@ export async function checkUpdate(): Promise<{ version: string; body?: string } 
     return null;
   }
   const { check } = await import("@tauri-apps/plugin-updater");
-  const update = await check();
-  if (!update) return null;
-  return { version: update.version, body: update.body };
+  try {
+    const update = await check();
+    if (!update) return null;
+    return { version: update.version, body: update.body };
+  } catch (err) {
+    // Tauri plugin-updater 将 HTTP 4xx/网络错误统一报告为 ReleaseNotFound
+    // 改进错误消息以区分不同失败场景
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("Could not fetch a valid release JSON")) {
+      throw new Error("检查更新失败：无法从远程获取更新信息，请检查网络连接或稍后再试。");
+    }
+    throw err;
+  }
 }
 
 /**

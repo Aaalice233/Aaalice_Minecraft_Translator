@@ -40,7 +40,15 @@ jobs:
         run: |
           # Read version from tauri.conf.json (source of truth for getVersion())
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
-          $installerPath = "src-tauri/target/release/bundle/nsis/Aaalice MC Translator_${version}_x64-setup.exe"
+
+          # Auto-detect the installer and signature files (Tauri NSIS bundler normalizes spaces to dots)
+          $nsisDir = "src-tauri/target/release/bundle/nsis"
+          $installerFile = Get-ChildItem "${nsisDir}" -Filter "*.exe" | Select-Object -First 1
+          if (-not $installerFile) {
+            throw "No installer found in ${nsisDir}"
+          }
+          $installerPath = $installerFile.FullName
+          $installerName = $installerFile.Name
           $sigPath = "${installerPath}.sig"
 
           # Signature file must exist — fail the build if missing
@@ -57,7 +65,7 @@ jobs:
             "platforms": {
               "windows-x86_64": {
                 "signature": "$($sig.Trim())",
-                "url": "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/Aaalice%20MC%20Translator_${version}_x64-setup.exe"
+                "url": "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$([System.Uri]::EscapeDataString($installerName))"
               }
             }
           }

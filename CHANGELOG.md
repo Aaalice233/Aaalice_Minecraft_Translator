@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.2.1 (2026-06-12)
+
+### 🐛 Bug 修复
+
+- **修复自动更新检查**：根因为私有仓库导致 GitHub 对未认证的 Release asset 请求返回 404，改为公开仓库后生效（需在仓库 Settings 手动设为 Public）
+- **CI release.yml**：installer 路径从硬编码空格文件名改为自动检测实际 exe 文件，消除 Tauri NSIS bundler 文件名规范化差异
+- **前端错误消息改进**：`checkUpdate()` 将 "invalid JSON" 映射为友好的中文错误提示
+
+### 🔧 改进
+
+- **Update JSON 生成**：使用 `Uri.EscapeDataString` 自动编码文件名，避免手动构造 URL 出错
+
+---
+
 ## v0.2.0 (2026-06-11)
 
 ### ✨ 新功能
