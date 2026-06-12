@@ -1,6 +1,6 @@
 [package]
 name = "aaalice_mc_translator"
-version = "0.2.1"
+version = "0.2.2"
 description = "Aaalice Minecraft Translator"
 authors = ["Aaalice"]
 license = "MIT"
