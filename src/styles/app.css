@@ -570,28 +570,13 @@ select {
   font-size: 14px;
 }
 
-/* ── Layer 2: Animation area (Phase 3) ── */
-.packages-animation-area {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  padding: 24px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.packages-canvas {
-  border-radius: 6px;
-  background: var(--bg-muted);
-  max-width: 100%;
-  height: auto;
+.packages-progress-bar {
+  gap: 12px;
 }
 
 .packages-progress-track {
-  width: 100%;
-  max-width: 400px;
+  flex: 1 1 180px;
+  min-width: 120px;
   height: 6px;
   background: var(--bg-muted);
   border-radius: 3px;
@@ -608,6 +593,7 @@ select {
 .packages-progress-label {
   font-size: 13px;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* ── Layer 2: Mod list ── */

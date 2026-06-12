@@ -201,8 +201,6 @@ export type TranslationKey =
   | "packages.regenerateTooltip"
   | "packages.reviewRequired"
   | "packages.openOutputDirFailed"
-  | "packing.translationPack"
-  | "packing.packed"
   | "packages.outputDir"
   | "packages.outputDirBrowse"
   | "packages.readyToPack"
@@ -634,8 +632,6 @@ const zhCn: TranslationMap = {
   "packages.readyToPack": "翻译已就绪，点击「生成资源包」开始打包",
   "packages.reviewRequired": "当前翻译任务尚未完成校对。请前往「校对」页面完成校对后再打包。",
   "packages.openOutputDirFailed": "打开输出文件夹失败: {error}",
-  "packing.translationPack": "翻译资源包",
-  "packing.packed": "打包完成 ✓",
   "settings.title": "设置中心",
   "settings.subtitle": "常用选项会持久化保存到本地设置文件。",
   "settings.systemPrompt": "系统提示词",
@@ -1115,8 +1111,6 @@ const enUs: TranslationMap = {
   "packages.readyToPack": "Ready to pack. Click 'Generate' to create the resource pack.",
   "packages.reviewRequired": "The current translation job has not been reviewed. Please review it on the Validate page first.",
   "packages.openOutputDirFailed": "Failed to open output folder: {error}",
-  "packing.translationPack": "Translation Pack",
-  "packing.packed": "Packed ✓",
   "settings.providerOpenai": "OpenAI Compatible",
   // ── Updater ────────────────────────────────────────────
   "settings.tab.about": "About",
@@ -1393,8 +1387,6 @@ const jaJp: TranslationMap = {
   "packages.readyToPack": "翻訳完了。「生成」をクリックしてパックを作成",
   "packages.reviewRequired": "現在の翻訳ジョブはまだレビューされていません。先に「レビュー」ページでレビューを完了してください。",
   "packages.openOutputDirFailed": "出力フォルダのオープンに失敗: {error}",
-  "packing.translationPack": "翻訳リソースパック",
-  "packing.packed": "パック完了 ✓",
   "settings.providerOpenai": "OpenAI 互換",
   // ── Updater ────────────────────────────────────────────
   "settings.tab.about": "バージョン情報",
@@ -1784,8 +1776,6 @@ const koKr: TranslationMap = {
   "packages.readyToPack": "번역 완료. '생성'을 클릭하여 팩 만들기",
   "packages.reviewRequired": "현재 번역 작업이 아직 검토되지 않았습니다. '검토' 페이지에서 검토를 완료해주세요.",
   "packages.openOutputDirFailed": "출력 폴더 열기 실패: {error}",
-  "packing.translationPack": "번역 리소스팩",
-  "packing.packed": "패킹 완료 ✓",
   "settings.providerOpenai": "OpenAI 호환",
   // ── Updater ────────────────────────────────────────────
   "settings.tab.about": "정보",
@@ -2251,8 +2241,6 @@ const ruRu: TranslationMap = {
   "packages.readyToPack": "Перевод готов. Нажмите «Сгенерировать» для создания пака",
   "packages.reviewRequired": "Текущий перевод не был проверен. Проверьте его на странице «Проверка».",
   "packages.openOutputDirFailed": "Не удалось открыть папку вывода: {error}",
-  "packing.translationPack": "Ресурс-пак перевода",
-  "packing.packed": "Упаковано ✓",
   "settings.providerOpenai": "OpenAI Совместимый",
   // ── Updater ────────────────────────────────────────────
   "settings.tab.about": "О программе",

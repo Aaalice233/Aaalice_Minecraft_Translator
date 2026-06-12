@@ -16,7 +16,6 @@ import {
 } from "../api/tauri";
 import { AnimatedCount } from "../components/AnimatedCount";
 import { PageHeader } from "../components/PageHeader";
-import { PackingAnimation } from "../components/PackingAnimation";
 import { toErrorMessage } from "../utils";
 import { t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
@@ -101,7 +100,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   const [packResult, setPackResult] = useState<PackResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [animationProgress, setAnimationProgress] = useState(0);
+  const [packProgress, setPackProgress] = useState(0);
   const [packComplete, setPackComplete] = useState(false);
 
   const [translationJob, setTranslationJob] = useState<TranslationJobListItem | null>(null);
@@ -111,7 +110,7 @@ export const PackagesPage = React.memo(function PackagesPage({
     settings.instancePath ? `${settings.instancePath.replace(/\\/g, "/")}/resourcepacks` : null,
   );
 
-  const animFrameRef = useRef<number>(0);
+  const progressFrameRef = useRef<number>(0);
   const pageRef = useRef<HTMLElement>(null);
 
   // 抑制外层 page-layer 滚动 — CSS :has() 后备
@@ -130,9 +129,9 @@ export const PackagesPage = React.memo(function PackagesPage({
   const generateFromJob = useCallback(
     async (dryRun: boolean) => {
       if (!translationJob) return;
-      const animStart = Date.now();
+      const progressStart = Date.now();
       setLoading(true);
-      setAnimationProgress(0);
+      setPackProgress(0);
       setError("");
       setPackResult(null);
       try {
@@ -144,11 +143,11 @@ export const PackagesPage = React.memo(function PackagesPage({
           dryRun,
           outputDir ?? undefined,
         );
-        // 确保动画最短 3 秒
-        const minAnimationMs = 3000;
-        const elapsed = Date.now() - animStart;
-        if (elapsed < minAnimationMs) {
-          await new Promise((r) => setTimeout(r, minAnimationMs - elapsed));
+        // 保留短暂进度反馈，避免很快完成时状态条闪一下就消失。
+        const minProgressMs = 3000;
+        const elapsed = Date.now() - progressStart;
+        if (elapsed < minProgressMs) {
+          await new Promise((r) => setTimeout(r, minProgressMs - elapsed));
         }
         setPackResult(result);
       } catch (err) {
@@ -220,7 +219,7 @@ export const PackagesPage = React.memo(function PackagesPage({
   // 4a. Animate progress 0→95% during generation
   useEffect(() => {
     if (!loading) {
-      cancelAnimationFrame(animFrameRef.current);
+      cancelAnimationFrame(progressFrameRef.current);
       return;
     }
     const start = Date.now();
@@ -228,17 +227,17 @@ export const PackagesPage = React.memo(function PackagesPage({
     const animate = () => {
       const elapsed = Date.now() - start;
       const pct = Math.min((elapsed / duration) * 100, 95);
-      setAnimationProgress(pct);
-      animFrameRef.current = requestAnimationFrame(animate);
+      setPackProgress(pct);
+      progressFrameRef.current = requestAnimationFrame(animate);
     };
-    animFrameRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animFrameRef.current);
+    progressFrameRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(progressFrameRef.current);
   }, [loading]);
 
   // 4b. Completion transition when pack result arrives
   useEffect(() => {
     if (packResult && !loading) {
-      setAnimationProgress(100);
+      setPackProgress(100);
       const timer = setTimeout(() => {
         setPackComplete(true);
         onPackComplete?.(true);
@@ -277,7 +276,7 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const showModList =
     scanSummary &&
-    ((translationJob && !loading && !packResult) || (packResult && packComplete));
+    ((translationJob && !packResult) || (packResult && packComplete));
   const isPrePack = showModList && !!(translationJob && !loading && !packResult);
 
   // ═══════════════════════════════════════════════════════════
@@ -325,7 +324,7 @@ export const PackagesPage = React.memo(function PackagesPage({
 
         {/* Stats bar */}
         {packResult && !loading && (
-          <div className="packages-stats-bar">
+          <div className={packComplete ? "packages-stats-bar" : "packages-stats-bar packages-progress-bar"}>
             <span className="packages-stat">
               <Boxes size={16} />
               <span><AnimatedCount value={packResult.modCount} />{t(language, "packages.modCount", { count: 0 }).replace(/^0\s*/, " ")}</span>
@@ -338,16 +337,36 @@ export const PackagesPage = React.memo(function PackagesPage({
             <span className="packages-stat-divider" />
             <span className="packages-stat packages-status-ready">
               <CheckCircle2 size={16} />
-              <span>{t(language, "packages.ready")}</span>
+              <span>{t(language, packComplete ? "packages.ready" : "packages.packDone")}</span>
             </span>
+            {!packComplete && (
+              <>
+                <span className="packages-stat-divider" />
+                <div className="packages-progress-track" aria-hidden="true">
+                  <div className="packages-progress-fill" style={{ width: "100%" }} />
+                </div>
+                <span className="packages-progress-label">
+                  {t(language, "packages.packingPercent", { percent: 100 })}
+                </span>
+              </>
+            )}
           </div>
         )}
 
         {loading && (
-          <div className="packages-stats-bar">
+          <div className="packages-stats-bar packages-progress-bar">
             <span className="packages-stat packages-status-generating">
               <Loader2 size={16} className="spinning" />
               <span>{t(language, "packages.packing")}</span>
+            </span>
+            <div className="packages-progress-track" aria-hidden="true">
+              <div
+                className="packages-progress-fill"
+                style={{ width: `${packProgress}%` }}
+              />
+            </div>
+            <span className="packages-progress-label">
+              {t(language, "packages.packingPercent", { percent: Math.round(packProgress) })}
             </span>
           </div>
         )}
@@ -367,7 +386,7 @@ export const PackagesPage = React.memo(function PackagesPage({
       </div>
 
       {/* ══════════════════════════════════════════════════════
-          LAYER 2: 装箱动画 / 模组列表
+          LAYER 2: 模组列表
           ══════════════════════════════════════════════════════ */}
       <div className="packages-layer packages-middle">
         {/* No scan yet */}
@@ -383,31 +402,6 @@ export const PackagesPage = React.memo(function PackagesPage({
           <div className="packages-middle-empty">
             <FileArchive size={32} />
             <p>{t(language, "packages.noTranslation")}</p>
-          </div>
-        )}
-
-        {/* ── Generation in progress / completion animation ── */}
-        {(loading || (packResult && !packComplete)) && (
-          <div className="packages-animation-area">
-            <PackingAnimation progress={animationProgress} language={language} />
-            {loading && (
-              <>
-                <div className="packages-progress-track">
-                  <div
-                    className="packages-progress-fill"
-                    style={{ width: `${animationProgress}%` }}
-                  />
-                </div>
-                <span className="packages-progress-label">
-                  {t(language, "packages.packingPercent", { percent: Math.round(animationProgress) })}
-                </span>
-              </>
-            )}
-            {packResult && !loading && !packComplete && (
-              <span className="packages-progress-label packages-status-ready">
-                <CheckCircle2 size={14} /> {t(language, "packages.packDone")}
-              </span>
-            )}
           </div>
         )}
 
