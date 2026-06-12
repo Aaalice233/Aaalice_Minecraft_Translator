@@ -3,6 +3,7 @@ name = "aaalice_mc_translator"
 version = "0.2.1"
 description = "Aaalice Minecraft Translator"
 authors = ["Aaalice"]
+license = "MIT"
 edition = "2021"
 
 [lib]
