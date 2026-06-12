@@ -100,7 +100,7 @@ export interface ResourcePackScanResult {
   warnings: ScanWarning[];
 }
 
-export type ScanPhase = "scan" | "resourcepacks" | "aggregate" | "log";
+export type ScanPhase = "scan" | "resourcepacks" | "aggregate" | "dictionary" | "log" | "persist";
 
 export interface ScanProgressEvent {
   current: number;

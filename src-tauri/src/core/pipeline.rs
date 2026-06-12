@@ -1158,14 +1158,98 @@ pub fn run_pipeline(
     pipeline.run(&mut ctx)
 }
 
-/// Resolve a ScanSummary: try to load from cached file, or run a new scan.
-/// When running a scan, progress events are relayed through progress_tx.
+fn normalize_path_for_compare(path: &str) -> String {
+    let path_buf = std::path::PathBuf::from(path);
+    let display = path_buf
+        .canonicalize()
+        .map(paths::display_path)
+        .unwrap_or_else(|_| paths::display_path(path_buf));
+    display
+        .trim_end_matches('/')
+        .to_ascii_lowercase()
+}
+
+fn scan_summary_matches_config(summary: &ScanSummary, config: &PipelineConfig) -> bool {
+    normalize_path_for_compare(&summary.instance_path) == normalize_path_for_compare(&config.instance_path)
+        && summary.source_language == config.source_language
+        && summary.target_language == config.target_language
+}
+
+/// Resolve a ScanSummary. Fresh translation jobs reuse the persisted scan by
+/// `scan_job_id`; legacy callers without an ID still run a scan here.
 fn resolve_scan(
     config: &PipelineConfig,
-    _job_id: &str,
+    job_id: &str,
     cancel: &CancelToken,
     progress_tx: &mpsc::Sender<PipelineProgress>,
 ) -> Result<ScanSummary, String> {
+    if let Some(scan_job_id) = config.scan_job_id.as_deref() {
+        let _ = progress_tx.send(PipelineProgress {
+            current: 0,
+            total: 1,
+            phase: PipelinePhase::Scanning,
+            mod_name: String::new(),
+            sub_step: Some("读取扫描结果缓存...".to_string()),
+            stage_status: StageStatus::Running,
+        });
+
+        let manager = jobs::JobManager::new(config.root.clone());
+        match manager.load_scan_summary(scan_job_id) {
+            Ok(summary) if scan_summary_matches_config(&summary, config) => {
+                let _ = logging::append_job(
+                    job_id,
+                    format!("复用扫描结果缓存: scan_job_id={scan_job_id}"),
+                );
+                let _ = progress_tx.send(PipelineProgress {
+                    current: 1,
+                    total: 1,
+                    phase: PipelinePhase::Scanning,
+                    mod_name: String::new(),
+                    sub_step: Some("已复用扫描结果缓存".to_string()),
+                    stage_status: StageStatus::Completed,
+                });
+                return Ok(summary);
+            }
+            Ok(summary) => {
+                let _ = logging::append_job(
+                    job_id,
+                    format!(
+                        "扫描结果缓存与当前配置不一致: scan_job_id={scan_job_id}, cached_path={}, cached_source={}, cached_target={}",
+                        summary.instance_path,
+                        summary.source_language,
+                        summary.target_language,
+                    ),
+                );
+                let _ = progress_tx.send(PipelineProgress {
+                    current: 0,
+                    total: 1,
+                    phase: PipelinePhase::Scanning,
+                    mod_name: String::new(),
+                    sub_step: Some("扫描缓存与当前配置不一致，请重新扫描实例".to_string()),
+                    stage_status: StageStatus::Failed,
+                });
+                return Err(
+                    "扫描结果缓存与当前实例或语言设置不一致，请重新扫描实例后再开始翻译".to_string()
+                );
+            }
+            Err(err) => {
+                let _ = logging::append_job(
+                    job_id,
+                    format!("扫描结果缓存不可用: scan_job_id={scan_job_id}, error={err}"),
+                );
+                let _ = progress_tx.send(PipelineProgress {
+                    current: 0,
+                    total: 1,
+                    phase: PipelinePhase::Scanning,
+                    mod_name: String::new(),
+                    sub_step: Some("扫描缓存不可用，请重新扫描实例".to_string()),
+                    stage_status: StageStatus::Failed,
+                });
+                return Err(format!("扫描结果缓存不可用，请重新扫描实例: {err}"));
+            }
+        }
+    }
+
     // Run a new scan, relaying progress to the pipeline channel
     let relay = |scan_progress: ScanProgress| {
         let _ = progress_tx.send(PipelineProgress {
@@ -1173,8 +1257,8 @@ fn resolve_scan(
             total: scan_progress.total,
             phase: PipelinePhase::Scanning,
             mod_name: scan_progress.mod_name,
-            sub_step: None,
-            stage_status: StageStatus::Running,
+            sub_step: scan_progress.sub_step,
+            stage_status: scan_progress.stage_status,
         });
     };
 

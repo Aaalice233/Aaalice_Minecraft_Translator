@@ -188,6 +188,31 @@ pub fn scan_instance(
         });
     }
 
+    let (dictionary_cache_hits, dictionary_cache_total) = if !cancel() {
+        progress(ScanProgress {
+            current: 0,
+            total: 1,
+            mod_name: String::new(),
+            phase: ScanPhase::Dictionary,
+            sub_step: Some("统计词典缓存命中".to_string()),
+            stage_status: StageStatus::Running,
+        });
+
+        let counts = count_dictionary_cache_hits(&mods, &target_language);
+
+        progress(ScanProgress {
+            current: 1,
+            total: 1,
+            mod_name: String::new(),
+            phase: ScanPhase::Dictionary,
+            sub_step: Some("词典缓存命中统计完成".to_string()),
+            stage_status: StageStatus::Completed,
+        });
+        counts
+    } else {
+        (0, 0)
+    };
+
     // Stage 4: log — only write if not cancelled.
     // Emit per-mod progress so the frontend shows realtime granularity
     // instead of a single 0/1→1/1 jump (which felt frozen for seconds).
@@ -277,43 +302,6 @@ pub fn scan_instance(
     }
 
     let cancelled = cancel();
-
-    // ── 词典缓存命中检测 ──
-    // 统计所有待翻译条目在词典中的命中情况，不阻塞扫描流程。
-    // 如果运行时根路径解析失败则静默跳过（仅影响统计展示）。
-    let (dictionary_cache_hits, dictionary_cache_total) = if !cancelled {
-        match crate::core::paths::runtime_root() {
-            Ok(root) => {
-                let dict_db_path = crate::core::paths::dictionary_db_path(&root);
-                match dictionary::open(&dict_db_path) {
-                    Ok(dict_conn) => {
-                        let entries_to_check: Vec<String> = mods.iter()
-                            .filter(|m| !m.has_target_language)
-                            .flat_map(|m| {
-                                let src_lang = &m.resolved_source_language;
-                                m.entries.iter()
-                                    .filter(move |e| e.language == *src_lang)
-                                    .map(|e| e.text.clone())
-                            })
-                            .collect();
-                        // 使用批量查询避免单条目逐一查询的性能开销
-                        dictionary::count_hits_batch(&dict_conn, &entries_to_check, &target_language)
-                            .unwrap_or_else(|e| {
-                                tracing::warn!("词典缓存命中检测失败: {e}");
-                                (0, entries_to_check.len())
-                            })
-                    }
-                    Err(e) => {
-                        tracing::warn!("打开词典失败 (缓存检测跳过): {e}");
-                        (0, 0)
-                    }
-                }
-            }
-            Err(_) => (0, 0),
-        }
-    } else {
-        (0, 0)
-    };
 
     Ok(ScanSummary {
         job_id,
@@ -410,6 +398,49 @@ pub fn scan_mods(
     Ok(results)
 }
 
+fn count_dictionary_cache_hits(
+    mods: &[ModScanResult],
+    target_language: &str,
+) -> (usize, usize) {
+    let root = match crate::core::paths::runtime_root() {
+        Ok(root) => root,
+        Err(err) => {
+            tracing::warn!("解析运行目录失败 (缓存检测跳过): {err}");
+            return (0, 0);
+        }
+    };
+    let dict_db_path = crate::core::paths::dictionary_db_path(&root);
+    let dict_conn = match dictionary::open(&dict_db_path) {
+        Ok(conn) => conn,
+        Err(err) => {
+            tracing::warn!("打开词典失败 (缓存检测跳过): {err}");
+            return (0, 0);
+        }
+    };
+    let target_hashes = match dictionary::load_source_hashes_for_target(&dict_conn, target_language) {
+        Ok(hashes) => hashes,
+        Err(err) => {
+            tracing::warn!("词典缓存命中检测失败: {err}");
+            return (0, 0);
+        }
+    };
+
+    let mut total = 0usize;
+    let mut hits = 0usize;
+    for mod_result in mods.iter().filter(|m| !m.has_target_language) {
+        let src_lang = &mod_result.resolved_source_language;
+        for entry in mod_result.entries.iter().filter(|e| e.language == *src_lang) {
+            total += 1;
+            let source_hash = dictionary::hash_text(&entry.text);
+            if target_hashes.contains(&source_hash) {
+                hits += 1;
+            }
+        }
+    }
+
+    (hits, total)
+}
+
 pub fn scan_resourcepacks(
     resourcepacks_path: &Path,
     target_language: &str,
@@ -457,14 +488,12 @@ pub fn scan_resourcepacks(
         .collect();
     known_packs.sort_by(|a, b| file_name(&a.path()).cmp(&file_name(&b.path())));
     let total = known_packs.len();
-    let mut current = 0;
 
-    for entry in known_packs {
+    for (index, entry) in known_packs.into_iter().enumerate() {
         let path = entry.path();
         let name = file_name(&path);
-        current += 1;
         progress(ScanProgress {
-            current,
+            current: index,
             total,
             mod_name: name.clone(),
             phase: ScanPhase::ResourcePacks,
@@ -476,6 +505,14 @@ pub fn scan_resourcepacks(
         } else {
             results.push(scan_resourcepack_zip(&path, target_language));
         }
+        progress(ScanProgress {
+            current: index + 1,
+            total,
+            mod_name: name,
+            phase: ScanPhase::ResourcePacks,
+            sub_step: None,
+            stage_status: StageStatus::Running,
+        });
     }
 
     results.sort_by(|left, right| left.name.cmp(&right.name));

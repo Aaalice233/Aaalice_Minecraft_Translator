@@ -9,7 +9,7 @@ use tauri_plugin_dialog::DialogExt;
 use tracing::info;
 
 use crate::core::{
-    models::{InstanceValidation, ScanDiffResult, ScanProgress, ScanSummary},
+    models::{InstanceValidation, ScanDiffResult, ScanPhase, ScanProgress, ScanSummary, StageStatus},
     paths, scanner, settings,
 };
 
@@ -63,6 +63,18 @@ pub fn validate_instance(path: String) -> Result<InstanceValidation, String> {
     scanner::validate_instance(safe_path).map_err(|err| err.to_string())
 }
 
+fn persist_scan_summary(root: &Path, summary: &ScanSummary) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(summary)
+        .map_err(|err| format!("序列化扫描结果失败: {err}"))?;
+    let job_path = paths::job_state_path(root, &summary.job_id);
+    if let Some(parent) = job_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|err| format!("创建扫描结果目录失败 ({}): {err}", parent.display()))?;
+    }
+    std::fs::write(&job_path, json)
+        .map_err(|err| format!("写入扫描结果失败 ({}): {err}", job_path.display()))
+}
+
 #[tauri::command]
 pub async fn scan_instance(
     app: tauri::AppHandle,
@@ -84,11 +96,6 @@ pub async fn scan_instance(
             if let Err(err) = app_emit.emit("scan-progress", &progress) {
                 tracing::error!("scan-progress emit error: {err}");
             }
-        }
-    });
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = scan_progress_handle.await {
-            tracing::error!("扫描进度读取器 panic: {:?}", e);
         }
     });
 
@@ -129,22 +136,33 @@ pub async fn scan_instance(
     .map_err(|e| e.to_string())?;
 
     drop(progress_tx);
+    if let Err(e) = scan_progress_handle.await {
+        tracing::error!("扫描进度读取器 panic: {:?}", e);
+    }
     let summary = result.map_err(|err| err.to_string())?;
 
-    // Write scan result to disk asynchronously
+    // Persist before returning so the translation pipeline can reuse this scan
+    // by scan_job_id without racing a background writer.
     if !summary.cancelled {
-        let root_for_log = root_for_save;
+        let _ = app.emit("scan-progress", &ScanProgress {
+            current: 0,
+            total: 1,
+            mod_name: String::new(),
+            phase: ScanPhase::Persist,
+            sub_step: Some("保存扫描结果".to_string()),
+            stage_status: StageStatus::Running,
+        });
         let summary_clone = summary.clone();
-        let _ = tauri::async_runtime::spawn_blocking(move || {
-            if let Ok(json) = serde_json::to_string_pretty(&summary_clone) {
-                let job_path = paths::job_state_path(&root_for_log, &summary_clone.job_id);
-                if let Some(parent) = job_path.parent() {
-                    let _ = std::fs::create_dir_all(parent);
-                }
-                if let Err(err) = std::fs::write(&job_path, json) {
-                    let _ = crate::core::logging::append_main(format!("扫描结果写入失败 ({}): {err}", job_path.display()));
-                }
-            }
+        tauri::async_runtime::spawn_blocking(move || persist_scan_summary(&root_for_save, &summary_clone))
+            .await
+            .map_err(|err| format!("扫描结果保存线程失败: {err}"))??;
+        let _ = app.emit("scan-progress", &ScanProgress {
+            current: 1,
+            total: 1,
+            mod_name: String::new(),
+            phase: ScanPhase::Persist,
+            sub_step: Some("扫描结果已保存".to_string()),
+            stage_status: StageStatus::Completed,
         });
     }
 

@@ -122,8 +122,12 @@ pub enum ScanPhase {
     ResourcePacks,
     #[serde(rename = "aggregate")]
     Aggregate,
+    #[serde(rename = "dictionary")]
+    Dictionary,
     #[serde(rename = "log")]
     Log,
+    #[serde(rename = "persist")]
+    Persist,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

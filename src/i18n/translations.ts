@@ -313,7 +313,9 @@ export type TranslationKey =
   | "dashboard.stage.scan"
   | "dashboard.stage.resourcepacks"
   | "dashboard.stage.aggregate"
+  | "dashboard.stage.dictionary"
   | "dashboard.stage.log"
+  | "dashboard.stage.persist"
   | "dashboard.stage.done"
   | "dashboard.cancel"
   | "dashboard.cancelling"
@@ -476,7 +478,9 @@ const zhCn: TranslationMap = {
   "dashboard.stage.scan": "扫描模组",
   "dashboard.stage.resourcepacks": "扫描资源包",
   "dashboard.stage.aggregate": "聚合结果",
+  "dashboard.stage.dictionary": "统计词典缓存",
   "dashboard.stage.log": "写入日志",
+  "dashboard.stage.persist": "保存扫描结果",
   "dashboard.stage.done": "扫描完成",
   "dashboard.cancel": "取消扫描",
   "dashboard.cancelling": "正在停止...",
@@ -859,7 +863,9 @@ const enUs: TranslationMap = {
   "dashboard.stage.scan": "Scanning mods",
   "dashboard.stage.resourcepacks": "Scanning resource packs",
   "dashboard.stage.aggregate": "Aggregating results",
+  "dashboard.stage.dictionary": "Checking dictionary cache",
   "dashboard.stage.log": "Writing logs",
+  "dashboard.stage.persist": "Saving scan result",
   "dashboard.stage.done": "Scan complete",
   "dashboard.cancel": "Cancel scan",
   "dashboard.cancelling": "Stopping...",
@@ -1192,7 +1198,9 @@ const jaJp: TranslationMap = {
   "dashboard.stage.scan": "Mod スキャン中",
   "dashboard.stage.resourcepacks": "リソースパック スキャン中",
   "dashboard.stage.aggregate": "結果集計中",
+  "dashboard.stage.dictionary": "辞書キャッシュ確認中",
   "dashboard.stage.log": "ログ書き込み中",
+  "dashboard.stage.persist": "スキャン結果保存中",
   "dashboard.stage.done": "スキャン完了",
   "dashboard.cancel": "スキャンキャンセル",
   "dashboard.cancelling": "停止中...",
@@ -1581,7 +1589,9 @@ const koKr: TranslationMap = {
   "dashboard.stage.scan": "모드 스캔 중",
   "dashboard.stage.resourcepacks": "리소스팩 스캔 중",
   "dashboard.stage.aggregate": "결과 집계 중",
+  "dashboard.stage.dictionary": "사전 캐시 확인 중",
   "dashboard.stage.log": "로그 쓰는 중",
+  "dashboard.stage.persist": "스캔 결과 저장 중",
   "dashboard.stage.done": "스캔 완료",
   "dashboard.cancel": "스캔 취소",
   "dashboard.cancelling": "중지 중...",
@@ -1979,7 +1989,9 @@ const ruRu: TranslationMap = {
   "dashboard.stage.scan": "Сканирование модов",
   "dashboard.stage.resourcepacks": "Сканирование ресурс-паков",
   "dashboard.stage.aggregate": "Сбор результатов",
+  "dashboard.stage.dictionary": "Проверка кэша словаря",
   "dashboard.stage.log": "Запись логов",
+  "dashboard.stage.persist": "Сохранение результата сканирования",
   "dashboard.stage.done": "Сканирование завершено",
   "dashboard.cancel": "Отменить сканирование",
   "dashboard.cancelling": "Остановка...",

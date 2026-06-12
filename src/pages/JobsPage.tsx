@@ -48,6 +48,7 @@ function stageLabel(progress: TranslateProgress | null, lang: AppLanguage): stri
   if (!progress) return t(lang, "jobs.translating");
   switch (progress.phase) {
     case "scanning":
+      if (progress.subStep) return progress.subStep;
       return t(lang, "jobs.stage.scanning", { mod: progress.modName || "" });
     case "extracting":
       return t(lang, "jobs.stage.extracting");
@@ -344,7 +345,13 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     startTimeRef.current = performance.now();
     setTranslateElapsedMs(null);
     setStatus("running");
-    setTranslateProgress(null);
+    setTranslateProgress({
+      current: 0,
+      total: 1,
+      phase: "extracting",
+      modName: "",
+      stageStatus: "running",
+    });
     setTranslationResult(null);
     setTranslationError("");
     logRef.current = [];
@@ -501,6 +508,11 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     translateProgress && translateProgress.total > 0
       ? Math.min(Math.round((translateProgress.current / translateProgress.total) * 100), 100)
       : 0;
+  const shouldShowEntryStatusSegments =
+    isRunning
+    && scanSummary !== null
+    && scanSummary.actualPendingEntries > 0
+    && translateProgress?.phase === "translating";
 
   const filteredEntries = useMemo(() => {
     let result = logRef.current;
@@ -743,7 +755,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
             )}
           </div>
 
-          {isRunning && scanSummary && scanSummary.actualPendingEntries > 0 ? (
+          {shouldShowEntryStatusSegments && scanSummary ? (
             <>
               <div className="essb-container">
                 <div className="essb-track" style={{ height: 20 }}>

@@ -127,6 +127,7 @@ pub async fn start_translation(
                 }
                 Err(err) => {
                     logging::append_main(format!("创建翻译 Job 状态文件失败: {err}")).ok();
+                    return Err(format!("创建翻译 Job 状态文件失败，请重新扫描实例: {err}"));
                 }
             }
         }

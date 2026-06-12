@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use rusqlite::{params, Connection, Result as SqlResult, Row};
@@ -357,6 +357,32 @@ pub fn count_hits_batch(
 
     tracing::debug!(hits, total, target_lang, "词典批量缓存命中检测");
     Ok((hits, total))
+}
+
+/// Load all source hashes that already have a translation for `target_lang`.
+///
+/// Scanner-side cache statistics only need exact hash presence, so this avoids
+/// issuing many small `IN (...)` queries and avoids cloning every scanned text
+/// into a temporary vector.
+pub fn load_source_hashes_for_target(
+    conn: &Connection,
+    target_lang: &str,
+) -> SqlResult<HashSet<String>> {
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT source_hash FROM dictionary_entries WHERE target_lang = ?1",
+    )?;
+    let rows = stmt.query_map(params![target_lang], |row| row.get::<_, String>(0))?;
+
+    let mut hashes = HashSet::new();
+    for row in rows {
+        hashes.insert(row?);
+    }
+    tracing::debug!(
+        hash_count = hashes.len(),
+        target_lang,
+        "词典目标语言 hash 集合已加载"
+    );
+    Ok(hashes)
 }
 
 /// Get a single entry by ID.

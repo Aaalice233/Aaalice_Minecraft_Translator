@@ -141,12 +141,18 @@ fn job_state_persistence_works() {
 
 /// Run the pipeline with a fake scan directory on disk, pointing to the fake LLM.
 fn run_fake_llm_pipeline(port: u16, root: &std::path::Path) -> Result<PipelineResult, String> {
-    let scan = create_scan_summary("fake-llm-e2e");
+    let mut scan = create_scan_summary("fake-llm-e2e");
 
     // Create a minimal instance directory with mods/ so the scanner passes
     let instance_path = root.join("test-instance");
     let instance_path_str = instance_path.to_string_lossy().to_string();
+    let instance_path_display = instance_path_str.replace('\\', "/");
     std::fs::create_dir_all(instance_path.join("mods")).ok();
+    scan.instance_path = instance_path_display.clone();
+    scan.validation.instance_path = instance_path_display.clone();
+    scan.validation.mods_path = format!("{instance_path_display}/mods");
+    scan.validation.resourcepacks_path = format!("{instance_path_display}/resourcepacks");
+    scan.mods[0].jar_path = format!("{instance_path_display}/mods/testmod-1.0.jar");
 
     // Copy a fixture jar so scanner finds real entries to process
     let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/modpacks/basic_pack/mods");
@@ -158,6 +164,9 @@ fn run_fake_llm_pipeline(port: u16, root: &std::path::Path) -> Result<PipelineRe
             }
         }
     }
+    let scan_path = aaalice_mc_translator_lib::core::paths::job_state_path(root, &scan.job_id);
+    if let Some(parent) = scan_path.parent() { std::fs::create_dir_all(parent).ok(); }
+    std::fs::write(&scan_path, serde_json::to_string_pretty(&scan).unwrap()).ok();
 
     let config = PipelineConfig {
         root: root.to_path_buf(),
@@ -225,13 +234,19 @@ fn fake_llm_pipeline_cancel_returns_partial() {
     });
     server.wait_ready(21561);
 
-    let scan = create_scan_summary("fake-llm-cancel");
+    let mut scan = create_scan_summary("fake-llm-cancel");
     let scan_job_id = scan.job_id.clone();
 
     // Create a minimal instance directory with mods/ so the scanner passes
     let instance_path = root.join("test-instance");
     let instance_path_str = instance_path.to_string_lossy().to_string();
+    let instance_path_display = instance_path_str.replace('\\', "/");
     std::fs::create_dir_all(instance_path.join("mods")).ok();
+    scan.instance_path = instance_path_display.clone();
+    scan.validation.instance_path = instance_path_display.clone();
+    scan.validation.mods_path = format!("{instance_path_display}/mods");
+    scan.validation.resourcepacks_path = format!("{instance_path_display}/resourcepacks");
+    scan.mods[0].jar_path = format!("{instance_path_display}/mods/testmod-1.0.jar");
     let scan_path = aaalice_mc_translator_lib::core::paths::job_state_path(root, &scan_job_id);
     if let Some(parent) = scan_path.parent() { std::fs::create_dir_all(parent).ok(); }
     std::fs::write(&scan_path, serde_json::to_string_pretty(&scan).unwrap()).ok();

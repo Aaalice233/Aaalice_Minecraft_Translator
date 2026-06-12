@@ -377,7 +377,7 @@ impl JobManager {
 
     // ── Helpers ──────────────────────────────────────────────────────
 
-    fn load_scan_summary(&self, scan_job_id: &str) -> Result<ScanSummary, String> {
+    pub fn load_scan_summary(&self, scan_job_id: &str) -> Result<ScanSummary, String> {
         let path = paths::job_state_path(&self.root, scan_job_id);
         if !path.is_file() {
             return Err(format!(
