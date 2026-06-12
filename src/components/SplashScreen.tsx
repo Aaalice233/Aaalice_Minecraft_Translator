@@ -30,18 +30,61 @@ interface SplashScreenProps {
   language?: string;
 }
 
-// ── App icon (replaced with 233 logo) ──────────────────────────────────
+// ── Diamond-book SVG icon ──────────────────────────────────────────────
 
-function AppIcon({ size }: { size: number }) {
+function DiamondBookIcon({ size }: { size: number }) {
   return (
-    <img
-      src="/splash-icon.png"
-      srcSet="/splash-icon.png 1x, /splash-icon@2x.png 2x"
+    <svg
       width={size}
       height={size}
-      alt="Aaalice"
-      style={{ borderRadius: "50%" }}
-    />
+      viewBox="0 0 48 48"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="splash-icon-svg"
+    >
+      {/* Diamond shape */}
+      <polygon
+        points="24,2 46,24 24,46 2,24"
+        fill="var(--accent)"
+        opacity="0.15"
+        stroke="var(--accent)"
+        strokeWidth="1.5"
+      />
+      {/* Inner diamond */}
+      <polygon
+        points="24,8 40,24 24,40 8,24"
+        fill="var(--accent)"
+        opacity="0.08"
+        stroke="var(--accent)"
+        strokeWidth="1"
+      />
+      {/* Open book in center */}
+      <path
+        d="M15 20 L15 32 L24 28 L33 32 L33 20 L24 16 Z"
+        fill="var(--accent)"
+        opacity="0.85"
+      />
+      {/* Book spine line */}
+      <line
+        x1="24" y1="16" x2="24" y2="28"
+        stroke="var(--bg-surface, #fff)"
+        strokeWidth="0.8"
+      />
+      {/* Page line left */}
+      <line
+        x1="18" y1="20" x2="18" y2="29"
+        stroke="var(--bg-surface, #fff)"
+        strokeWidth="0.4"
+        opacity="0.5"
+      />
+      {/* Page line right */}
+      <line
+        x1="30" y1="20" x2="30" y2="29"
+        stroke="var(--bg-surface, #fff)"
+        strokeWidth="0.4"
+        opacity="0.5"
+      />
+    </svg>
   );
 }
 
@@ -150,7 +193,7 @@ export function SplashScreen({
         <div className="splash-content">
           {/* Icon */}
           <div className="splash-icon-wrapper">
-            <AppIcon size={ICON_SIZE} />
+            <DiamondBookIcon size={ICON_SIZE} />
           </div>
 
           {/* Brand name with letter reveal */}
