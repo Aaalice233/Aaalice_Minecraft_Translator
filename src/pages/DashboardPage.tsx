@@ -407,7 +407,8 @@ export const DashboardPage = React.memo(function DashboardPage({
     return nonWs > 0 && (cjkChars.length / nonWs) > 0.25;
   }
 
-  // 缓存每个 mod 的 pending 数，避免 O(entries) 迭代
+  // 缓存每个 mod 的 pending 数；扫描返回给 UI 的结果会剥离 entries，
+  // 这种情况下直接用后端已统计好的 source/target 数量。
   const pendingCache = useMemo(() => {
     const cache = new Map<string, number>();
     if (!scanSummary) return cache;
@@ -415,6 +416,10 @@ export const DashboardPage = React.memo(function DashboardPage({
       // 源语言与目标语言相同时跳过（防止中译中）
       if (mod.resolvedSourceLanguage === mod.targetLanguage) {
         cache.set(mod.jarPath, 0);
+        continue;
+      }
+      if (mod.entries.length === 0) {
+        cache.set(mod.jarPath, Math.max(mod.sourceEntries - mod.targetEntries, 0));
         continue;
       }
       const targetKeys = new Set(

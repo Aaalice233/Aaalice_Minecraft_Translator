@@ -46,7 +46,8 @@ const ModRow = React.memo(function ModRow({
   mod: ScanSummary["mods"][0];
   language: AppLanguage;
 }) {
-  const hasEntries = mod.entries.length > 0;
+  const entryCount = mod.entries.length || mod.sourceEntries;
+  const hasEntries = entryCount > 0;
   const hasErrors = mod.failedLanguageFiles > 0;
 
   let StatusIcon: typeof CheckCircle2;
@@ -72,7 +73,7 @@ const ModRow = React.memo(function ModRow({
         <span className="packages-mod-file">{mod.fileName}</span>
         <span className="packages-mod-meta">
           {hasEntries || mod.languageFileCount
-            ? [hasEntries ? t(language, "packages.entries_label", { count: mod.entries.length }) : null, mod.languageFileCount ? t(language, "packages.files_label", { count: mod.languageFileCount }) : null].filter(Boolean).join(" · ")
+            ? [hasEntries ? t(language, "packages.entries_label", { count: entryCount }) : null, mod.languageFileCount ? t(language, "packages.files_label", { count: mod.languageFileCount }) : null].filter(Boolean).join(" · ")
             : t(language, "packages.noLangFiles")}
         </span>
         {hasErrors && (
@@ -273,6 +274,7 @@ export const PackagesPage = React.memo(function PackagesPage({
     !loading &&
     !reviewRequired &&
     (translationJob?.completedEntries ?? 0) > 0;
+  const normalizedPackProgress = Math.min(Math.max(packProgress, 0), 100);
 
   const showModList =
     scanSummary &&
@@ -362,11 +364,11 @@ export const PackagesPage = React.memo(function PackagesPage({
             <div className="packages-progress-track" aria-hidden="true">
               <div
                 className="packages-progress-fill"
-                style={{ width: `${packProgress}%` }}
+                style={{ transform: `scaleX(${normalizedPackProgress / 100})` }}
               />
             </div>
             <span className="packages-progress-label">
-              {t(language, "packages.packingPercent", { percent: Math.round(packProgress) })}
+              {t(language, "packages.packingPercent", { percent: Math.round(normalizedPackProgress) })}
             </span>
           </div>
         )}
