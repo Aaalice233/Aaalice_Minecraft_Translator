@@ -6,6 +6,32 @@
 pub mod commands;
 pub mod core;
 
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Manager, WindowEvent,
+};
+
+const MAIN_WINDOW_LABEL: &str = "main";
+const TRAY_SHOW_ID: &str = "show_main_window";
+const TRAY_QUIT_ID: &str = "quit_app";
+
+fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) else {
+        tracing::warn!("main window not found while handling tray show action");
+        return;
+    };
+
+    if let Err(error) = window.show() {
+        tracing::warn!(%error, "failed to show main window from tray");
+        return;
+    }
+
+    if let Err(error) = window.set_focus() {
+        tracing::warn!(%error, "failed to focus main window from tray");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Limit rayon to 4 threads so UI thread doesn't starve during parallel scan
@@ -18,12 +44,58 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app);
+        }))
         .manage(commands::LogOffset(std::sync::Mutex::new((0, 0))))
-        .setup(|_app| {
+        .setup(|app| {
             let root = core::paths::runtime_root()?;
             core::logging::init(&root)?;
             let _ = core::paths::clear_scan_cache(&root);
+
+            let show_item = MenuItem::with_id(app, TRAY_SHOW_ID, "显示主窗口", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, TRAY_QUIT_ID, "退出", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&tray_menu)
+                .tooltip("Aaalice MC Translator")
+                .show_menu_on_left_click(false);
+
+            if let Some(icon) = app.default_window_icon().cloned() {
+                tray_builder = tray_builder.icon(icon);
+            } else {
+                tracing::warn!("default window icon not found; tray icon may not render correctly");
+            }
+
+            tray_builder.build(app)?;
+
             Ok(())
+        })
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            TRAY_SHOW_ID => show_main_window(app),
+            TRAY_QUIT_ID => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|app, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(app);
+            }
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == MAIN_WINDOW_LABEL {
+                    api.prevent_close();
+                    if let Err(error) = window.hide() {
+                        tracing::warn!(%error, "failed to hide main window to tray");
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,

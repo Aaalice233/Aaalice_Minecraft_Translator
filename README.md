@@ -31,7 +31,10 @@
 
 ### 安装
 
-从 [Releases](https://github.com/Aaalice233/Aaalice_Minecraft_Translator/releases) 下载最新版安装器并运行。
+从 [Releases](https://github.com/Aaalice233/Aaalice_Minecraft_Translator/releases) 下载最新版。
+
+- 安装版：推荐普通用户下载，支持自定义安装目录、开始菜单/快捷方式和应用内自动更新。
+- 便携版：无需安装，适合临时使用或放在 U 盘中随身携带；更新时需要手动下载新版。
 
 应用支持自动更新，可在「设置 -> 关于与更新」里检查新版本。
 

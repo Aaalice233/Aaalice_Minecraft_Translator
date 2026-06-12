@@ -31,7 +31,10 @@
 
 ### Install
 
-Download the latest installer from [Releases](https://github.com/Aaalice233/Aaalice_Minecraft_Translator/releases).
+Download the latest version from [Releases](https://github.com/Aaalice233/Aaalice_Minecraft_Translator/releases).
+
+- Installer: recommended for most users. It supports a custom install directory, Start menu/shortcut integration, and in-app automatic updates.
+- Portable exe: no installation required. Use it for temporary runs or USB drives; updates must be downloaded manually.
 
 The app supports automatic updates from `Settings -> About & Updates`.
 

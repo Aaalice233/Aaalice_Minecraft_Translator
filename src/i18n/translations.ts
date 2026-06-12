@@ -386,7 +386,8 @@ export type TranslationKey =
   | "settings.installNow"
   | "settings.checkFailed"
   | "settings.updaterError"
-  | "settings.updateReleaseNotes";
+  | "settings.updateReleaseNotes"
+  | "settings.viewReleaseNotes";
 
 type TranslationMap = Record<TranslationKey, string>;
 
@@ -732,6 +733,7 @@ const zhCn: TranslationMap = {
   "settings.checkFailed": "检查更新失败",
   "settings.updaterError": "更新错误: {error}",
   "settings.updateReleaseNotes": "更新说明",
+  "settings.viewReleaseNotes": "查看更新日志",
   "splash.phase.settings": "设置",
   "splash.phase.local": "本地",
   "splash.phase.dictionary": "词典",
@@ -1131,6 +1133,7 @@ const enUs: TranslationMap = {
   "settings.checkFailed": "Check for updates failed",
   "settings.updaterError": "Update error: {error}",
   "settings.updateReleaseNotes": "Release Notes",
+  "settings.viewReleaseNotes": "View Release Notes",
   "splash.firstLaunch": "First launch, initializing…",
   "splash.offline": "Offline mode",
   "splash.phase.dictionary": "Dictionary",
@@ -1409,6 +1412,7 @@ const jaJp: TranslationMap = {
   "settings.checkFailed": "更新の確認に失敗しました",
   "settings.updaterError": "更新エラー: {error}",
   "settings.updateReleaseNotes": "リリースノート",
+  "settings.viewReleaseNotes": "リリースノートを表示",
   "splash.firstLaunch": "初回起動、初期化中…",
   "splash.offline": "オフラインモード",
   "splash.phase.dictionary": "辞書",
@@ -1800,6 +1804,7 @@ const koKr: TranslationMap = {
   "settings.checkFailed": "업데이트 확인 실패",
   "settings.updaterError": "업데이트 오류: {error}",
   "settings.updateReleaseNotes": "릴리즈 노트",
+  "settings.viewReleaseNotes": "릴리즈 노트 보기",
   "splash.phase.settings": "설정",
   "splash.phase.local": "로컬",
   "splash.phase.dictionary": "사전",
@@ -2267,6 +2272,7 @@ const ruRu: TranslationMap = {
   "settings.checkFailed": "Не удалось проверить обновления",
   "settings.updaterError": "Ошибка обновления: {error}",
   "settings.updateReleaseNotes": "Примечания к выпуску",
+  "settings.viewReleaseNotes": "Открыть журнал изменений",
   "splash.phase.settings": "Настройки",
   "splash.phase.local": "Локальный",
   "splash.phase.dictionary": "Словарь",

@@ -1,4 +1,5 @@
 import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanDiffResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
+import packageJson from "../../package.json";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
 
@@ -369,12 +370,20 @@ export async function readLogs(): Promise<ReadLogsResult> {
   return tauriInvoke<ReadLogsResult>("read_logs");
 }
 
+export async function openPath(path: string): Promise<void> {
+  if (!isTauriRuntime()) {
+    window.open(path, "_blank", "noopener,noreferrer");
+    return;
+  }
+  return tauriInvoke<void>("open_path", { path });
+}
+
 // ── Updater API ─────────────────────────────────────────────
 
 /** Get the current app version from the Tauri runtime. */
 export async function getAppVersion(): Promise<string> {
   if (!isTauriRuntime()) {
-    return "0.1.0";
+    return packageJson.version;
   }
   const { getVersion } = await import("@tauri-apps/api/app");
   return getVersion();

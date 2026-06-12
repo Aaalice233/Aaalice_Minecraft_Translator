@@ -23,7 +23,7 @@ import { PackagesPage } from "../pages/PackagesPage";
 import { SplashScreen } from "../components/SplashScreen";
 import { applyFont, SettingsPage } from "../pages/SettingsPage";
 import { ValidatePage } from "../pages/ValidatePage";
-import { getSettings, runWarmup, saveSettings } from "../api/tauri";
+import { getAppVersion, getSettings, runWarmup, saveSettings } from "../api/tauri";
 import { AppProvider, useAppState } from "./AppContext";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
@@ -78,6 +78,7 @@ function AppShell() {
   const [warmupComplete, setWarmupComplete] = useState(false);
   const [fatalWarmupError, setFatalWarmupError] = useState<string | undefined>();
   const [isOffline, setIsOffline] = useState(false);
+  const [appVersion, setAppVersion] = useState("");
   let isFirstLaunch = false;
   try {
     isFirstLaunch = !localStorage.getItem("aaalice_mc_warmup_done");
@@ -141,6 +142,21 @@ function AppShell() {
       .then((s) => dispatch({ type: "SET_SETTINGS", payload: s }))
       .catch((error) => console.warn("getSettings failed:", error));
   }, [dispatch]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getAppVersion()
+      .then((version) => {
+        if (!cancelled) setAppVersion(version);
+      })
+      .catch((error) => {
+        console.warn("getAppVersion failed:", error);
+        if (!cancelled) setAppVersion("?");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const TOOLTIP_TOP_THRESHOLD = 60;
@@ -385,7 +401,7 @@ function AppShell() {
           >
             {settings?.uiDarkMode ? <Sun size={14} /> : <Moon size={14} />}
           </button>
-          <span>v0.1.0</span>
+          <span>{appVersion ? `v${appVersion}` : "v..."}</span>
           <span className="status-dot" data-tooltip={t(language, "app.ready")} data-tooltip-direction="up">{t(language, "app.ready")}</span>
         </div>
       </aside>

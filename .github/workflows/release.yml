@@ -35,6 +35,21 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATER_SIGN_PRIVATE_KEY_PASSWORD }}
         run: npm run package:exe
 
+      - name: Prepare portable exe asset
+        shell: pwsh
+        run: |
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $source = "src-tauri/target/release/aaalice_mc_translator.exe"
+          if (-not (Test-Path $source)) {
+            throw "Portable exe source not found: $source"
+          }
+
+          $portableDir = "src-tauri/target/release/bundle/portable"
+          New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+          $portableName = "Aaalice-MC-Translator_${version}_portable.exe"
+          Copy-Item $source (Join-Path $portableDir $portableName) -Force
+          Write-Host "Portable exe prepared: $portableName"
+
       - name: Generate update.json
         shell: pwsh
         run: |
@@ -84,6 +99,11 @@ jobs:
             elseif ($line -match "^## v" -and $inSection) { break }
             if ($inSection) { Add-Content -Path release-notes.md -Value $line }
           }
+          Add-Content -Path release-notes.md -Value ""
+          Add-Content -Path release-notes.md -Value "## 下载说明"
+          Add-Content -Path release-notes.md -Value ""
+          Add-Content -Path release-notes.md -Value "- **安装版**：推荐普通用户下载，支持自定义安装目录、开始菜单/快捷方式和应用内自动更新。"
+          Add-Content -Path release-notes.md -Value "- **便携版**：无需安装，适合临时使用或放在 U 盘中随身携带；更新时需要手动下载新版。"
           Write-Host "Extracted release notes for v$version"
 
       - name: Upload assets to Release
@@ -91,6 +111,7 @@ jobs:
         with:
           files: |
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/portable/*.exe
             update.json
           tag_name: ${{ github.ref_name }}
           body_path: release-notes.md

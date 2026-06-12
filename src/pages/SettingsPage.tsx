@@ -5,6 +5,7 @@ import {
   ChevronDown,
   Cloud,
   Cpu,
+  ExternalLink,
   Info,
   Palette,
   Database,
@@ -20,6 +21,7 @@ import {
   checkUpdate as updaterCheck,
   downloadAndInstallUpdate,
   getAppVersion,
+  openPath,
   relaunchApp,
   fetchLlmModels,
   getSystemFonts,
@@ -55,6 +57,9 @@ const tabs = [
   { key: "advanced", labelKey: "settings.tab.advanced", icon: Database },
   { key: "about", labelKey: "settings.tab.about", icon: Info },
 ] as const satisfies ReadonlyArray<{ key: SettingsTab; labelKey: TranslationKey; icon: LucideIcon }>;
+
+const RELEASE_BASE_URL = "https://github.com/Aaalice233/Aaalice_Minecraft_Translator/releases";
+const UP_TO_DATE_RESET_MS = 3500;
 
 /** 预设字体键名列表 — 与 CSS [data-font] 选择器对应 */
 export const FONT_PRESETS = ["system", "yahei", "noto", "simsun"] as const;
@@ -101,6 +106,14 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
     getAppVersion().then(setAppVersion).catch(() => setAppVersion("?"));
   }, []);
 
+  useEffect(() => {
+    if (updateStatus !== "uptodate") return;
+    const timer = setTimeout(() => {
+      setUpdateStatus("idle");
+    }, UP_TO_DATE_RESET_MS);
+    return () => clearTimeout(timer);
+  }, [updateStatus]);
+
   // Silent check on mount
   useEffect(() => {
     updaterCheck()
@@ -114,6 +127,10 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   }, []);
 
   const language = normalizeAppLanguage(draft.appLanguage);
+  const releaseNotesVersion = updateInfo?.version || (appVersion === "..." || appVersion === "?" ? "" : appVersion);
+  const releaseNotesUrl = releaseNotesVersion
+    ? `${RELEASE_BASE_URL}/tag/v${releaseNotesVersion.replace(/^v/i, "")}`
+    : RELEASE_BASE_URL;
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommittedRef = useRef(settings);
@@ -571,26 +588,32 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                     <span style={{ fontWeight: 600 }}>v{appVersion}</span>
                   </div>
 
-                  {updateStatus === "idle" && (
-                    <button className="ghost-button" onClick={async () => {
-                      setUpdateStatus("checking");
-                      setUpdateError("");
-                      try {
-                        const info = await updaterCheck();
-                        if (info) {
-                          setUpdateInfo(info);
-                          setUpdateStatus("available");
-                        } else {
-                          setUpdateStatus("uptodate");
+                  <div className="inline-control update-actions">
+                    {updateStatus === "idle" && (
+                      <button className="ghost-button" onClick={async () => {
+                        setUpdateStatus("checking");
+                        setUpdateError("");
+                        try {
+                          const info = await updaterCheck();
+                          if (info) {
+                            setUpdateInfo(info);
+                            setUpdateStatus("available");
+                          } else {
+                            setUpdateStatus("uptodate");
+                          }
+                        } catch (err) {
+                          setUpdateError(toErrorMessage(err));
+                          setUpdateStatus("error");
                         }
-                      } catch (err) {
-                        setUpdateError(toErrorMessage(err));
-                        setUpdateStatus("error");
-                      }
-                    }}>
-                      {t(language, "settings.checkUpdate")}
+                      }} type="button">
+                        {t(language, "settings.checkUpdate")}
+                      </button>
+                    )}
+                    <button className="ghost-button" onClick={() => openPath(releaseNotesUrl).catch((err) => setUpdateError(toErrorMessage(err)))} type="button">
+                      <ExternalLink size={16} />
+                      {t(language, "settings.viewReleaseNotes")}
                     </button>
-                  )}
+                  </div>
 
                   {updateStatus === "checking" && <span>{t(language, "settings.checkUpdate")}…</span>}
 
@@ -599,19 +622,25 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                       <span>{t(language, "settings.updateAvailable", { version: updateInfo.version })}</span>
                       {updateInfo.body && <small>{t(language, "settings.updateReleaseNotes")}: {updateInfo.body}</small>}
                       <progress value={downloadProgress} max={100} style={{ width: "100%" }} />
-                      <button className="ghost-button" onClick={async () => {
-                        setUpdateStatus("downloading");
-                        setDownloadProgress(0);
-                        try {
-                          await downloadAndInstallUpdate((p) => setDownloadProgress(p));
-                          setUpdateStatus("downloaded");
-                        } catch (err) {
-                          setUpdateError(toErrorMessage(err));
-                          setUpdateStatus("error");
-                        }
-                      }}>
-                        {t(language, "settings.checkUpdate")}
-                      </button>
+                      <div className="inline-control update-actions">
+                        <button className="ghost-button" onClick={async () => {
+                          setUpdateStatus("downloading");
+                          setDownloadProgress(0);
+                          try {
+                            await downloadAndInstallUpdate((p) => setDownloadProgress(p));
+                            setUpdateStatus("downloaded");
+                          } catch (err) {
+                            setUpdateError(toErrorMessage(err));
+                            setUpdateStatus("error");
+                          }
+                        }} type="button">
+                          {t(language, "settings.installNow")}
+                        </button>
+                        <button className="ghost-button" onClick={() => openPath(releaseNotesUrl).catch((err) => setUpdateError(toErrorMessage(err)))} type="button">
+                          <ExternalLink size={16} />
+                          {t(language, "settings.viewReleaseNotes")}
+                        </button>
+                      </div>
                     </div>
                   )}
 
