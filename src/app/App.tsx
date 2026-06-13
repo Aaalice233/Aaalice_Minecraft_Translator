@@ -59,6 +59,8 @@ const ALL_PAGE_KEYS: PageKey[] = [
   "jobs", "validate", "packages",
 ];
 
+const AUTO_FLOW_PAGES: PageKey[] = ["dashboard", "jobs", "validate", "packages"];
+
 type AutoFlowPhase =
   | "idle"
   | "scanning"
@@ -270,7 +272,17 @@ function AppShell() {
   }, [sidebarWidth]);
 
   const setNavBusy = useCallback((key: PageKey, busy: boolean) =>
-    dispatch({ type: "SET_NAV_STATE", payload: { key, status: busy ? "busy" : "idle" } }), [dispatch]);
+    dispatch({
+      type: "SET_NAV_STATE",
+      payload: {
+        key,
+        status: busy
+          ? "busy"
+          : useAppStore.getState().navStates[key] === "completed"
+            ? "completed"
+            : "idle",
+      },
+    }), [dispatch]);
   const setNavCompleted = useCallback((key: PageKey, done: boolean) =>
     dispatch({ type: "SET_NAV_STATE", payload: { key, status: done ? "completed" : "idle" } }), [dispatch]);
   const dbBusy = useCallback((b: boolean) => setNavBusy("dashboard", b), [setNavBusy]);
@@ -343,13 +355,56 @@ function AppShell() {
     }
   }, []);
 
+  const setAutoNavStates = useCallback((states: Partial<Record<PageKey, "idle" | "busy" | "completed">>) => {
+    for (const page of AUTO_FLOW_PAGES) {
+      dispatch({
+        type: "SET_NAV_STATE",
+        payload: { key: page, status: states[page] ?? "idle" },
+      });
+    }
+  }, [dispatch]);
+
+  const syncAutoNavStage = useCallback((phase: AutoFlowPhase) => {
+    switch (phase) {
+      case "scanning":
+        setAutoNavStates({ dashboard: "busy" });
+        break;
+      case "translating":
+      case "retrying":
+        setAutoNavStates({ dashboard: "completed", jobs: "busy" });
+        break;
+      case "reviewing":
+        setAutoNavStates({ dashboard: "completed", jobs: "completed", validate: "busy" });
+        break;
+      case "packing":
+        setAutoNavStates({ dashboard: "completed", jobs: "completed", validate: "completed", packages: "busy" });
+        break;
+      case "done":
+        setAutoNavStates({ dashboard: "completed", jobs: "completed", validate: "completed", packages: "completed" });
+        break;
+      default:
+        break;
+    }
+  }, [setAutoNavStates]);
+
   const showAutoStage = useCallback((phase: AutoFlowPhase, status: string) => {
     clearAutoTimer();
+    syncAutoNavStage(phase);
     setAutoFlow({ active: true, phase, status, stopping: false });
-  }, [clearAutoTimer]);
+  }, [clearAutoTimer, syncAutoNavStage]);
 
   const finishAutoFlow = useCallback((phase: "done" | "failed" | "cancelled", status: string) => {
     clearAutoTimer();
+    if (phase === "done") {
+      syncAutoNavStage("done");
+    } else {
+      setAutoNavStates({
+        dashboard: useAppStore.getState().navStates.dashboard === "busy" ? "idle" : useAppStore.getState().navStates.dashboard,
+        jobs: useAppStore.getState().navStates.jobs === "busy" ? "idle" : useAppStore.getState().navStates.jobs,
+        validate: useAppStore.getState().navStates.validate === "busy" ? "idle" : useAppStore.getState().navStates.validate,
+        packages: useAppStore.getState().navStates.packages === "busy" ? "idle" : useAppStore.getState().navStates.packages,
+      });
+    }
     setAutoFlow({ active: false, phase, status, stopping: false });
     autoClearTimerRef.current = window.setTimeout(() => {
       setAutoFlow((current) => current.phase === phase
@@ -357,7 +412,7 @@ function AppShell() {
         : current);
       autoClearTimerRef.current = null;
     }, phase === "done" ? 5000 : 7000);
-  }, [clearAutoTimer]);
+  }, [clearAutoTimer, setAutoNavStates, syncAutoNavStage]);
 
   const ensureAutoNotCancelled = useCallback(() => {
     if (autoCancelRequestedRef.current) {
