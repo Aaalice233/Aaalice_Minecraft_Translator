@@ -4,6 +4,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::Emitter;
 
+use super::i18n_dict;
 use crate::core::{
     dictionary, jobs, logging,
     models::{EntryProgress, LlmConfig, PipelineConfig, PipelineProgress, TranslateLogEntry},
@@ -82,6 +83,21 @@ fn spawn_progress_reader(progress_rx: mpsc::Receiver<PipelineProgress>, app: tau
             tracing::error!("进度读取器 panic: {:?}", e);
         }
     });
+}
+
+fn should_use_i18n_reference(target_language: &str) -> bool {
+    target_language.trim().eq_ignore_ascii_case("zh_cn")
+}
+
+fn i18n_reference_db_path_for(
+    app: &tauri::AppHandle,
+    target_language: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    if should_use_i18n_reference(target_language) {
+        Ok(Some(i18n_dict::active_i18n_dict_path(app)?))
+    } else {
+        Ok(None)
+    }
 }
 
 #[tauri::command]
@@ -183,13 +199,21 @@ pub async fn start_translation(
             root: root.clone(),
             instance_path: effective_path,
             source_language: effective_source_language,
-            target_language: effective_target_language,
+            target_language: effective_target_language.clone(),
             scan_job_id,
             resource_pack_names,
+            i18n_reference_db_path: i18n_reference_db_path_for(&app, &effective_target_language)?,
             llm,
         };
 
-        pipeline::run_pipeline(config, &job_id, &*pipeline::GLOBAL_CANCEL, progress_tx, log_tx, entry_progress_tx)
+        pipeline::run_pipeline(
+            config,
+            &job_id,
+            &*pipeline::GLOBAL_CANCEL,
+            progress_tx,
+            log_tx,
+            entry_progress_tx,
+        )
     })
     .await
     .map_err(|err| err.to_string())??;
@@ -242,6 +266,8 @@ pub async fn retry_failed_entries(
         let settings =
             settings::load_settings(&root).map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
 
+        let i18n_reference_db_path = i18n_reference_db_path_for(&app, &target_language)?;
+
         let llm = LlmConfig {
             base_url: settings.base_url,
             api_key: settings.api_key,
@@ -270,6 +296,7 @@ pub async fn retry_failed_entries(
             &*pipeline::GLOBAL_CANCEL,
             &progress_tx,
             &entry_progress_tx,
+            i18n_reference_db_path.as_deref(),
         )?;
 
         let succ = retried.iter().filter(|r| r.source_type == "llm").count();
@@ -315,7 +342,7 @@ pub async fn retry_failed_entries(
         if !successful_retried.is_empty() {
             let dict_conn = dictionary::open(&paths::dictionary_db_path(&root))
                 .map_err(|e| format!("重试结果已写入任务文件，但打开词典失败: {e}"))?;
-            let mut dict = dictionary::MemoryDictionary::load(&dict_conn)
+            let mut dict = dictionary::MemoryDictionary::load_local_entries(&dict_conn)
                 .map_err(|e| format!("重试结果已写入任务文件，但加载词典失败: {e}"))?;
             dict.save_llm_results(
                 &dict_conn,
@@ -388,6 +415,7 @@ pub async fn translate_single_entry(
     };
 
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let i18n_reference_db_path = i18n_reference_db_path_for(&_app, &target_language)?;
         pipeline::translate_single_entry(
             &root,
             job_id.as_deref(),
@@ -399,6 +427,7 @@ pub async fn translate_single_entry(
             &target_language,
             &llm,
             Some(&*pipeline::GLOBAL_CANCEL),
+            i18n_reference_db_path.as_deref(),
         )
     })
     .await
@@ -411,4 +440,19 @@ pub async fn translate_single_entry(
     .ok();
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::should_use_i18n_reference;
+
+    #[test]
+    fn i18n_reference_only_enabled_for_zh_cn_target() {
+        assert!(should_use_i18n_reference("zh_cn"));
+        assert!(should_use_i18n_reference("ZH_CN"));
+        assert!(!should_use_i18n_reference("en_us"));
+        assert!(!should_use_i18n_reference("ja_jp"));
+        assert!(!should_use_i18n_reference("auto"));
+        assert!(!should_use_i18n_reference(""));
+    }
 }

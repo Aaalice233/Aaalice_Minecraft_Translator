@@ -173,14 +173,14 @@ export interface I18nDictUpdateInfo {
   latestName: string;
   publishedAt: string;
   assetName: string;
-  installedEntries: number;
+  referenceEntries: number;
   updateAvailable: boolean;
 }
 
 export interface I18nDictUpdateResult {
   tag: string;
   publishedAt: string;
-  importedEntries: number;
+  referenceEntries: number;
 }
 
 // ── P3: Translation types ─────────────────────────────────────────

@@ -201,7 +201,7 @@ export async function checkI18nDictUpdate(): Promise<I18nDictUpdateInfo> {
       latestName: "browser-preview",
       publishedAt: "",
       assetName: "Dict-Sqlite.db",
-      installedEntries: 0,
+      referenceEntries: 0,
       updateAvailable: false,
     };
   }

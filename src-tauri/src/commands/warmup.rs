@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 use tracing::info;
 
-use super::i18n_dict;
 use crate::core::models::{Settings, StageStatus, WarmupPhase, WarmupProgress};
 use crate::core::{paths, settings};
 
@@ -136,12 +135,12 @@ fn phase_dictionary(root: &PathBuf, app: &AppHandle) -> Result<(), String> {
                 .map_err(|e| format!("词典数据库查询失败: {e}"))?;
 
             if table_count > 0 {
-                let entry_count: i64 = conn
-                    .query_row("SELECT COUNT(*) FROM dictionary_entries", [], |row| {
-                        row.get(0)
+                let has_entry = conn
+                    .query_row("SELECT 1 FROM dictionary_entries LIMIT 1", [], |row| {
+                        row.get::<_, i64>(0)
                     })
-                    .unwrap_or(0);
-                info!("词典就绪: {entry_count} 条记录 (新建: {})", !db_exists);
+                    .is_ok();
+                info!("词典就绪: has_entry={has_entry} (新建: {})", !db_exists);
             }
         }
         Err(e) => {
@@ -154,11 +153,7 @@ fn phase_dictionary(root: &PathBuf, app: &AppHandle) -> Result<(), String> {
         }
     }
 
-    match i18n_dict::ensure_bundled_i18n_dict_installed(app) {
-        Ok(Some(count)) => info!("已安装内置 i18n 模组词典: {count} 条"),
-        Ok(None) => info!("i18n 模组词典已安装，跳过内置导入"),
-        Err(e) => return Err(format!("安装内置 i18n 模组词典失败: {e}")),
-    }
+    info!("预热跳过内置 i18n 模组词典导入，可在设置页手动检查并更新");
 
     // Brief pause
     std::thread::sleep(std::time::Duration::from_millis(100));

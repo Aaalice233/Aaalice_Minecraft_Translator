@@ -133,6 +133,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   }, []);
 
   const language = normalizeAppLanguage(draft.appLanguage);
+  const i18nDictEnabled = draft.targetLanguage.trim().toLowerCase() === "zh_cn";
   const releaseNotesVersion = updateInfo?.version || (appVersion === "..." || appVersion === "?" ? "" : appVersion);
   const releaseNotesUrl = releaseNotesVersion
     ? `${RELEASE_BASE_URL}/tag/v${releaseNotesVersion.replace(/^v/i, "")}`
@@ -254,6 +255,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   }
 
   async function handleCheckI18nDict() {
+    if (!i18nDictEnabled) return;
     setI18nDictStatus("checking");
     setI18nDictError("");
     try {
@@ -267,6 +269,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   }
 
   async function handleUpdateI18nDict() {
+    if (!i18nDictEnabled) return;
     setI18nDictStatus("updating");
     setI18nDictError("");
     setMessage("");
@@ -275,7 +278,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
       const info = await checkI18nDictUpdate();
       setI18nDictInfo(info);
       setI18nDictStatus("updated");
-      setMessage(t(language, "settings.i18nDictUpdated", { count: result.importedEntries }));
+      setMessage(t(language, "settings.i18nDictUpdated", { count: result.referenceEntries }));
     } catch (err) {
       setI18nDictError(toErrorMessage(err));
       setI18nDictStatus("error");
@@ -543,10 +546,11 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                     <div className="field">
                       <span>{t(language, "settings.i18nDictTitle")}</span>
                       <small>{t(language, "settings.i18nDictDescription")}</small>
+                      <small>{t(language, "settings.i18nDictTargetOnly")}</small>
                     </div>
                     {i18nDictInfo && (
                       <div className="empty-state compact" style={{ alignItems: "flex-start" }}>
-                        <span>{t(language, "settings.i18nDictInstalled", { count: i18nDictInfo.installedEntries })}</span>
+                        <span>{t(language, "settings.i18nDictInstalled", { count: i18nDictInfo.referenceEntries })}</span>
                         <span>{t(language, "settings.i18nDictCurrent", { tag: i18nDictInfo.currentTag ?? "-" })}</span>
                         <span>{t(language, "settings.i18nDictLatest", { tag: i18nDictInfo.latestTag })}</span>
                       </div>
@@ -555,7 +559,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                       <button
                         className="ghost-button"
                         type="button"
-                        disabled={i18nDictStatus === "checking" || i18nDictStatus === "updating"}
+                        disabled={!i18nDictEnabled || i18nDictStatus === "checking" || i18nDictStatus === "updating"}
                         onClick={handleCheckI18nDict}
                       >
                         <RefreshCcw size={16} />
@@ -564,7 +568,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                       <button
                         className="ghost-button"
                         type="button"
-                        disabled={i18nDictStatus === "checking" || i18nDictStatus === "updating"}
+                        disabled={!i18nDictEnabled || i18nDictStatus === "checking" || i18nDictStatus === "updating"}
                         onClick={handleUpdateI18nDict}
                       >
                         <Database size={16} />

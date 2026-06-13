@@ -1,7 +1,8 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
-use rusqlite::{params, Connection, Result as SqlResult, Row};
+use rusqlite::{params, Connection, OpenFlags, Result as SqlResult, Row};
 use serde::{Deserialize, Serialize};
 
 /// Shared SQL schema: table + indexes used by both `open` and `open_in_memory`.
@@ -606,24 +607,64 @@ pub struct MemoryDictionary {
     cfpa_exact_index: HashMap<String, Vec<usize>>,
     /// Inverted word index: lowercase keyword → indices into cfpa_entries
     word_index: HashMap<String, Vec<usize>>,
+    reference_conn: Option<Mutex<Connection>>,
 }
 
 impl MemoryDictionary {
     /// Load ALL entries from the SQLite dictionary into memory.
     /// Expected size: ~50k entries (~5–10 MB).
     pub fn load(conn: &Connection) -> SqlResult<Self> {
-        let mut stmt = conn.prepare(&format!("{SELECT_COLS}"))?;
+        Self::load_internal(conn, None, false)
+    }
+
+    pub fn load_with_reference_db(
+        conn: &Connection,
+        reference_db_path: Option<&Path>,
+    ) -> SqlResult<Self> {
+        Self::load_internal(
+            conn,
+            reference_db_path.map(PathBuf::from),
+            reference_db_path.is_some(),
+        )
+    }
+
+    pub fn load_local_entries(conn: &Connection) -> SqlResult<Self> {
+        Self::load_internal(conn, None, true)
+    }
+
+    fn load_internal(
+        conn: &Connection,
+        reference_db_path: Option<PathBuf>,
+        external_reference: bool,
+    ) -> SqlResult<Self> {
+        let sql = if external_reference {
+            format!("{SELECT_COLS} WHERE source_type <> 'cfpa'")
+        } else {
+            SELECT_COLS.to_string()
+        };
+        let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map([], map_row)?;
 
         let mut entries: HashMap<String, Vec<DictionaryEntry>> = HashMap::new();
         let mut cfpa_entries: Vec<(String, String, String, String)> = Vec::new();
         let mut cfpa_exact_index: HashMap<String, Vec<usize>> = HashMap::new();
         let mut word_index: HashMap<String, Vec<usize>> = HashMap::new();
+        let reference_conn = match reference_db_path {
+            Some(path) => Some(Mutex::new(Connection::open_with_flags(
+                path,
+                OpenFlags::SQLITE_OPEN_READ_ONLY,
+            )?)),
+            None => None,
+        };
 
         for row in rows {
             let entry = row?;
             let hash = hash_text(&entry.source_text);
             entries.entry(hash).or_default().push(entry.clone());
+
+            if external_reference {
+                continue;
+            }
 
             let source_text = entry.source_text.trim().to_string();
             let target_text = entry.target_text.trim().to_string();
@@ -659,6 +700,7 @@ impl MemoryDictionary {
             cfpa_entries,
             cfpa_exact_index,
             word_index,
+            reference_conn,
         })
     }
 
@@ -734,7 +776,7 @@ impl MemoryDictionary {
             }
         }
         if is_mod_name_reference_key(key) {
-            return scored
+            let mut results: Vec<CfpaMatch> = scored
                 .into_iter()
                 .take(limit)
                 .map(|(sim, idx)| {
@@ -746,9 +788,30 @@ impl MemoryDictionary {
                     }
                 })
                 .collect();
+            if results.len() < limit {
+                let mut seen_sources: HashSet<String> = results
+                    .iter()
+                    .map(|item| normalize_reference_source(&item.source_text))
+                    .collect();
+                for item in self.external_reference_search(
+                    text,
+                    key,
+                    source_lang,
+                    target_lang,
+                    limit.saturating_sub(results.len()),
+                ) {
+                    if seen_sources.insert(normalize_reference_source(&item.source_text)) {
+                        results.push(item);
+                    }
+                    if results.len() >= limit {
+                        break;
+                    }
+                }
+            }
+            return results;
         }
         if query_words.len() == 1 && is_unstable_reference_token(&query_words[0]) {
-            return scored
+            let mut results: Vec<CfpaMatch> = scored
                 .into_iter()
                 .take(limit)
                 .map(|(sim, idx)| {
@@ -760,6 +823,27 @@ impl MemoryDictionary {
                     }
                 })
                 .collect();
+            if results.len() < limit {
+                let mut seen_sources: HashSet<String> = results
+                    .iter()
+                    .map(|item| normalize_reference_source(&item.source_text))
+                    .collect();
+                for item in self.external_reference_search(
+                    text,
+                    key,
+                    source_lang,
+                    target_lang,
+                    limit.saturating_sub(results.len()),
+                ) {
+                    if seen_sources.insert(normalize_reference_source(&item.source_text)) {
+                        results.push(item);
+                    }
+                    if results.len() >= limit {
+                        break;
+                    }
+                }
+            }
+            return results;
         }
 
         let mut word_hits: HashMap<usize, usize> = HashMap::new();
@@ -856,6 +940,114 @@ impl MemoryDictionary {
             }
         }
 
+        if results.len() < limit {
+            let mut seen_sources: HashSet<String> = results
+                .iter()
+                .map(|item| normalize_reference_source(&item.source_text))
+                .collect();
+            for item in self.external_reference_search(
+                text,
+                key,
+                source_lang,
+                target_lang,
+                limit.saturating_sub(results.len()),
+            ) {
+                if seen_sources.insert(normalize_reference_source(&item.source_text)) {
+                    results.push(item);
+                }
+                if results.len() >= limit {
+                    break;
+                }
+            }
+        }
+
+        results
+    }
+
+    fn external_reference_search(
+        &self,
+        text: &str,
+        key: &str,
+        source_lang: &str,
+        target_lang: &str,
+        limit: usize,
+    ) -> Vec<CfpaMatch> {
+        if limit == 0 || source_lang != "en_us" || target_lang != "zh_cn" {
+            return Vec::new();
+        }
+        let Some(conn) = &self.reference_conn else {
+            return Vec::new();
+        };
+        let phrases = reference_candidate_phrases(text, key);
+        if phrases.is_empty() {
+            return Vec::new();
+        }
+        let guard = conn.lock().unwrap_or_else(|e| e.into_inner());
+        let mut stmt = match guard.prepare(
+            "SELECT ORIGIN_NAME, TRANS_NAME
+             FROM dict INDEXED BY dict_index
+             WHERE ORIGIN_NAME = ?1
+             LIMIT 8",
+        ) {
+            Ok(stmt) => stmt,
+            Err(err) => {
+                tracing::warn!("i18n 参考词典查询准备失败: {err}");
+                return Vec::new();
+            }
+        };
+
+        let mut results = Vec::new();
+        let mut seen_sources = HashSet::new();
+        for phrase in phrases {
+            let rows = match stmt.query_map(params![phrase], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            }) {
+                Ok(rows) => rows,
+                Err(err) => {
+                    tracing::warn!("i18n 参考词典查询失败: {err}");
+                    continue;
+                }
+            };
+            for row in rows {
+                let Ok((source_text, target_text)) = row else {
+                    continue;
+                };
+                if !is_useful_reference_pair(&source_text, &target_text) {
+                    continue;
+                }
+                if !seen_sources.insert(normalize_reference_source(&source_text)) {
+                    continue;
+                }
+                results.push(CfpaMatch {
+                    source_text,
+                    target_text,
+                    similarity: 1.0,
+                });
+                if results.len() >= limit {
+                    return results;
+                }
+            }
+            if results.len() < limit && is_external_prefix_query(&phrase) {
+                for (source_text, target_text) in
+                    external_reference_prefix_hits(&guard, &phrase, limit - results.len())
+                {
+                    if !is_useful_reference_pair(&source_text, &target_text) {
+                        continue;
+                    }
+                    if !seen_sources.insert(normalize_reference_source(&source_text)) {
+                        continue;
+                    }
+                    results.push(CfpaMatch {
+                        source_text,
+                        target_text,
+                        similarity: 0.82,
+                    });
+                    if results.len() >= limit {
+                        return results;
+                    }
+                }
+            }
+        }
         results
     }
 
@@ -1055,6 +1247,107 @@ fn meaningful_tokens(text: &str) -> Vec<String> {
     } else {
         tokens
     }
+}
+
+fn reference_candidate_phrases(text: &str, key: &str) -> Vec<String> {
+    let mut phrases = Vec::new();
+    let mut seen = HashSet::new();
+    let mut push = |value: String| {
+        let cleaned = value.split_whitespace().collect::<Vec<_>>().join(" ");
+        if cleaned.len() < 2 || cleaned.len() > 96 {
+            return;
+        }
+        let normalized = normalize_reference_source(&cleaned);
+        if seen.insert(normalized) {
+            phrases.push(cleaned);
+        }
+    };
+
+    push(text.trim().to_string());
+
+    if let Some(last) = key.rsplit('.').next() {
+        let words: Vec<String> = last
+            .split(['_', '-', '/'])
+            .filter(|part| !part.is_empty())
+            .map(|part| {
+                let mut chars = part.chars();
+                match chars.next() {
+                    Some(first) => {
+                        first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                    }
+                    None => String::new(),
+                }
+            })
+            .filter(|part| !part.is_empty())
+            .collect();
+        if !words.is_empty() {
+            push(words.join(" "));
+        }
+    }
+
+    phrases
+}
+
+fn is_external_prefix_query(phrase: &str) -> bool {
+    let tokens = meaningful_tokens(phrase);
+    tokens.len() >= 2 && tokens.len() <= 5 && phrase.len() <= 48 && phrase.is_ascii()
+}
+
+fn external_reference_prefix_hits(
+    conn: &Connection,
+    phrase: &str,
+    limit: usize,
+) -> Vec<(String, String)> {
+    let Some(upper) = ascii_prefix_upper_bound(phrase) else {
+        return Vec::new();
+    };
+    let mut stmt = match conn.prepare(
+        "SELECT ORIGIN_NAME, TRANS_NAME
+         FROM dict INDEXED BY dict_index
+         WHERE ORIGIN_NAME > ?1 AND ORIGIN_NAME < ?2
+         ORDER BY ORIGIN_NAME
+         LIMIT ?3",
+    ) {
+        Ok(stmt) => stmt,
+        Err(err) => {
+            tracing::warn!("i18n 参考词典前缀查询准备失败: {err}");
+            return Vec::new();
+        }
+    };
+    let rows = match stmt.query_map(params![phrase, upper, (limit.min(8) * 3) as i64], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    }) {
+        Ok(rows) => rows,
+        Err(err) => {
+            tracing::warn!("i18n 参考词典前缀查询失败: {err}");
+            return Vec::new();
+        }
+    };
+
+    rows.filter_map(Result::ok)
+        .filter(|(source, _)| is_reference_prefix_variant(source, phrase))
+        .take(limit)
+        .collect()
+}
+
+fn is_reference_prefix_variant(source: &str, phrase: &str) -> bool {
+    let Some(rest) = source.strip_prefix(phrase) else {
+        return false;
+    };
+    rest.chars()
+        .next()
+        .is_some_and(|ch| matches!(ch, ' ' | '_' | '-' | '(' | '[' | ':' | '/'))
+}
+
+fn ascii_prefix_upper_bound(prefix: &str) -> Option<String> {
+    let mut bytes = prefix.as_bytes().to_vec();
+    while let Some(last) = bytes.pop() {
+        if last < u8::MAX {
+            bytes.push(last + 1);
+            return String::from_utf8(bytes).ok();
+        }
+    }
+    None
 }
 
 fn cfpa_exact_key(source_lang: &str, target_lang: &str, source_text: &str) -> String {
@@ -1471,6 +1764,85 @@ mod tests {
         );
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].target_text, "MrCrayfish的家具模组");
+    }
+
+    #[test]
+    fn external_i18n_reference_db_is_queried_without_importing_cfpa_rows() {
+        let conn = test_conn();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Oak Table".into(),
+                target_text: "橡木桌".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "cfpa".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let db_path = std::env::temp_dir().join(format!(
+            "aaalice-i18n-test-{}-{}.db",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        {
+            let ext = Connection::open(&db_path).unwrap();
+            ext.execute_batch(
+                "CREATE TABLE dict(
+                    ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ORIGIN_NAME TEXT NOT NULL,
+                    TRANS_NAME TEXT NOT NULL,
+                    MODID TEXT NOT NULL,
+                    KEY TEXT NOT NULL,
+                    VERSION TEXT NOT NULL,
+                    CURSEFORGE TEXT NOT NULL
+                );
+                CREATE INDEX dict_index ON dict(origin_name);",
+            )
+            .unwrap();
+            ext.execute(
+                "INSERT INTO dict (ORIGIN_NAME, TRANS_NAME, MODID, KEY, VERSION, CURSEFORGE)
+                 VALUES (?1, ?2, 'example', 'item.example.scorched_rifle', '1', '')",
+                params!["Scorched Rifle", "焦土步枪"],
+            )
+            .unwrap();
+            ext.execute(
+                "INSERT INTO dict (ORIGIN_NAME, TRANS_NAME, MODID, KEY, VERSION, CURSEFORGE)
+                 VALUES (?1, ?2, 'example', 'item.example.scorched_rifle_mk2', '1', '')",
+                params!["Scorched Rifle Mk2", "焦土步枪 Mk2"],
+            )
+            .unwrap();
+            ext.execute(
+                "INSERT INTO dict (ORIGIN_NAME, TRANS_NAME, MODID, KEY, VERSION, CURSEFORGE)
+                 VALUES (?1, ?2, 'example', 'item.example.scorched_rifleman', '1', '')",
+                params!["Scorched Rifleman", "焦土步枪兵"],
+            )
+            .unwrap();
+        }
+
+        let dict = MemoryDictionary::load_with_reference_db(&conn, Some(&db_path)).unwrap();
+        assert!(dict
+            .reference_search("Oak Table", "", "en_us", "zh_cn", 3)
+            .is_empty());
+        let results = dict.reference_search(
+            "Scorched Rifle",
+            "item.example.scorched_rifle",
+            "en_us",
+            "zh_cn",
+            3,
+        );
+        assert_eq!(results[0].target_text, "焦土步枪");
+        assert!(results
+            .iter()
+            .any(|item| item.target_text == "焦土步枪 Mk2"));
+        assert!(!results.iter().any(|item| item.target_text == "焦土步枪兵"));
+
+        let _ = std::fs::remove_file(db_path);
     }
 
     #[test]

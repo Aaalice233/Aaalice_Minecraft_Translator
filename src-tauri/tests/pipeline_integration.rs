@@ -233,6 +233,7 @@ fn run_fake_llm_pipeline(port: u16, root: &std::path::Path) -> Result<PipelineRe
         target_language: "zh_cn".into(),
         scan_job_id: Some(scan.job_id.clone()),
         resource_pack_names: vec![],
+        i18n_reference_db_path: None,
         llm: Some(LlmConfig {
             base_url: format!("http://127.0.0.1:{}", port),
             api_key: "fake-key".into(),
@@ -334,6 +335,7 @@ fn fake_llm_pipeline_cancel_returns_partial() {
         target_language: "zh_cn".into(),
         scan_job_id: Some(scan_job_id),
         resource_pack_names: vec![],
+        i18n_reference_db_path: None,
         llm: Some(LlmConfig {
             base_url: "http://127.0.0.1:21561".into(),
             api_key: "fake-key".into(),

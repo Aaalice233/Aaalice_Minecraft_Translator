@@ -268,8 +268,11 @@ fn dictionary_phase(
     let dict_conn = dictionary::open(&dict_db_path).map_err(|e| format!("打开词典失败: {e}"))?;
 
     // MemoryDictionary: load all entries into memory for O(1) lookups
-    let mem_dict = dictionary::MemoryDictionary::load(&dict_conn)
-        .map_err(|e| format!("加载内存词典失败: {e}"))?;
+    let mem_dict = dictionary::MemoryDictionary::load_with_reference_db(
+        &dict_conn,
+        ctx.config.i18n_reference_db_path.as_deref(),
+    )
+    .map_err(|e| format!("加载内存词典失败: {e}"))?;
     let mem_dict = std::sync::Arc::new(std::sync::RwLock::new(mem_dict));
     ctx.memory_dict = Some(mem_dict.clone());
 
@@ -979,7 +982,10 @@ impl Phase for DictionaryPhase {
             // Still load an empty MemoryDictionary so downstream phases can reference it
             let dict_db_path = paths::dictionary_db_path(&ctx.config.root);
             if let Ok(dict_conn) = dictionary::open(&dict_db_path) {
-                if let Ok(mem_dict) = dictionary::MemoryDictionary::load(&dict_conn) {
+                if let Ok(mem_dict) = dictionary::MemoryDictionary::load_with_reference_db(
+                    &dict_conn,
+                    ctx.config.i18n_reference_db_path.as_deref(),
+                ) {
                     ctx.memory_dict = Some(std::sync::Arc::new(std::sync::RwLock::new(mem_dict)));
                 }
             }
@@ -1282,12 +1288,15 @@ fn load_entry_references(
     source_text: &str,
     source_language: &str,
     target_language: &str,
+    i18n_reference_db_path: Option<&std::path::Path>,
 ) -> Vec<(String, String)> {
     let dict_db_path = paths::dictionary_db_path(root);
     let Ok(dict_conn) = dictionary::open(&dict_db_path) else {
         return Vec::new();
     };
-    let Ok(mem_dict) = dictionary::MemoryDictionary::load(&dict_conn) else {
+    let Ok(mem_dict) =
+        dictionary::MemoryDictionary::load_with_reference_db(&dict_conn, i18n_reference_db_path)
+    else {
         return Vec::new();
     };
     mem_dict
@@ -1552,6 +1561,7 @@ pub fn retry_failed_entries(
     cancel: &CancelToken,
     progress_tx: &mpsc::Sender<PipelineProgress>,
     entry_progress_tx: &mpsc::Sender<EntryProgress>,
+    i18n_reference_db_path: Option<&std::path::Path>,
 ) -> Result<Vec<jobs::TranslationResult>, String> {
     let manager = jobs::JobManager::new(root.to_path_buf());
     let all_results = manager.load_results(job_id)?;
@@ -1584,7 +1594,9 @@ pub fn retry_failed_entries(
     let total_batches = (total + batch_size - 1) / batch_size;
     let mut completed_batches = 0usize;
     let retry_memory_dict = dictionary::open(&paths::dictionary_db_path(root))
-        .and_then(|conn| dictionary::MemoryDictionary::load(&conn))
+        .and_then(|conn| {
+            dictionary::MemoryDictionary::load_with_reference_db(&conn, i18n_reference_db_path)
+        })
         .ok();
 
     for chunk in failed.chunks(batch_size) {
@@ -1722,6 +1734,7 @@ pub fn translate_single_entry(
     target_language: &str,
     llm_cfg: &LlmConfig,
     cancel: Option<&CancelToken>,
+    i18n_reference_db_path: Option<&std::path::Path>,
 ) -> Result<String, String> {
     let client = build_llm_client(llm_cfg, 1);
     client.validate()?;
@@ -1730,8 +1743,14 @@ pub fn translate_single_entry(
         register_translation_task(jid);
     }
 
-    let references =
-        load_entry_references(root, key, source_text, source_language, target_language);
+    let references = load_entry_references(
+        root,
+        key,
+        source_text,
+        source_language,
+        target_language,
+        i18n_reference_db_path,
+    );
 
     let sr = shield::protect(source_text);
 

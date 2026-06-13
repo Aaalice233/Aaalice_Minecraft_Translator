@@ -368,6 +368,7 @@ pub struct PipelineConfig {
     pub target_language: String,
     pub scan_job_id: Option<String>,
     pub resource_pack_names: Vec<String>,
+    pub i18n_reference_db_path: Option<std::path::PathBuf>,
     pub llm: Option<LlmConfig>,
 }
 
