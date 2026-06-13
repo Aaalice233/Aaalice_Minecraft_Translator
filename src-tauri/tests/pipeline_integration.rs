@@ -2,12 +2,7 @@
 
 mod common;
 
-use aaalice_mc_translator_lib::core::{
-    jobs,
-    models::*,
-    pipeline,
-    shield,
-};
+use aaalice_mc_translator_lib::core::{jobs, models::*, pipeline, shield};
 
 /// Create a minimal ScanSummary for testing.
 fn create_scan_summary(job_id: &str) -> ScanSummary {
@@ -15,31 +10,70 @@ fn create_scan_summary(job_id: &str) -> ScanSummary {
         job_id: job_id.to_string(),
         instance_path: "test-instance".into(),
         validation: InstanceValidation {
-            instance_path: "test-instance".into(), is_valid: true,
-            mods_path: "test-instance/mods".into(), resourcepacks_path: "test-instance/resourcepacks".into(),
+            instance_path: "test-instance".into(),
+            is_valid: true,
+            mods_path: "test-instance/mods".into(),
+            resourcepacks_path: "test-instance/resourcepacks".into(),
             warnings: vec![],
         },
         mods: vec![ModScanResult {
             mod_id: "testmod".into(),
             file_name: "testmod-1.0.jar".into(),
             jar_path: "test-instance/mods/testmod-1.0.jar".into(),
-            language_file_count: 1, recovered_language_files: 0, failed_language_files: 0,
-            source_language: "en_us".into(), resolved_source_language: "en_us".into(), target_language: "zh_cn".into(),
-            source_entries: 3, target_entries: 0, has_target_language: false,
+            language_file_count: 1,
+            recovered_language_files: 0,
+            failed_language_files: 0,
+            source_language: "en_us".into(),
+            resolved_source_language: "en_us".into(),
+            target_language: "zh_cn".into(),
+            source_entries: 3,
+            target_entries: 0,
+            has_target_language: false,
             formats: vec!["json".into()],
             entries: vec![
-                LanguageEntry { mod_id: "testmod".into(), key: "item.one".into(), text: "Item One".into(), text_hash: "h1".into(), language: "en_us".into(), format: "json".into(), source_file: "assets/testmod/lang/en_us.json".into() },
-                LanguageEntry { mod_id: "testmod".into(), key: "item.two".into(), text: "Item Two %s".into(), text_hash: "h2".into(), language: "en_us".into(), format: "json".into(), source_file: "assets/testmod/lang/en_us.json".into() },
-                LanguageEntry { mod_id: "testmod".into(), key: "item.three".into(), text: "Item Three".into(), text_hash: "h3".into(), language: "en_us".into(), format: "json".into(), source_file: "assets/testmod/lang/en_us.json".into() },
+                LanguageEntry {
+                    mod_id: "testmod".into(),
+                    key: "item.one".into(),
+                    text: "Item One".into(),
+                    text_hash: "h1".into(),
+                    language: "en_us".into(),
+                    format: "json".into(),
+                    source_file: "assets/testmod/lang/en_us.json".into(),
+                },
+                LanguageEntry {
+                    mod_id: "testmod".into(),
+                    key: "item.two".into(),
+                    text: "Item Two %s".into(),
+                    text_hash: "h2".into(),
+                    language: "en_us".into(),
+                    format: "json".into(),
+                    source_file: "assets/testmod/lang/en_us.json".into(),
+                },
+                LanguageEntry {
+                    mod_id: "testmod".into(),
+                    key: "item.three".into(),
+                    text: "Item Three".into(),
+                    text_hash: "h3".into(),
+                    language: "en_us".into(),
+                    format: "json".into(),
+                    source_file: "assets/testmod/lang/en_us.json".into(),
+                },
             ],
             warnings: vec![],
         }],
         resource_packs: vec![],
-        source_language: "en_us".into(), target_language: "zh_cn".into(),
-        total_language_files: 1, total_source_entries: 3, total_target_entries: 0,
-        total_pending_entries: 3, resource_pack_covered_entries: 0, actual_pending_entries: 3,
-        dictionary_cache_hits: 0, dictionary_cache_total: 0,
-        warnings: vec![], cancelled: false,
+        source_language: "en_us".into(),
+        target_language: "zh_cn".into(),
+        total_language_files: 1,
+        total_source_entries: 3,
+        total_target_entries: 0,
+        total_pending_entries: 3,
+        resource_pack_covered_entries: 0,
+        actual_pending_entries: 3,
+        dictionary_cache_hits: 0,
+        dictionary_cache_total: 0,
+        warnings: vec![],
+        cancelled: false,
     }
 }
 
@@ -68,38 +102,50 @@ fn extract_pending_skips_translated_mods() {
 #[test]
 fn shield_validates_placeholder_presence() {
     let pending = vec![jobs::PendingEntry {
-        key: "item.two".into(), source_text: "Item Two %s".into(), mod_id: "testmod".into(), mod_name: "testmod.jar".into(),
+        key: "item.two".into(),
+        source_text: "Item Two %s".into(),
+        mod_id: "testmod".into(),
+        mod_name: "testmod.jar".into(),
     }];
     let results = vec![jobs::TranslationResult {
-        key: "item.two".into(), source_text: "Item Two %s".into(), target_text: "物品二".into(),
-        mod_id: "testmod".into(), mod_name: "testmod.jar".into(), source_type: "llm".into(),
+        key: "item.two".into(),
+        source_text: "Item Two %s".into(),
+        target_text: "物品二".into(),
+        mod_id: "testmod".into(),
+        mod_name: "testmod.jar".into(),
+        source_type: "llm".into(),
     }];
     let report = shield::validate_translation_results(&pending, &results);
     assert_eq!(report.failed, 1);
-    assert!(report.placeholder_issues.iter().any(|i| i.issue_type == "placeholder_missing"));
-}
-
-#[test]
-fn pack_generation_filters_failed_entries() {
-    let results = vec![
-        jobs::TranslationResult { key: "good.1".into(), source_text: "Hello".into(), target_text: "你好".into(), mod_id: "testmod".into(), mod_name: "testmod.jar".into(), source_type: "llm".into() },
-        jobs::TranslationResult { key: "bad.1".into(), source_text: "%s items".into(), target_text: "个物品".into(), mod_id: "testmod".into(), mod_name: "testmod.jar".into(), source_type: "failed".into() },
-        jobs::TranslationResult { key: "dict.1".into(), source_text: "World".into(), target_text: "世界".into(), mod_id: "testmod".into(), mod_name: "testmod.jar".into(), source_type: "dictionary".into() },
-    ];
-    let valid: Vec<_> = results.into_iter().filter(|r| r.source_type != "failed").collect();
-    assert_eq!(valid.len(), 2);
-    assert!(valid.iter().all(|r| r.source_type != "failed"));
+    assert!(report
+        .placeholder_issues
+        .iter()
+        .any(|i| i.issue_type == "placeholder_missing"));
 }
 
 #[test]
 fn validate_detects_missing_results() {
     let pending = vec![
-        jobs::PendingEntry { key: "item.one".into(), source_text: "Item One".into(), mod_id: "testmod".into(), mod_name: "testmod.jar".into() },
-        jobs::PendingEntry { key: "item.two".into(), source_text: "Item Two".into(), mod_id: "testmod".into(), mod_name: "testmod.jar".into() },
+        jobs::PendingEntry {
+            key: "item.one".into(),
+            source_text: "Item One".into(),
+            mod_id: "testmod".into(),
+            mod_name: "testmod.jar".into(),
+        },
+        jobs::PendingEntry {
+            key: "item.two".into(),
+            source_text: "Item Two".into(),
+            mod_id: "testmod".into(),
+            mod_name: "testmod.jar".into(),
+        },
     ];
     let results = vec![jobs::TranslationResult {
-        key: "item.one".into(), source_text: "Item One".into(), target_text: "物品一".into(),
-        mod_id: "testmod".into(), mod_name: "testmod.jar".into(), source_type: "llm".into(),
+        key: "item.one".into(),
+        source_text: "Item One".into(),
+        target_text: "物品一".into(),
+        mod_id: "testmod".into(),
+        mod_name: "testmod.jar".into(),
+        source_type: "llm".into(),
     }];
     let report = shield::validate_translation_results(&pending, &results);
     assert_eq!(report.total_entries, 2);
@@ -109,7 +155,11 @@ fn validate_detects_missing_results() {
 
 #[test]
 fn shield_roundtrip_preserves_placeholders() {
-    for text in &["按住 %s 打开 §l界面", "欢迎 {player}！你有 %d 条消息", "普通文本"] {
+    for text in &[
+        "按住 %s 打开 §l界面",
+        "欢迎 {player}！你有 %d 条消息",
+        "普通文本",
+    ] {
         let sr = shield::protect(text);
         let restored = shield::restore(&sr.protected, &sr.tokens);
         assert_eq!(&restored, text);
@@ -121,14 +171,19 @@ fn job_state_persistence_works() {
     let temp = tempfile::tempdir().expect("tempdir");
     let root = temp.path();
     let job_state = jobs::TranslationJobState {
-        job_id: "test-job-123".into(), scan_job_id: "scan-123".into(),
+        job_id: "test-job-123".into(),
+        scan_job_id: "scan-123".into(),
         status: jobs::TranslationStatus::Completed,
-        source_language: "en_us".into(), target_language: "zh_cn".into(),
-        entries: vec![], completed_entries: 3, failed_entries: 0,
+        source_language: "en_us".into(),
+        target_language: "zh_cn".into(),
+        entries: vec![],
+        completed_entries: 3,
+        failed_entries: 0,
         token_usage: TokenUsage::default(),
         created_at: "2026-01-01T00:00:00Z".into(),
         completed_at: Some("2026-01-01T01:00:00Z".into()),
-        reviewed: None, reviewed_at: None,
+        reviewed: None,
+        reviewed_at: None,
     };
     let manager = jobs::JobManager::new(root.to_path_buf());
     assert!(manager.save(&job_state).is_ok());
@@ -155,7 +210,8 @@ fn run_fake_llm_pipeline(port: u16, root: &std::path::Path) -> Result<PipelineRe
     scan.mods[0].jar_path = format!("{instance_path_display}/mods/testmod-1.0.jar");
 
     // Copy a fixture jar so scanner finds real entries to process
-    let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/fixtures/modpacks/basic_pack/mods");
+    let fixture_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../tests/fixtures/modpacks/basic_pack/mods");
     if let Ok(entries) = std::fs::read_dir(&fixture_dir) {
         for entry in entries.flatten() {
             if entry.path().extension().and_then(|e| e.to_str()) == Some("jar") {
@@ -165,7 +221,9 @@ fn run_fake_llm_pipeline(port: u16, root: &std::path::Path) -> Result<PipelineRe
         }
     }
     let scan_path = aaalice_mc_translator_lib::core::paths::job_state_path(root, &scan.job_id);
-    if let Some(parent) = scan_path.parent() { std::fs::create_dir_all(parent).ok(); }
+    if let Some(parent) = scan_path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
     std::fs::write(&scan_path, serde_json::to_string_pretty(&scan).unwrap()).ok();
 
     let config = PipelineConfig {
@@ -191,8 +249,13 @@ fn run_fake_llm_pipeline(port: u16, root: &std::path::Path) -> Result<PipelineRe
         }),
     };
 
-    let job_id = format!("e2e_job_{}", std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos());
+    let job_id = format!(
+        "e2e_job_{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    );
     let cancel = pipeline::CancelToken::new();
     cancel.register_task(&job_id);
 
@@ -210,16 +273,25 @@ fn fake_llm_pipeline_runs_and_creates_output() {
     let root = temp.path();
 
     let server = common::FakeLlmServer::start(common::FakeLlmConfig {
-        port: 21560, delay_ms: 5, ..Default::default()
+        port: 21560,
+        delay_ms: 5,
+        ..Default::default()
     });
     server.wait_ready(21560);
 
     let result = run_fake_llm_pipeline(21560, root);
-    assert!(result.is_ok(), "Pipeline should return Ok (got: {:?})", result.err());
+    assert!(
+        result.is_ok(),
+        "Pipeline should return Ok (got: {:?})",
+        result.err()
+    );
 
     let pipeline_result = result.unwrap();
     // Pipeline completed — results file should exist
-    let results_path = aaalice_mc_translator_lib::core::paths::translate_job_results_path(root, &pipeline_result.job_id);
+    let results_path = aaalice_mc_translator_lib::core::paths::translate_job_results_path(
+        root,
+        &pipeline_result.job_id,
+    );
     assert!(results_path.exists(), "Results JSONL should exist");
 }
 
@@ -230,7 +302,9 @@ fn fake_llm_pipeline_cancel_returns_partial() {
     let root = temp.path();
 
     let server = common::FakeLlmServer::start(common::FakeLlmConfig {
-        port: 21561, delay_ms: 200, ..Default::default()
+        port: 21561,
+        delay_ms: 200,
+        ..Default::default()
     });
     server.wait_ready(21561);
 
@@ -248,19 +322,30 @@ fn fake_llm_pipeline_cancel_returns_partial() {
     scan.validation.resourcepacks_path = format!("{instance_path_display}/resourcepacks");
     scan.mods[0].jar_path = format!("{instance_path_display}/mods/testmod-1.0.jar");
     let scan_path = aaalice_mc_translator_lib::core::paths::job_state_path(root, &scan_job_id);
-    if let Some(parent) = scan_path.parent() { std::fs::create_dir_all(parent).ok(); }
+    if let Some(parent) = scan_path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
     std::fs::write(&scan_path, serde_json::to_string_pretty(&scan).unwrap()).ok();
 
     let config = PipelineConfig {
         root: root.to_path_buf(),
         instance_path: instance_path_str,
-        source_language: "en_us".into(), target_language: "zh_cn".into(),
-        scan_job_id: Some(scan_job_id), resource_pack_names: vec![],
+        source_language: "en_us".into(),
+        target_language: "zh_cn".into(),
+        scan_job_id: Some(scan_job_id),
+        resource_pack_names: vec![],
         llm: Some(LlmConfig {
-            base_url: "http://127.0.0.1:21561".into(), api_key: "fake-key".into(),
-            model: "fake-model".into(), temperature: 0.0, max_tokens: 100,
-            concurrency: 2, batch_size: 10, timeout_secs: 10, retry_count: 1,
-            rate_limit_rpm: 9999, prefer_user_dict: false,
+            base_url: "http://127.0.0.1:21561".into(),
+            api_key: "fake-key".into(),
+            model: "fake-model".into(),
+            temperature: 0.0,
+            max_tokens: 100,
+            concurrency: 2,
+            batch_size: 10,
+            timeout_secs: 10,
+            retry_count: 1,
+            rate_limit_rpm: 9999,
+            prefer_user_dict: false,
             system_prompt: "Test".into(),
         }),
     };

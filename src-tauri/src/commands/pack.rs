@@ -7,8 +7,12 @@ pub fn copy_pack_to_instance(
     instance_path: String,
     overwrite: bool,
 ) -> Result<packer::CopyResult, String> {
-    info!("copy_pack_to_instance: pack={}, instance={}, overwrite={}", pack_zip_path, instance_path, overwrite);
-    packer::copy_to_resourcepacks(&pack_zip_path, &instance_path, overwrite).map_err(|e| e.to_string())
+    info!(
+        "copy_pack_to_instance: pack={}, instance={}, overwrite={}",
+        pack_zip_path, instance_path, overwrite
+    );
+    packer::copy_to_resourcepacks(&pack_zip_path, &instance_path, overwrite)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -18,26 +22,29 @@ pub async fn generate_pack_from_job(
     dry_run: bool,
     output_dir: Option<String>,
 ) -> Result<packer::PackResult, String> {
-    info!("generate_pack_from_job: job_id={}, target_language={}, dry_run={}, output_dir={:?}", job_id, target_language, dry_run, output_dir);
+    info!(
+        "generate_pack_from_job: job_id={}, target_language={}, dry_run={}, output_dir={:?}",
+        job_id, target_language, dry_run, output_dir
+    );
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let root = paths::runtime_root().map_err(|e| e.to_string())?;
         let manager = crate::core::jobs::JobManager::new(root.clone());
 
-        manager
-            .load(&job_id)?
-            .ok_or_else(|| format!("翻译任务 {job_id} 未找到"))?;
+        let job = manager.refresh_counts_from_results(&job_id)?;
+        if job.failed_entries > 0 {
+            return Err(format!(
+                "翻译任务 {job_id} 仍有 {} 条失败或缺失条目，无法生成资源包",
+                job.failed_entries
+            ));
+        }
+        let scan_summary = manager
+            .load_scan_summary(&job.scan_job_id)
+            .map_err(|e| format!("读取翻译任务关联扫描结果失败: {e}"))?;
 
         let results = manager.load_results(&job_id)?;
 
-        let total_results = results.len();
-        let valid_results: Vec<_> = results.into_iter().filter(|r| r.source_type != "failed").collect();
-        let filtered_count = total_results - valid_results.len();
-        if filtered_count > 0 {
-            info!("过滤 {} 个失败条目 (任务 {})", filtered_count, job_id);
-        }
-
-        let entries: Vec<packer::PackEntry> = valid_results
+        let entries: Vec<packer::PackEntry> = results
             .into_iter()
             .map(|r| packer::PackEntry {
                 mod_id: r.mod_id,
@@ -58,19 +65,17 @@ pub async fn generate_pack_from_job(
 
         // 从 settings 读取 outputPackName，替换占位符
         let root_path = root.clone();
-        let build_name = {
-            let s = settings::load_settings(&root_path).map_err(|e| format!("加载设置失败: {e}"))?;
-            let has_placeholder = settings::has_mc_version_placeholder(&s.output_pack_name);
-            let base = match settings::detect_mc_version(&s.instance_path) {
-                Ok(ver) => settings::replace_version_placeholder(&s.output_pack_name, &ver),
-                Err(e) if has_placeholder => {
-                    return Err(format!(
-                        "MC 版本检测失败，且 outputPackName 中包含 {{mc_version}} 占位符: {e}"
-                    ));
-                }
-                Err(_) => s.output_pack_name.clone(),
-            };
-            base
+        let (build_name, pack_format) = {
+            let s =
+                settings::load_settings(&root_path).map_err(|e| format!("加载设置失败: {e}"))?;
+            let instance_path = scan_summary.instance_path.as_str();
+            match settings::detect_mc_version(instance_path) {
+                Ok(ver) => (
+                    settings::replace_version_placeholder(&s.output_pack_name, &ver),
+                    packer::pack_format_for_mc_version(&ver),
+                ),
+                Err(e) => return Err(format!("MC 版本检测失败，无法确定资源包 pack_format: {e}")),
+            }
         };
 
         let options = packer::PackOptions {
@@ -79,7 +84,7 @@ pub async fn generate_pack_from_job(
             build_name,
             dry_run,
             output_dir: output_dir.to_string_lossy().to_string(),
-            pack_format: 15,
+            pack_format,
             icon_path: None,
         };
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Copy, Pause, Play, Trash2 } from "lucide-react";
+import { Copy, FileText, Pause, Play, Trash2 } from "lucide-react";
 import { PageHeader } from "../components/PageHeader";
 import { readLogs } from "../api/tauri";
 import { t } from "../i18n/translations";
@@ -173,6 +173,12 @@ export function LogsPage({ language }: Props) {
           ref={containerRef}
           onScroll={handleScroll}
         >
+          {filteredEntries.length === 0 && (
+            <div className="log-empty-state">
+              <FileText size={22} />
+              <span>{t(language, "logs.empty")}</span>
+            </div>
+          )}
           <div style={{ height: totalHeight, position: "relative" }}>
             <div style={{ position: "absolute", top: 0, left: 0, right: 0, transform: `translateY(${offsetY}px)` }}>
               {visibleEntries.map((entry) => (

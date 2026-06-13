@@ -135,6 +135,10 @@ See [docs/00-index.md](docs/00-index.md) for the full documentation index.
 - [MineAI-Modpack-Translator](https://github.com/Thedrezik/MineAI-Modpack-Translator)
 - [mc-autotranslator](https://gitee.com/li27744/mc-autotranslator)
 
+## Acknowledgements
+
+- The bundled i18n mod dictionary comes from [CFPATools/i18n-dict](https://github.com/CFPATools/i18n-dict). Original releases are available at [i18n-dict releases](https://github.com/CFPATools/i18n-dict/releases).
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).

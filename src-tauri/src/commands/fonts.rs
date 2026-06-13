@@ -8,7 +8,9 @@ use font_kit::source::SystemSource;
 pub fn list_fonts() -> Result<Vec<String>, String> {
     info!("list_fonts");
     let source = SystemSource::new();
-    let families = source.all_families().map_err(|e| format!("获取系统字体失败: {e}"))?;
+    let families = source
+        .all_families()
+        .map_err(|e| format!("获取系统字体失败: {e}"))?;
 
     let mut names: Vec<String> = families
         .iter()
@@ -17,9 +19,16 @@ pub fn list_fonts() -> Result<Vec<String>, String> {
             !name.starts_with('.')
                 && !matches!(
                     name.as_str(),
-                    "Webdings" | "Wingdings" | "Wingdings 2" | "Wingdings 3" | "Symbol"
-                        | "Marlett" | "Segoe MDL2 Assets" | "Segoe Fluent Icons"
-                        | "Segoe UI Symbol" | "Segoe UI Emoji"
+                    "Webdings"
+                        | "Wingdings"
+                        | "Wingdings 2"
+                        | "Wingdings 3"
+                        | "Symbol"
+                        | "Marlett"
+                        | "Segoe MDL2 Assets"
+                        | "Segoe Fluent Icons"
+                        | "Segoe UI Symbol"
+                        | "Segoe UI Emoji"
                 )
         })
         .map(|f| f.to_string())

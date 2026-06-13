@@ -26,9 +26,7 @@ pub fn mark_job_reviewed(job_id: String) -> Result<(), String> {
     info!("mark_job_reviewed: job_id={}", job_id);
     let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let manager = jobs::JobManager::new(root.clone());
-    let mut job = manager
-        .load(&job_id)?
-        .ok_or_else(|| format!("翻译任务 {job_id} 未找到"))?;
+    let mut job = manager.refresh_counts_from_results(&job_id)?;
 
     if job.status != jobs::TranslationStatus::Completed
         && job.status != jobs::TranslationStatus::Reviewed
@@ -36,6 +34,12 @@ pub fn mark_job_reviewed(job_id: String) -> Result<(), String> {
         return Err(format!(
             "翻译任务 {job_id} 尚未完成（当前状态: {:?}），无法标记为已校对",
             job.status
+        ));
+    }
+    if job.failed_entries > 0 {
+        return Err(format!(
+            "翻译任务 {job_id} 仍有 {} 条失败或缺失条目，无法标记为已校对",
+            job.failed_entries
         ));
     }
 

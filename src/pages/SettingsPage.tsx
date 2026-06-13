@@ -19,6 +19,8 @@ import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   checkUpdate as updaterCheck,
+  checkLlmConnection,
+  checkI18nDictUpdate,
   downloadAndInstallUpdate,
   getAppVersion,
   openPath,
@@ -26,6 +28,7 @@ import {
   fetchLlmModels,
   getSystemFonts,
   saveSettings,
+  updateI18nDict,
 } from "../api/tauri";
 import { Toggle } from "../components/Toggle";
 import { Field } from "../components/Field";
@@ -37,7 +40,7 @@ import {
   t,
 } from "../i18n/translations";
 import type { TranslationKey } from "../i18n/translations";
-import type { AppLanguage, LlmModel, Settings } from "../types";
+import type { AppLanguage, I18nDictUpdateInfo, LlmModel, Settings } from "../types";
 import { toErrorMessage } from "../utils";
 
 interface Props {
@@ -45,7 +48,7 @@ interface Props {
   onSettingsChange: (settings: Settings) => void;
 }
 
-type SettingsTab = "language" | "appearance" | "api" | "performance" | "reuse" | "logs" | "advanced" | "about";
+type SettingsTab = "language" | "appearance" | "api" | "performance" | "reuse" | "logs" | "about";
 
 const tabs = [
   { key: "language", labelKey: "settings.tab.language", icon: Languages },
@@ -54,7 +57,6 @@ const tabs = [
   { key: "performance", labelKey: "settings.tab.performance", icon: Cpu },
   { key: "reuse", labelKey: "settings.tab.reuse", icon: Boxes },
   { key: "logs", labelKey: "settings.tab.logs", icon: FileText },
-  { key: "advanced", labelKey: "settings.tab.advanced", icon: Database },
   { key: "about", labelKey: "settings.tab.about", icon: Info },
 ] as const satisfies ReadonlyArray<{ key: SettingsTab; labelKey: TranslationKey; icon: LucideIcon }>;
 
@@ -90,6 +92,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [isTestingApi, setIsTestingApi] = useState(false);
   const [showCustomModel, setShowCustomModel] = useState(false);
   const [fonts, setFonts] = useState<string[]>([]);
   const [isLoadingFonts, setIsLoadingFonts] = useState(false);
@@ -101,6 +104,9 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
   const [updateInfo, setUpdateInfo] = useState<{ version: string; body?: string } | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [updateError, setUpdateError] = useState("");
+  const [i18nDictStatus, setI18nDictStatus] = useState<"idle" | "checking" | "available" | "uptodate" | "updating" | "updated" | "error">("idle");
+  const [i18nDictInfo, setI18nDictInfo] = useState<I18nDictUpdateInfo | null>(null);
+  const [i18nDictError, setI18nDictError] = useState("");
 
   useEffect(() => {
     getAppVersion().then(setAppVersion).catch(() => setAppVersion("?"));
@@ -230,6 +236,49 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
       setError(toErrorMessage(fetchError));
     } finally {
       setIsFetchingModels(false);
+    }
+  }
+
+  async function handleTestApi() {
+    setIsTestingApi(true);
+    setError("");
+    setMessage("");
+    try {
+      await checkLlmConnection(draft.baseUrl, draft.apiKey, draft.model);
+      setMessage(t(language, "settings.apiTestSuccess"));
+    } catch (testError) {
+      setError(toErrorMessage(testError));
+    } finally {
+      setIsTestingApi(false);
+    }
+  }
+
+  async function handleCheckI18nDict() {
+    setI18nDictStatus("checking");
+    setI18nDictError("");
+    try {
+      const info = await checkI18nDictUpdate();
+      setI18nDictInfo(info);
+      setI18nDictStatus(info.updateAvailable ? "available" : "uptodate");
+    } catch (err) {
+      setI18nDictError(toErrorMessage(err));
+      setI18nDictStatus("error");
+    }
+  }
+
+  async function handleUpdateI18nDict() {
+    setI18nDictStatus("updating");
+    setI18nDictError("");
+    setMessage("");
+    try {
+      const result = await updateI18nDict();
+      const info = await checkI18nDictUpdate();
+      setI18nDictInfo(info);
+      setI18nDictStatus("updated");
+      setMessage(t(language, "settings.i18nDictUpdated", { count: result.importedEntries }));
+    } catch (err) {
+      setI18nDictError(toErrorMessage(err));
+      setI18nDictStatus("error");
     }
   }
 
@@ -389,7 +438,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
               </div>
             )}
 
-            {activeTab === "api" && <ApiSettingsTab language={language} draft={draft} setDraft={setDraft} models={models} isFetchingModels={isFetchingModels} handleFetchModels={handleFetchModels} showCustomModel={showCustomModel} setShowCustomModel={setShowCustomModel} scheduleSave={scheduleSave} />}
+            {activeTab === "api" && <ApiSettingsTab language={language} draft={draft} setDraft={setDraft} models={models} isFetchingModels={isFetchingModels} isTestingApi={isTestingApi} handleFetchModels={handleFetchModels} handleTestApi={handleTestApi} showCustomModel={showCustomModel} setShowCustomModel={setShowCustomModel} scheduleSave={scheduleSave} />}
 
             {activeTab === "performance" && (
               <>
@@ -449,6 +498,18 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                       />
                       <small>{t(language, "settings.retryCountHint")}</small>
                     </label>
+                    <label className="field">
+                      <span>{t(language, "settings.autoRetryCount")}</span>
+                      <input
+                        type="number" min="0" max="20"
+                        value={draft.autoRetryCount}
+                        onChange={(e) => {
+                          setDraft(prev => ({ ...prev, autoRetryCount: Number(e.target.value) }));
+                          scheduleSave();
+                        }}
+                      />
+                      <small>{t(language, "settings.autoRetryCountHint")}</small>
+                    </label>
                     <label className="field" style={{ gridColumn: "1 / -1" }}>
                       <span>{t(language, "settings.rateLimitRpm")}</span>
                       <input
@@ -479,6 +540,46 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                         scheduleSave();
                       }}
                     />
+                    <div className="field">
+                      <span>{t(language, "settings.i18nDictTitle")}</span>
+                      <small>{t(language, "settings.i18nDictDescription")}</small>
+                    </div>
+                    {i18nDictInfo && (
+                      <div className="empty-state compact" style={{ alignItems: "flex-start" }}>
+                        <span>{t(language, "settings.i18nDictInstalled", { count: i18nDictInfo.installedEntries })}</span>
+                        <span>{t(language, "settings.i18nDictCurrent", { tag: i18nDictInfo.currentTag ?? "-" })}</span>
+                        <span>{t(language, "settings.i18nDictLatest", { tag: i18nDictInfo.latestTag })}</span>
+                      </div>
+                    )}
+                    <div className="inline-control update-actions">
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={i18nDictStatus === "checking" || i18nDictStatus === "updating"}
+                        onClick={handleCheckI18nDict}
+                      >
+                        <RefreshCcw size={16} />
+                        {i18nDictStatus === "checking" ? t(language, "settings.i18nDictChecking") : t(language, "settings.i18nDictCheck")}
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        disabled={i18nDictStatus === "checking" || i18nDictStatus === "updating"}
+                        onClick={handleUpdateI18nDict}
+                      >
+                        <Database size={16} />
+                        {i18nDictStatus === "updating" ? t(language, "settings.i18nDictUpdating") : t(language, "settings.i18nDictUpdate")}
+                      </button>
+                    </div>
+                    {i18nDictStatus === "available" && (
+                      <span>{t(language, "settings.i18nDictUpdateAvailable")}</span>
+                    )}
+                    {i18nDictStatus === "uptodate" && (
+                      <span>{t(language, "settings.i18nDictUpToDate")}</span>
+                    )}
+                    {i18nDictStatus === "error" && i18nDictError && (
+                      <div className="alert error">{i18nDictError}</div>
+                    )}
                   </div>
                 </div>
                 <div className="settings-card">
@@ -556,29 +657,6 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
               </div>
             )}
 
-            {activeTab === "advanced" && (
-              <>
-                <div className="settings-card">
-                  <h3 className="settings-card-header">{t(language, "settings.defaultInstance")}</h3>
-                  <div className="settings-card-body">
-                    <Field
-                      label={t(language, "settings.defaultInstance")}
-                      value={draft.instancePath}
-                      onChange={(value) => {
-                        setDraft(prev => ({ ...prev, instancePath: value }));
-                        scheduleSave();
-                      }}
-                    />
-                  </div>
-                </div>
-                <div className="settings-card">
-                  <div className="settings-card-body">
-                    <div className="empty-state compact">{t(language, "settings.futureAdvanced")}</div>
-                  </div>
-                </div>
-              </>
-            )}
-
             {activeTab === "about" && (
               <div className="settings-card">
                 <h3 className="settings-card-header">{t(language, "settings.aboutAndUpdate")}</h3>
@@ -589,8 +667,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                   </div>
 
                   <div className="inline-control update-actions">
-                    {updateStatus === "idle" && (
-                      <button className="ghost-button" onClick={async () => {
+                    <button className="ghost-button stable-action" disabled={updateStatus === "checking" || updateStatus === "downloading"} onClick={async () => {
                         setUpdateStatus("checking");
                         setUpdateError("");
                         try {
@@ -606,10 +683,10 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                           setUpdateStatus("error");
                         }
                       }} type="button">
-                        {t(language, "settings.checkUpdate")}
-                      </button>
-                    )}
-                    <button className="ghost-button" onClick={() => openPath(releaseNotesUrl).catch((err) => setUpdateError(toErrorMessage(err)))} type="button">
+                      <RefreshCcw size={16} className={updateStatus === "checking" ? "spinning" : undefined} />
+                      {updateStatus === "checking" ? t(language, "settings.checkingUpdate") : t(language, "settings.checkUpdate")}
+                    </button>
+                    <button className="ghost-button stable-action" onClick={() => openPath(releaseNotesUrl).catch((err) => setUpdateError(toErrorMessage(err)))} type="button">
                       <ExternalLink size={16} />
                       {t(language, "settings.viewReleaseNotes")}
                     </button>
@@ -636,7 +713,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                         }} type="button">
                           {t(language, "settings.installNow")}
                         </button>
-                        <button className="ghost-button" onClick={() => openPath(releaseNotesUrl).catch((err) => setUpdateError(toErrorMessage(err)))} type="button">
+                        <button className="ghost-button stable-action" onClick={() => openPath(releaseNotesUrl).catch((err) => setUpdateError(toErrorMessage(err)))} type="button">
                           <ExternalLink size={16} />
                           {t(language, "settings.viewReleaseNotes")}
                         </button>
@@ -667,6 +744,17 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                   {updateStatus === "error" && updateError && (
                     <div className="alert error" style={{ marginTop: 8 }}>{updateError}</div>
                   )}
+                  <div className="about-links">
+                    <p>{t(language, "settings.aboutIntro")}</p>
+                    <button className="text-button" type="button" onClick={() => openPath("https://github.com/Aaalice233/Aaalice_Minecraft_Translator").catch((err) => setUpdateError(toErrorMessage(err)))}>
+                      <ExternalLink size={14} />
+                      {t(language, "settings.projectHome")}
+                    </button>
+                    <button className="text-button" type="button" onClick={() => openPath("https://space.bilibili.com/169187367?spm_id_from=333.1007.0.0").catch((err) => setUpdateError(toErrorMessage(err)))}>
+                      <ExternalLink size={14} />
+                      {t(language, "settings.bilibiliHome")}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -796,7 +884,9 @@ interface ApiSettingsTabProps {
   setDraft: React.Dispatch<React.SetStateAction<Settings>>;
   models: LlmModel[];
   isFetchingModels: boolean;
+  isTestingApi: boolean;
   handleFetchModels: () => Promise<void>;
+  handleTestApi: () => Promise<void>;
   showCustomModel: boolean;
   setShowCustomModel: React.Dispatch<React.SetStateAction<boolean>>;
   scheduleSave: () => void;
@@ -807,7 +897,7 @@ const PROVIDER_ICONS: Record<string, React.ReactNode> = {
   openai: <Cloud size={16} />,
 };
 
-function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, handleFetchModels, showCustomModel, setShowCustomModel, scheduleSave }: ApiSettingsTabProps) {
+function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, isTestingApi, handleFetchModels, handleTestApi, showCustomModel, setShowCustomModel, scheduleSave }: ApiSettingsTabProps) {
   const PROVIDER_OPTIONS = [
     { value: "deepseek", label: "DeepSeek" },
     { value: "openai", label: t(language, "settings.providerOpenai") },
@@ -910,7 +1000,7 @@ function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, h
         <div className="settings-card-body">
           <label className="field">
             {t(language, "settings.modelLabel")}
-            <div className="inline-control">
+            <div className="inline-control api-model-control">
               {showCustomModel || models.length === 0 ? (
                 <input
                   value={draft.model}
@@ -952,6 +1042,16 @@ function ApiSettingsTab({ language, draft, setDraft, models, isFetchingModels, h
               >
                 <RefreshCcw size={17} />
                 {t(language, "settings.fetchModels")}
+              </button>
+              <button
+                className="ghost-button"
+                disabled={isTestingApi || !draft.baseUrl || !draft.apiKey || !draft.model}
+                onClick={handleTestApi}
+                type="button"
+                data-tooltip={t(language, "tooltip.testApi")}
+              >
+                <Check size={17} />
+                {isTestingApi ? t(language, "settings.testingApi") : t(language, "settings.testApi")}
               </button>
             </div>
             {!showCustomModel && models.length > 0 && (

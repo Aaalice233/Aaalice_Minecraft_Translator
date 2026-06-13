@@ -99,9 +99,16 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
         );
         if (idx === -1) return prev;
         const copy = prev.slice();
-        copy[idx] = { ...prev[idx], targetText: newText };
+        copy[idx] = { ...prev[idx], targetText: newText, sourceType: "reviewed" };
         return copy;
       });
+      if (entry.sourceType === "failed") {
+        setJob((prev) => prev ? {
+          ...prev,
+          completedEntries: prev.completedEntries + 1,
+          failedEntries: Math.max(0, prev.failedEntries - 1),
+        } : prev);
+      }
     } catch (err) {
       console.warn("auto-save failed:", err);
       throw err; // re-throw so TranslationEditPanel can show saveError
@@ -262,8 +269,11 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
     }
   }
 
-  // reviewed=true → 已校对; reviewed=null/undefined → 旧数据向后兼容视为已校对; reviewed=false → 未校对
-  const isReviewed = job?.reviewed === true || (job?.status === "reviewed") || (job?.reviewed == null && job?.status === "completed");
+  const hasBlockingFailures = (job?.failedEntries ?? 0) > 0;
+  // reviewed=true → 已校对; reviewed=null/undefined → 旧数据向后兼容视为已校对; 有失败条目时优先要求处理
+  const isReviewed = !hasBlockingFailures && (
+    job?.reviewed === true || (job?.status === "reviewed") || (job?.reviewed == null && job?.status === "completed")
+  );
 
   function renderContent() {
     if (loading) {
@@ -335,6 +345,11 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
         {error && (
           <div className="alert error" style={{ marginBottom: 12 }}>
             {error}
+          </div>
+        )}
+        {hasBlockingFailures && (
+          <div className="alert warning" style={{ marginBottom: 12 }}>
+            {t(language, "validate.failedEntriesWarning", { count: job?.failedEntries ?? 0 })}
           </div>
         )}
         {allEntries.length === 0 && (

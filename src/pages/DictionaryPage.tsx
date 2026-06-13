@@ -1,4 +1,4 @@
-import { Download, Upload } from "lucide-react";
+import { Download, Trash2, Upload } from "lucide-react";
 import { SearchInput } from "../components/SearchInput";
 import { DataTable } from "../components/DataTable";
 import { PageHeader } from "../components/PageHeader";
@@ -9,6 +9,7 @@ import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { type ColumnConfig } from "../components/SortableTableHeader";
 import { TranslationEditPanel, type EditPanelEntry } from "../components/TranslationEditPanel";
 import {
+  clearDictionary,
   deleteDictionaryEntry,
   getDictionaryStats,
   searchDictionary,
@@ -230,6 +231,24 @@ export function DictionaryPage({ language }: Props) {
     [language, fetchEntries],
   );
 
+  const handleClearDictionary = useCallback(async () => {
+    setError("");
+    setMessage("");
+    if (!window.confirm(t(language, "dictionary.clearConfirm"))) {
+      return;
+    }
+    try {
+      const removed = await clearDictionary();
+      setEntries([]);
+      setStats({ total: 0, modIds: [] });
+      setMessage(t(language, "dictionary.cleared", { count: removed }));
+      fetchEntriesSilent();
+      fetchStats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [language, fetchEntriesSilent, fetchStats]);
+
   // ── Client-side filter + sort ──
 
   const filteredEntries = useMemo(() => {
@@ -305,7 +324,7 @@ export function DictionaryPage({ language }: Props) {
         key: "sourceType",
         label: t(language, "dictionary.col.type"),
         filterType: "select",
-        filterOptions: ["manual", "resourcepack", "cfpa", "llm"].map((v) => ({
+        filterOptions: ["manual", "resourcepack", "reviewed", "llm"].map((v) => ({
           value: v,
           label: typeLabel(v, language),
         })),
@@ -347,6 +366,16 @@ export function DictionaryPage({ language }: Props) {
           : t(language, "dictionary.subtitleEmpty")}
         actions={
           <>
+            <button
+              className="ghost-button danger"
+              type="button"
+              disabled={!isTauriRuntime() || (stats?.total ?? 0) === 0}
+              onClick={handleClearDictionary}
+              data-tooltip={t(language, "dictionary.clearTooltip")}
+            >
+              <Trash2 size={17} />
+              {t(language, "dictionary.clear")}
+            </button>
             <button className="ghost-button" type="button" disabled={!isTauriRuntime()} data-tooltip={t(language, "tooltip.export")}>
               <Download size={17} />
               {t(language, "dictionary.export")}

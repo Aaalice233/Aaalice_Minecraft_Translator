@@ -107,15 +107,19 @@ pub fn run() {
             commands::pick_instance_folder,
             commands::open_path,
             commands::fetch_llm_models,
+            commands::check_llm_connection,
             commands::list_fonts,
             commands::read_logs,
             // P2: Dictionary
             commands::search_dictionary,
             commands::update_dictionary_entry,
             commands::delete_dictionary_entry,
+            commands::clear_dictionary,
             commands::export_dictionary,
             commands::import_dictionary,
             commands::get_dictionary_stats,
+            commands::check_i18n_dict_update,
+            commands::update_i18n_dict,
             // P4: Pack
             commands::copy_pack_to_instance,
             // Translation

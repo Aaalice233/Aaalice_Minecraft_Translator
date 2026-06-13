@@ -1,4 +1,4 @@
-import type { CopyResult, DictionaryEntry, DictionaryStats, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanDiffResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
+import type { CopyResult, DictionaryEntry, DictionaryStats, I18nDictUpdateInfo, I18nDictUpdateResult, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanDiffResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
 import packageJson from "../../package.json";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
@@ -7,17 +7,18 @@ const defaultSettings: Settings = {
   appLanguage: "zh_cn",
   sourceLanguage: "auto",
   targetLanguage: "zh_cn",
-  instancePath: "E:/PCL2/.minecraft/versions/Aaalice Craft",
+  instancePath: "",
   provider: "deepseek",
   baseUrl: "https://api.deepseek.com",
   apiKey: "",
   model: "deepseek-v4-flash",
   temperature: 1.0,
   maxTokens: 0,
-  concurrency: 6,
-  batchSize: 100,
-  timeoutSecs: 120,
-  retryCount: 3,
+  concurrency: 100,
+  batchSize: 80,
+  timeoutSecs: 180,
+  retryCount: 5,
+  autoRetryCount: 2,
   rateLimitRpm: 3000,
   preferUserDictionary: true,
   resetMainLogOnStart: true,
@@ -95,6 +96,13 @@ export async function cancelScan(): Promise<void> {
   return tauriInvoke<void>("cancel_scan");
 }
 
+export async function pickInstanceFolder(locale: string): Promise<string | null> {
+  if (!isTauriRuntime()) {
+    return null;
+  }
+  return tauriInvoke<string | null>("pick_instance_folder", { locale });
+}
+
 export async function fetchLlmModels(baseUrl: string, apiKey: string): Promise<LlmModelsResponse> {
   if (!isTauriRuntime()) {
     return {
@@ -103,6 +111,13 @@ export async function fetchLlmModels(baseUrl: string, apiKey: string): Promise<L
     };
   }
   return tauriInvoke<LlmModelsResponse>("fetch_llm_models", { baseUrl, apiKey });
+}
+
+export async function checkLlmConnection(baseUrl: string, apiKey: string, model: string): Promise<boolean> {
+  if (!isTauriRuntime()) {
+    return true;
+  }
+  return tauriInvoke<boolean>("check_llm_connection", { baseUrl, apiKey, model });
 }
 
 function loadBrowserSettings(): Settings {
@@ -150,6 +165,13 @@ export async function deleteDictionaryEntry(id: number): Promise<boolean> {
   return tauriInvoke<boolean>("delete_dictionary_entry", { id });
 }
 
+export async function clearDictionary(): Promise<number> {
+  if (!isTauriRuntime()) {
+    return 0;
+  }
+  return tauriInvoke<number>("clear_dictionary");
+}
+
 export async function exportDictionary(filePath: string): Promise<number> {
   if (!isTauriRuntime()) {
     return 0;
@@ -169,6 +191,28 @@ export async function getDictionaryStats(): Promise<DictionaryStats> {
     return { total: 0, modIds: [] };
   }
   return tauriInvoke<DictionaryStats>("get_dictionary_stats");
+}
+
+export async function checkI18nDictUpdate(): Promise<I18nDictUpdateInfo> {
+  if (!isTauriRuntime()) {
+    return {
+      currentTag: null,
+      latestTag: "browser-preview",
+      latestName: "browser-preview",
+      publishedAt: "",
+      assetName: "Dict-Sqlite.db",
+      installedEntries: 0,
+      updateAvailable: false,
+    };
+  }
+  return tauriInvoke<I18nDictUpdateInfo>("check_i18n_dict_update");
+}
+
+export async function updateI18nDict(): Promise<I18nDictUpdateResult> {
+  if (!isTauriRuntime()) {
+    throw new Error("Not available in browser preview mode");
+  }
+  return tauriInvoke<I18nDictUpdateResult>("update_i18n_dict");
 }
 
 // ── P4: Pack API ──────────────────────────────────────────────────
@@ -302,14 +346,6 @@ export async function copyPackToInstance(
   return tauriInvoke<CopyResult>("copy_pack_to_instance", {
     packZipPath, instancePath, overwrite,
   });
-}
-
-/** Copy a file from src to dest (used by "保存本地" feature). */
-export async function copyFile(src: string, dest: string): Promise<void> {
-  if (!isTauriRuntime()) {
-    throw new Error("Not available in browser preview mode");
-  }
-  return tauriInvoke<void>("copy_file", { src, dest });
 }
 
 export async function generatePackFromJob(

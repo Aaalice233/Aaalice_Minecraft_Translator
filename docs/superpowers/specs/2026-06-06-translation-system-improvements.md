@@ -67,7 +67,7 @@ pub system_prompt: String,  // 默认值见下方
 | `settings.batchSize` | 每批条目数（已有，增强描述） |
 | `settings.batchSizeHint` | 每批最多包含的条目数，默认 80。较大 batch 可提高 Token 利用率，但单次响应时间更长。小白用户建议保持默认值。 |
 | `settings.batchMaxCharsHint` | 每批的最大字符数，默认 120000。超过此值时会强制拆分。适用于 API 有上下文窗口限制的情况。 |
-| `settings.concurrencyHint` | 同时发送的 API 请求数量，默认 10。程序会自动根据 API 限流情况动态调整，遇 429 会自动降级，无需手动操心。 |
+| `settings.concurrencyHint` | 同时发送的 API 请求数量，默认 100。程序会自动根据 API 限流情况动态调整，遇 429 会自动降级，无需手动操心。 |
 | `settings.timeoutSecsHint` | 单次 API 请求的超时时间，默认 180 秒。翻译大批量时可适当增加。 |
 | `settings.retryCountHint` | API 请求失败时的重试次数，默认 5 次。程序会自动处理限流的重试等待。 |
 | `settings.retryDelaySecsHint` | 首次重试前的等待秒数，默认 2 秒。后续重试的等待时间会翻倍（2s → 4s → 8s）。 |

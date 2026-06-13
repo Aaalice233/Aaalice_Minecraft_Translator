@@ -15,11 +15,10 @@ use rayon::prelude::*;
 use zip::ZipArchive;
 
 use crate::core::{
-    dictionary,
-    logging,
+    dictionary, logging,
     models::{
-        InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanPhase, ScanProgress,
-        ScanSummary, ScanWarning, StageStatus,
+        InstanceValidation, LanguageEntry, ModScanResult, ResourcePackScanResult, ScanPhase,
+        ScanProgress, ScanSummary, ScanWarning, StageStatus,
     },
     paths::display_path,
 };
@@ -80,11 +79,17 @@ pub fn scan_instance(
     let job_id = logging::new_job_id("scan");
     let validation = validate_instance(path.clone())?;
     logging::append_main(format!("扫描任务创建成功，任务 ID: {job_id}"))?;
-    logging::append_job(&job_id, format!("开始扫描实例: {}", validation.instance_path))?;
+    logging::append_job(
+        &job_id,
+        format!("开始扫描实例: {}", validation.instance_path),
+    )?;
 
     if !validation.is_valid {
         logging::append_error(&job_id, "实例缺少 mods/，扫描失败")?;
-        return Err(io::Error::new(io::ErrorKind::NotFound, "实例缺少 mods/，无法扫描"));
+        return Err(io::Error::new(
+            io::ErrorKind::NotFound,
+            "实例缺少 mods/，无法扫描",
+        ));
     }
 
     let instance_path = PathBuf::from(&path);
@@ -129,14 +134,18 @@ pub fn scan_instance(
         .iter()
         .filter(|m| !m.has_target_language)
         .map(|m| {
-            let target_keys: HashSet<&str> = m.entries
+            let target_keys: HashSet<&str> = m
+                .entries
                 .iter()
                 .filter(|e| e.language == m.target_language)
                 .map(|e| e.key.as_str())
                 .collect();
             m.entries
                 .iter()
-                .filter(|e| e.language == m.resolved_source_language && !target_keys.contains(e.key.as_str()))
+                .filter(|e| {
+                    e.language == m.resolved_source_language
+                        && !target_keys.contains(e.key.as_str())
+                })
                 .count()
         })
         .sum();
@@ -155,15 +164,15 @@ pub fn scan_instance(
             .flat_map(|m| {
                 let src_lang = m.resolved_source_language.as_str();
                 m.entries.iter().filter(move |e| {
-                    e.language == src_lang
-                        && rp_keys.contains(&(e.mod_id.as_str(), e.key.as_str()))
+                    e.language == src_lang && rp_keys.contains(&(e.mod_id.as_str(), e.key.as_str()))
                 })
             })
             .count()
     };
     // Actual pending entries: exclude both built-in target language translations
     // AND resource-pack-covered entries (they don't need LLM translation).
-    let actual_pending_entries = total_pending_entries.saturating_sub(resource_pack_covered_entries);
+    let actual_pending_entries =
+        total_pending_entries.saturating_sub(resource_pack_covered_entries);
 
     let mut warnings = validation.warnings.clone();
     warnings.extend(mods.iter().flat_map(|m| m.warnings.clone()));
@@ -243,12 +252,17 @@ pub fn scan_instance(
 
         // Per-mod breakdown with per-mod progress emission
         for (i, mod_result) in mods.iter().enumerate() {
-            let pending = mod_result.source_entries.saturating_sub(mod_result.target_entries);
+            let pending = mod_result
+                .source_entries
+                .saturating_sub(mod_result.target_entries);
             logging::append_job(
                 &job_id,
                 format!(
                     "[模组] {}: 来源条目={} 目标条目={} 待翻译={}",
-                    mod_result.file_name, mod_result.source_entries, mod_result.target_entries, pending
+                    mod_result.file_name,
+                    mod_result.source_entries,
+                    mod_result.target_entries,
+                    pending
                 ),
             )?;
 
@@ -284,16 +298,14 @@ pub fn scan_instance(
             stage_status: StageStatus::Completed,
         });
 
-        logging::append_main(
-            format!(
-                "扫描完成：{} 模组, {} 语言文件, {} 来源条目, {} 目标条目, {} 待翻译",
-                mods.len(),
-                total_language_files,
-                total_source_entries,
-                total_target_entries,
-                actual_pending_entries
-            ),
-        )?;
+        logging::append_main(format!(
+            "扫描完成：{} 模组, {} 语言文件, {} 来源条目, {} 目标条目, {} 待翻译",
+            mods.len(),
+            total_language_files,
+            total_source_entries,
+            total_target_entries,
+            actual_pending_entries
+        ))?;
     }
 
     // Log cancellation to main log if mid-flight cancel happened
@@ -337,9 +349,7 @@ pub fn scan_mods(
 
     let entries: Vec<_> = fs::read_dir(mods_path)?
         .filter_map(|entry| entry.ok())
-        .filter(|entry| {
-            entry.path().extension().and_then(|value| value.to_str()) == Some("jar")
-        })
+        .filter(|entry| entry.path().extension().and_then(|value| value.to_str()) == Some("jar"))
         .collect();
     let total = entries.len();
 
@@ -398,10 +408,7 @@ pub fn scan_mods(
     Ok(results)
 }
 
-fn count_dictionary_cache_hits(
-    mods: &[ModScanResult],
-    target_language: &str,
-) -> (usize, usize) {
+fn count_dictionary_cache_hits(mods: &[ModScanResult], target_language: &str) -> (usize, usize) {
     let root = match crate::core::paths::runtime_root() {
         Ok(root) => root,
         Err(err) => {
@@ -417,7 +424,8 @@ fn count_dictionary_cache_hits(
             return (0, 0);
         }
     };
-    let target_hashes = match dictionary::load_source_hashes_for_target(&dict_conn, target_language) {
+    let target_hashes = match dictionary::load_source_hashes_for_target(&dict_conn, target_language)
+    {
         Ok(hashes) => hashes,
         Err(err) => {
             tracing::warn!("词典缓存命中检测失败: {err}");
@@ -429,7 +437,11 @@ fn count_dictionary_cache_hits(
     let mut hits = 0usize;
     for mod_result in mods.iter().filter(|m| !m.has_target_language) {
         let src_lang = &mod_result.resolved_source_language;
-        for entry in mod_result.entries.iter().filter(|e| e.language == *src_lang) {
+        for entry in mod_result
+            .entries
+            .iter()
+            .filter(|e| e.language == *src_lang)
+        {
             total += 1;
             let source_hash = dictionary::hash_text(&entry.text);
             if target_hashes.contains(&source_hash) {
@@ -482,8 +494,7 @@ pub fn scan_resourcepacks(
             let path = entry.path();
             let name = file_name(&path);
             is_known_pack(&name)
-                && (path.is_dir()
-                    || path.extension().and_then(|v| v.to_str()) == Some("zip"))
+                && (path.is_dir() || path.extension().and_then(|v| v.to_str()) == Some("zip"))
         })
         .collect();
     known_packs.sort_by(|a, b| file_name(&a.path()).cmp(&file_name(&b.path())));
@@ -519,7 +530,12 @@ pub fn scan_resourcepacks(
     Ok(results)
 }
 
-fn scan_mod_jar(path: &Path, file_name: &str, source_language: &str, target_language: &str) -> ModScanResult {
+fn scan_mod_jar(
+    path: &Path,
+    file_name: &str,
+    source_language: &str,
+    target_language: &str,
+) -> ModScanResult {
     let file_name = file_name.to_string();
     let mut warnings = Vec::new();
     let mut entries = Vec::new();
@@ -577,7 +593,11 @@ fn scan_mod_jar(path: &Path, file_name: &str, source_language: &str, target_lang
                 }
                 let content = String::from_utf8_lossy(&bytes);
 
-                let format = if name.ends_with(".json") { "json" } else { "lang" };
+                let format = if name.ends_with(".json") {
+                    "json"
+                } else {
+                    "lang"
+                };
                 formats.insert(format.to_string());
                 language_files.insert(name.clone());
                 let parsed = parse_language_entries(&name, &content, format, path, &mut warnings);
@@ -605,7 +625,8 @@ fn scan_mod_jar(path: &Path, file_name: &str, source_language: &str, target_lang
         .map(|entry| entry.mod_id.clone())
         .or_else(|| infer_mod_id_from_file_name(&file_name))
         .unwrap_or_else(|| "unknown".to_string());
-    let resolved_source_language = resolve_source_language(&entries, source_language, target_language);
+    let resolved_source_language =
+        resolve_source_language(&entries, source_language, target_language);
     // 当检测到的源语言与目标语言相同时，该模组可能已被汉化或只有目标语言文件
     if resolved_source_language == target_language {
         warnings.push(warning(
@@ -705,19 +726,27 @@ fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScan
     match ZipArchive::new(file) {
         Ok(mut archive) => {
             // Check pack.mcmeta from in-memory (zero IO)
-            if archive.file_names().any(|n| n == "pack.mcmeta" || n.ends_with("/pack.mcmeta")) {
+            if archive
+                .file_names()
+                .any(|n| n == "pack.mcmeta" || n.ends_with("/pack.mcmeta"))
+            {
                 has_pack_meta = true;
             }
             // Zero-IO filter
             let lang_indices: Vec<usize> = {
-                archive.file_names()
+                archive
+                    .file_names()
                     .enumerate()
-                    .filter(|(_, name)| is_target_lang_file(&name.replace('\\', "/"), target_language))
+                    .filter(|(_, name)| {
+                        is_target_lang_file(&name.replace('\\', "/"), target_language)
+                    })
                     .map(|(i, _)| i)
                     .collect()
             };
             for index in lang_indices {
-                let Ok(mut file) = archive.by_index(index) else { continue; };
+                let Ok(mut file) = archive.by_index(index) else {
+                    continue;
+                };
                 let mut bytes = Vec::new();
                 if file.read_to_end(&mut bytes).is_ok() {
                     let content = String::from_utf8_lossy(&bytes);
@@ -840,7 +869,8 @@ fn parse_json_entries(
             ParseOutcome::Strict(entries)
         }
         Err(err) => {
-            let lenient_entries = parse_lenient_json_lang_entries(mod_id, language, source_file, content);
+            let lenient_entries =
+                parse_lenient_json_lang_entries(mod_id, language, source_file, content);
             if !lenient_entries.is_empty() {
                 return ParseOutcome::Recovered(lenient_entries);
             }
@@ -918,9 +948,7 @@ fn skip_ws_and_comments(chars: &[char], index: &mut usize) {
 
         if chars.get(*index) == Some(&'/') && chars.get(*index + 1) == Some(&'*') {
             *index += 2;
-            while *index + 1 < chars.len()
-                && !(chars[*index] == '*' && chars[*index + 1] == '/')
-            {
+            while *index + 1 < chars.len() && !(chars[*index] == '*' && chars[*index + 1] == '/') {
                 *index += 1;
             }
             *index = (*index + 2).min(chars.len());
@@ -1058,7 +1086,11 @@ fn parse_resourcepack_lang_file(
     content: &str,
     warnings: &mut Vec<ScanWarning>,
 ) -> Vec<LanguageEntry> {
-    let format = if name.ends_with(".json") { "json" } else { "lang" };
+    let format = if name.ends_with(".json") {
+        "json"
+    } else {
+        "lang"
+    };
     match parse_language_entries(name, content, format, Path::new(name), warnings) {
         ParseOutcome::Strict(e) | ParseOutcome::Recovered(e) => e,
         ParseOutcome::Failed => Vec::new(),
@@ -1119,7 +1151,9 @@ fn is_locale_code(value: &str) -> bool {
     (2..=3).contains(&language.len())
         && (2..=8).contains(&region.len())
         && language.chars().all(|ch| ch.is_ascii_lowercase())
-        && region.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
+        && region
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit())
 }
 
 fn resolve_source_language(
@@ -1162,8 +1196,11 @@ fn infer_pack_source_type(path: &Path) -> String {
     // or "...-i18n-..." / "...-i18nupdates-..."
     if name.contains("i18n") || name.contains("mod-language") {
         "i18n".to_string()
-    } else if name.contains("vmtranslation") || name.contains("vm翻译") || name.contains("vm_汉化")
-        || name.contains("汉化包") || name == "vm_汉化包"
+    } else if name.contains("vmtranslation")
+        || name.contains("vm翻译")
+        || name.contains("vm_汉化")
+        || name.contains("汉化包")
+        || name == "vm_汉化包"
     {
         "vm".to_string()
     } else {
@@ -1189,12 +1226,18 @@ fn infer_mod_id_from_file_name(file_name: &str) -> Option<String> {
         }
         // Skip known forge/fabric/neoforge loader prefixes
         let lower = segment.to_ascii_lowercase();
-        if matches!(lower.as_str(), "forge" | "fabric" | "neoforge" | "universal") {
+        if matches!(
+            lower.as_str(),
+            "forge" | "fabric" | "neoforge" | "universal"
+        ) {
             continue;
         }
         mod_id_parts.push(segment);
     }
-    let mod_id = mod_id_parts.join("-").trim_matches('-').to_ascii_lowercase();
+    let mod_id = mod_id_parts
+        .join("-")
+        .trim_matches('-')
+        .to_ascii_lowercase();
     (!mod_id.is_empty()).then_some(mod_id)
 }
 
@@ -1236,15 +1279,31 @@ mod tests {
     fn validates_instance_with_only_mods_required() {
         let validation = validate_instance(display_path(fixtures_root())).unwrap();
         assert!(validation.is_valid);
-        assert!(validation.warnings.iter().all(|item| item.code != "missing_mods"));
+        assert!(validation
+            .warnings
+            .iter()
+            .all(|item| item.code != "missing_mods"));
     }
 
     #[test]
     fn scans_mod_jars_and_detects_existing_zh_cn() {
         let cancel = AtomicBool::new(false);
-        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &|| cancel.load(Ordering::SeqCst), &|_| {}).unwrap();
-        let example = mods.iter().find(|item| item.mod_id == "examplemod").unwrap();
-        let placeholder = mods.iter().find(|item| item.mod_id == "placeholdermod").unwrap();
+        let mods = scan_mods(
+            &fixtures_root().join("mods"),
+            "auto",
+            "zh_cn",
+            &|| cancel.load(Ordering::SeqCst),
+            &|_| {},
+        )
+        .unwrap();
+        let example = mods
+            .iter()
+            .find(|item| item.mod_id == "examplemod")
+            .unwrap();
+        let placeholder = mods
+            .iter()
+            .find(|item| item.mod_id == "placeholdermod")
+            .unwrap();
 
         assert_eq!(example.resolved_source_language, "en_us");
         assert_eq!(example.source_entries, 5);
@@ -1256,10 +1315,7 @@ mod tests {
 
     #[test]
     fn scans_resource_pack_sources() {
-        let names: Vec<String> = vec![
-            "i18n-example.zip".to_string(),
-            "VM_汉化包".to_string(),
-        ];
+        let names: Vec<String> = vec!["i18n-example.zip".to_string(), "VM_汉化包".to_string()];
         let packs = scan_resourcepacks(
             &fixtures_root().join("resourcepacks"),
             "zh_cn",
@@ -1267,7 +1323,10 @@ mod tests {
             &|_| {},
         )
         .unwrap();
-        let i18n = packs.iter().find(|item| item.source_type == "i18n").unwrap();
+        let i18n = packs
+            .iter()
+            .find(|item| item.source_type == "i18n")
+            .unwrap();
         let vm = packs.iter().find(|item| item.source_type == "vm").unwrap();
 
         assert!(i18n.is_archive);
@@ -1276,8 +1335,14 @@ mod tests {
         assert_eq!(i18n.entries.len(), 2);
         // Entries may be in any order (ZipArchive enumeration order); check by key
         let find_i18n_entry = |key: &str| i18n.entries.iter().find(|e| e.key == key).unwrap();
-        assert_eq!(find_i18n_entry("item.examplemod.energy_cell").text, "能量单元");
-        assert_eq!(find_i18n_entry("message.examplemod.open").text, "按住 %s 打开 %s 界面");
+        assert_eq!(
+            find_i18n_entry("item.examplemod.energy_cell").text,
+            "能量单元"
+        );
+        assert_eq!(
+            find_i18n_entry("message.examplemod.open").text,
+            "按住 %s 打开 %s 界面"
+        );
         assert!(i18n.entries.iter().all(|e| e.language == "zh_cn"));
 
         assert!(!vm.is_archive);
@@ -1291,10 +1356,7 @@ mod tests {
 
     #[test]
     fn target_language_changes_resource_pack_matching() {
-        let names: Vec<String> = vec![
-            "i18n-example.zip".to_string(),
-            "VM_汉化包".to_string(),
-        ];
+        let names: Vec<String> = vec!["i18n-example.zip".to_string(), "VM_汉化包".to_string()];
         let packs = scan_resourcepacks(
             &fixtures_root().join("resourcepacks"),
             "ja_jp",
@@ -1317,8 +1379,12 @@ Second line",
           "mod.example.next": "Next value"
         }"#;
 
-        let entries =
-            parse_lenient_json_lang_entries("example", "en_us", "assets/example/lang/en_us.json", content);
+        let entries = parse_lenient_json_lang_entries(
+            "example",
+            "en_us",
+            "assets/example/lang/en_us.json",
+            content,
+        );
 
         assert_eq!(entries.len(), 4);
         assert_eq!(entries[1].text, "First line\n\nSecond line");
@@ -1330,12 +1396,19 @@ Second line",
     fn progress_callback_is_called_for_each_jar() {
         let calls = AtomicUsize::new(0);
         let cancel = AtomicBool::new(false);
-        let mods = scan_mods(&fixtures_root().join("mods"), "auto", "zh_cn", &|| cancel.load(Ordering::SeqCst), &|p: ScanProgress| {
-            calls.fetch_add(1, Ordering::SeqCst);
-            assert!(p.current >= 1);
-            assert_eq!(p.total, 2);
-            assert!(p.phase == ScanPhase::Scan);
-        }).unwrap();
+        let mods = scan_mods(
+            &fixtures_root().join("mods"),
+            "auto",
+            "zh_cn",
+            &|| cancel.load(Ordering::SeqCst),
+            &|p: ScanProgress| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                assert!(p.current >= 1);
+                assert_eq!(p.total, 2);
+                assert!(p.phase == ScanPhase::Scan);
+            },
+        )
+        .unwrap();
         assert_eq!(calls.load(Ordering::SeqCst), mods.len());
         assert!(mods.len() > 0);
     }

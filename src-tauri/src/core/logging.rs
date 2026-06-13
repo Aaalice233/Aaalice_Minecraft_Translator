@@ -1,9 +1,11 @@
 use std::{
     fmt::Write as _,
-    fs,
-    io,
+    fs, io,
     path::Path,
-    sync::{atomic::{AtomicBool, Ordering}, Once, OnceLock},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Once, OnceLock,
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -87,14 +89,12 @@ pub fn init(root: &Path) -> io::Result<()> {
 
         let level = if debug_mode { "debug" } else { "info" };
 
-        let subscriber = Registry::default()
-            .with(EnvFilter::new(level))
-            .with(
-                fmt::Layer::new()
-                    .event_format(LogFormatter)
-                    .with_writer(non_blocking)
-                    .with_ansi(false),
-            );
+        let subscriber = Registry::default().with(EnvFilter::new(level)).with(
+            fmt::Layer::new()
+                .event_format(LogFormatter)
+                .with_writer(non_blocking)
+                .with_ansi(false),
+        );
 
         let _ = tracing::subscriber::set_global_default(subscriber);
         let _ = _LOG_GUARD.set(guard);
@@ -116,9 +116,18 @@ fn load_log_prefs(root: &Path) -> (bool, bool, bool) {
         Ok(v) => v,
         Err(_) => return (false, true, false),
     };
-    let debug = v.get("enableDebugLog").and_then(|v| v.as_bool()).unwrap_or(false);
-    let reset = v.get("resetMainLogOnStart").and_then(|v| v.as_bool()).unwrap_or(true);
-    let http = v.get("enableHttpLog").and_then(|v| v.as_bool()).unwrap_or(false);
+    let debug = v
+        .get("enableDebugLog")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let reset = v
+        .get("resetMainLogOnStart")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let http = v
+        .get("enableHttpLog")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
     (debug, reset, http)
 }
 

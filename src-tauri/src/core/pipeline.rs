@@ -1,15 +1,20 @@
 // Scan → Extract → Dictionary → LLM → Finalize pipeline.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc;
 use std::sync::Mutex;
 use std::time::Duration;
 
-use crate::core::models::*;
-use crate::core::{dictionary, jobs, logging, paths, scanner, shield};
 use crate::core::llm::{LlmClient, TranslateResult, TranslationEntry};
+use crate::core::models::*;
+use crate::core::{
+    dictionary::{self, CfpaMatch},
+    jobs, logging, paths, scanner, shield,
+};
 use tracing::debug;
+
+const LLM_REFERENCE_MATCHES_PER_ENTRY: usize = 3;
 
 // ── Cancel mechanism ──────────────────────────────────────────
 
@@ -180,7 +185,10 @@ fn chunk_entries(
     entries: &[(LanguageEntry, String)],
     batch_size: usize,
 ) -> Vec<Vec<(LanguageEntry, String)>> {
-    entries.chunks(batch_size.max(1)).map(|c| c.to_vec()).collect()
+    entries
+        .chunks(batch_size.max(1))
+        .map(|c| c.to_vec())
+        .collect()
 }
 
 // ── Dictionary phase result ─────────────────────────────────
@@ -247,8 +255,15 @@ fn dictionary_phase(
     let log_tx = ctx.log_tx;
     let entry_progress_tx = ctx.entry_progress_tx;
 
-    debug!("dictionary_phase: processing {} pending entries", pending.len());
-    let prefer_user_dict = config.llm.as_ref().map(|c| c.prefer_user_dict).unwrap_or(false);
+    debug!(
+        "dictionary_phase: processing {} pending entries",
+        pending.len()
+    );
+    let prefer_user_dict = config
+        .llm
+        .as_ref()
+        .map(|c| c.prefer_user_dict)
+        .unwrap_or(false);
     let dict_db_path = paths::dictionary_db_path(&config.root);
     let dict_conn = dictionary::open(&dict_db_path).map_err(|e| format!("打开词典失败: {e}"))?;
 
@@ -286,33 +301,58 @@ fn dictionary_phase(
 
         if let Some(target_text) = existing_target {
             push_dict_entry(
-                &entry.key, &entry.text, &target_text,
-                &entry.mod_id, file_name, "existing", EntryStatus::Completed,
-                &mut batch_results, &mut log_buf, &mut entry_progress_buf,
+                &entry.key,
+                &entry.text,
+                &target_text,
+                &entry.mod_id,
+                file_name,
+                "existing",
+                EntryStatus::Completed,
+                &mut batch_results,
+                &mut log_buf,
+                &mut entry_progress_buf,
             );
         } else if shield::is_placeholder_only(&entry.text) {
             push_dict_entry(
-                &entry.key, &entry.text, &entry.text,
-                &entry.mod_id, file_name, "skipped", EntryStatus::Skip,
-                &mut batch_results, &mut log_buf, &mut entry_progress_buf,
+                &entry.key,
+                &entry.text,
+                &entry.text,
+                &entry.mod_id,
+                file_name,
+                "skipped",
+                EntryStatus::Skip,
+                &mut batch_results,
+                &mut log_buf,
+                &mut entry_progress_buf,
             );
         } else {
             let source_hash = dictionary::hash_text(&entry.text);
             // O(1) memory lookup — no SQLite query
-            let results = mem_dict.read().unwrap_or_else(|e| e.into_inner())
+            let results = mem_dict
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
                 .search_by_hash(&source_hash, &config.target_language);
 
             let dict_match = if prefer_user_dict {
-                results.iter().find(|d| d.source_type == "manual")
+                results
+                    .iter()
+                    .find(|d| d.source_type == "manual")
                     .or_else(|| results.iter().find(|d| d.source_type != "manual"))
             } else {
                 results.iter().find(|d| d.source_text == entry.text)
             };
             if let Some(de) = dict_match {
                 push_dict_entry(
-                    &entry.key, &entry.text, &de.target_text,
-                    &entry.mod_id, file_name, "dictionary", EntryStatus::DictionaryHit,
-                    &mut batch_results, &mut log_buf, &mut entry_progress_buf,
+                    &entry.key,
+                    &entry.text,
+                    &de.target_text,
+                    &entry.mod_id,
+                    file_name,
+                    "dictionary",
+                    EntryStatus::DictionaryHit,
+                    &mut batch_results,
+                    &mut log_buf,
+                    &mut entry_progress_buf,
                 );
             } else {
                 llm_only_entries.push((entry.clone(), file_name.clone()));
@@ -326,9 +366,11 @@ fn dictionary_phase(
 
         if processed % 64 == 0 {
             let _ = progress_tx.send(PipelineProgress {
-                current: processed, total,
+                current: processed,
+                total,
                 phase: PipelinePhase::Dictionary,
-                mod_name: String::new(), sub_step: None,
+                mod_name: String::new(),
+                sub_step: None,
                 stage_status: StageStatus::Running,
             });
         }
@@ -337,11 +379,17 @@ fn dictionary_phase(
     flush_dict_batch(&mut entry_progress_buf, &mut log_buf);
 
     let non_llm_count = processed - llm_only_entries.len();
-    debug!("dictionary_phase: processed={}, non_llm={}, llm_only={}", processed, non_llm_count, llm_only_entries.len());
+    debug!(
+        "dictionary_phase: processed={}, non_llm={}, llm_only={}",
+        processed,
+        non_llm_count,
+        llm_only_entries.len()
+    );
     logging::append_main(format!(
         "词典匹配完成: 共 {processed} 条目, 非 LLM {non_llm_count}, 待 LLM 翻译 {}",
         llm_only_entries.len()
-    )).ok();
+    ))
+    .ok();
 
     for (entry, file_name) in &llm_only_entries {
         let _ = entry_progress_tx.send(EntryProgress {
@@ -362,19 +410,31 @@ fn dictionary_phase(
     }
 
     let _ = progress_tx.send(PipelineProgress {
-        current: processed, total,
+        current: processed,
+        total,
         phase: PipelinePhase::Dictionary,
-        mod_name: String::new(), sub_step: None,
+        mod_name: String::new(),
+        sub_step: None,
         stage_status: StageStatus::Completed,
     });
 
     if !batch_results.is_empty() {
         let _ = jobs::batch_append_results(&config.root, job_id, &batch_results);
         // Sync checkpoint so crash recovery finds these entries
-        save_job_progress(&config.root, job_id, non_llm_count, 0, jobs::TranslationStatus::Running);
+        save_job_progress(
+            &config.root,
+            job_id,
+            non_llm_count,
+            0,
+            jobs::TranslationStatus::Running,
+        );
     }
 
-    Ok(DictionaryPhaseResult { processed, non_llm_count, llm_only_entries })
+    Ok(DictionaryPhaseResult {
+        processed,
+        non_llm_count,
+        llm_only_entries,
+    })
 }
 
 // ── Phase trait ──────────────────────────────────────────────────
@@ -444,7 +504,9 @@ impl PipelineBuilder {
     }
 
     pub fn build(self) -> Pipeline {
-        Pipeline { phases: self.phases }
+        Pipeline {
+            phases: self.phases,
+        }
     }
 }
 
@@ -479,8 +541,14 @@ fn llm_phase(
         });
     }
 
-    debug!("llm_phase START: {} entries into LLM phase", llm_only_entries.len());
-    let llm_cfg = config.llm.as_ref().ok_or_else(|| "LLM 未配置，但有待翻译条目需要 LLM 翻译".to_string())?;
+    debug!(
+        "llm_phase START: {} entries into LLM phase",
+        llm_only_entries.len()
+    );
+    let llm_cfg = config
+        .llm
+        .as_ref()
+        .ok_or_else(|| "LLM 未配置，但有待翻译条目需要 LLM 翻译".to_string())?;
     let effective_batch_size = llm_cfg.batch_size.max(1);
 
     // Check for existing checkpointed results — if the program crashed mid-translation
@@ -497,19 +565,22 @@ fn llm_phase(
         llm_only_entries.len(),
         total_llm_batches,
         llm_cfg.model,
-    )).ok();
+    ))
+    .ok();
 
     // ── 元数据索引（按位置对应，避免 HashMap 键碰撞） ────────
     let mut key_meta: Vec<Vec<(&str, &str, &str)>> = Vec::with_capacity(batches.len());
     for batch in &batches {
-        let meta: Vec<(&str, &str, &str)> = batch.iter()
+        let meta: Vec<(&str, &str, &str)> = batch
+            .iter()
             .map(|(e, f)| (e.key.as_str(), e.mod_id.as_str(), f.as_str()))
             .collect();
         key_meta.push(meta);
     }
 
     let _ = progress_tx.send(PipelineProgress {
-        current: 0, total: total_llm_batches,
+        current: 0,
+        total: total_llm_batches,
         phase: PipelinePhase::Translating,
         mod_name: String::new(),
         sub_step: Some(format!("0/{total_llm_batches} 批次")),
@@ -535,10 +606,14 @@ fn llm_phase(
             s.spawn(|| {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     active_workers.fetch_add(1, Ordering::Relaxed);
-                    debug!("WORKER: started (worker #{})", active_workers.load(Ordering::Relaxed));
+                    debug!(
+                        "WORKER: started (worker #{})",
+                        active_workers.load(Ordering::Relaxed)
+                    );
                     let mut worker_429_count = 0usize;
                     let batch_capacity = RESULTS_FLUSH_INTERVAL * effective_batch_size;
-                    let mut result_buf: Vec<jobs::TranslationResult> = Vec::with_capacity(batch_capacity);
+                    let mut result_buf: Vec<jobs::TranslationResult> =
+                        Vec::with_capacity(batch_capacity);
                     let mut buf_count = 0usize;
 
                     loop {
@@ -558,10 +633,12 @@ fn llm_phase(
                         let batch = &batches[bi];
                         let meta = &key_meta[bi];
 
-                        let (batch_shield_map, entries) = prepare_llm_batch(batch, &config.target_language, memory_dict);
+                        let (batch_shield_map, entries) =
+                            prepare_llm_batch(batch, &config.target_language, memory_dict);
 
                         for (i, te) in entries.iter().enumerate() {
-                            let original_text = batch_shield_map.get(te.key.as_str())
+                            let original_text = batch_shield_map
+                                .get(te.key.as_str())
                                 .map(|(orig, _)| orig.clone())
                                 .unwrap_or_else(|| te.text.clone());
                             let _ = entry_progress_tx.send(EntryProgress {
@@ -576,7 +653,8 @@ fn llm_phase(
 
                         let on_complete = |results: &[TranslateResult]| {
                             for (i, r) in results.iter().enumerate() {
-                                let (restored_source, restored_target, valid) = shield_restore_result(r, &batch_shield_map);
+                                let (restored_source, restored_target, valid) =
+                                    shield_restore_result(r, &batch_shield_map);
                                 let target_text = if !r.success {
                                     r.translated_text.clone()
                                 } else if valid {
@@ -585,10 +663,18 @@ fn llm_phase(
                                     restored_target.clone()
                                 };
                                 let ok = r.success && valid;
-                                let status = if ok { EntryStatus::Completed } else { EntryStatus::Failed };
-                                let error_message = if !r.success { r.error.clone() }
-                                    else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
-                                    else { None };
+                                let status = if ok {
+                                    EntryStatus::Completed
+                                } else {
+                                    EntryStatus::Failed
+                                };
+                                let error_message = if !r.success {
+                                    r.error.clone()
+                                } else if !valid {
+                                    Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string())
+                                } else {
+                                    None
+                                };
                                 let entry_mod_name = meta.get(i).map(|&(_, _, f)| f).unwrap_or("");
                                 let _ = entry_progress_tx.send(EntryProgress {
                                     key: r.key.clone(),
@@ -601,13 +687,24 @@ fn llm_phase(
                             }
                         };
 
-                        debug!("WORKER: calling translate_batch for batch {}, {} entries", bi, entries.len());
-                        let (results, token_usage) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
+                        debug!(
+                            "WORKER: calling translate_batch for batch {}, {} entries",
+                            bi,
+                            entries.len()
+                        );
+                        let (results, token_usage) = client.translate_batch(
+                            &entries,
+                            Some(&on_complete),
+                            Some(&|| cancel.is_cancelled(job_id)),
+                        );
                         debug!("WORKER: translate_batch returned {} results", results.len());
                         let token = token_usage.unwrap_or_default();
 
                         let all_rate_limited = results.iter().all(|r| {
-                            !r.success && r.error.as_deref().map_or(false, |e| e.starts_with("RATE_LIMITED"))
+                            !r.success
+                                && r.error
+                                    .as_deref()
+                                    .map_or(false, |e| e.starts_with("RATE_LIMITED"))
                         });
 
                         if all_rate_limited {
@@ -615,10 +712,14 @@ fn llm_phase(
                             // Extract Retry-After from the first rate-limited error message.
                             // Error format: "RATE_LIMITED:<seconds>", where <seconds> comes
                             // from the HTTP Retry-After response header when available.
-                            let wait_secs = results.iter()
-                                .find_map(|r| r.error.as_deref()
-                                    .and_then(|e| e.strip_prefix("RATE_LIMITED:"))
-                                    .and_then(|v| v.parse::<u64>().ok()))
+                            let wait_secs = results
+                                .iter()
+                                .find_map(|r| {
+                                    r.error
+                                        .as_deref()
+                                        .and_then(|e| e.strip_prefix("RATE_LIMITED:"))
+                                        .and_then(|v| v.parse::<u64>().ok())
+                                })
                                 .unwrap_or_else(|| match worker_429_count {
                                     1 => 30u64,
                                     2 => 60,
@@ -626,35 +727,65 @@ fn llm_phase(
                                 });
                             std::thread::sleep(Duration::from_secs(wait_secs));
 
-                            let (retry_results, retry_token) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
+                            let (retry_results, retry_token) = client.translate_batch(
+                                &entries,
+                                Some(&on_complete),
+                                Some(&|| cancel.is_cancelled(job_id)),
+                            );
                             if let Some(t) = retry_token {
-                                let mut tm = token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
+                                let mut tm =
+                                    token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
                                 tm.prompt_tokens += t.prompt_tokens;
                                 tm.completion_tokens += t.completion_tokens;
                                 tm.total_tokens += t.total_tokens;
                             }
-                            let retry_results: Vec<jobs::TranslationResult> = retry_results.into_iter()
-                                .enumerate().map(|(i, r)|
-                                    map_translate_result(r, &meta, i, &batch_shield_map, &global_llm_count, &global_failed_count)
-                                ).collect();
+                            let retry_results: Vec<jobs::TranslationResult> = retry_results
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, r)| {
+                                    map_translate_result(
+                                        r,
+                                        &meta,
+                                        i,
+                                        &batch_shield_map,
+                                        &global_llm_count,
+                                        &global_failed_count,
+                                    )
+                                })
+                                .collect();
 
                             result_buf.extend(retry_results);
                         } else {
                             worker_429_count = 0;
                             {
-                                let mut tm = token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
+                                let mut tm =
+                                    token_usage_mutex.lock().unwrap_or_else(|e| e.into_inner());
                                 tm.prompt_tokens += token.prompt_tokens;
                                 tm.completion_tokens += token.completion_tokens;
                                 tm.total_tokens += token.total_tokens;
                             }
                             for (i, r) in results.into_iter().enumerate() {
-                                result_buf.push(map_translate_result(r, &meta, i, &batch_shield_map, &global_llm_count, &global_failed_count));
+                                result_buf.push(map_translate_result(
+                                    r,
+                                    &meta,
+                                    i,
+                                    &batch_shield_map,
+                                    &global_llm_count,
+                                    &global_failed_count,
+                                ));
                             }
                         }
 
                         buf_count += 1;
                         if buf_count % RESULTS_FLUSH_INTERVAL == 0 {
-                            flush_llm_results(&mut result_buf, &write_lock, &config.root, job_id, &global_llm_count, &global_failed_count);
+                            flush_llm_results(
+                                &mut result_buf,
+                                &write_lock,
+                                &config.root,
+                                job_id,
+                                &global_llm_count,
+                                &global_failed_count,
+                            );
                         }
 
                         let cb = completed_batches.fetch_add(1, Ordering::Relaxed) + 1;
@@ -667,15 +798,29 @@ fn llm_phase(
                             stage_status: StageStatus::Running,
                         });
 
-                        if !all_rate_limited && llm_cfg.rate_limit_rpm > 0 && initial_concurrency > 0 {
-                            let per_worker_delay = (60000.0 * initial_concurrency as f64 / llm_cfg.rate_limit_rpm as f64) as u64;
+                        if !all_rate_limited
+                            && llm_cfg.rate_limit_rpm > 0
+                            && initial_concurrency > 0
+                        {
+                            let per_worker_delay = (60000.0 * initial_concurrency as f64
+                                / llm_cfg.rate_limit_rpm as f64)
+                                as u64;
                             if per_worker_delay > 0 {
-                                std::thread::sleep(Duration::from_millis(per_worker_delay.min(60000)));
+                                std::thread::sleep(Duration::from_millis(
+                                    per_worker_delay.min(60000),
+                                ));
                             }
                         }
                     }
 
-                    flush_llm_results(&mut result_buf, &write_lock, &config.root, job_id, &global_llm_count, &global_failed_count);
+                    flush_llm_results(
+                        &mut result_buf,
+                        &write_lock,
+                        &config.root,
+                        job_id,
+                        &global_llm_count,
+                        &global_failed_count,
+                    );
                 }));
 
                 if let Err(panic_err) = result {
@@ -717,10 +862,14 @@ fn llm_phase(
 
     let llm_count = global_llm_count.load(Ordering::SeqCst);
     let failed_count = global_failed_count.load(Ordering::SeqCst);
-    debug!("llm_phase: llm_count={}, failed_count={}", llm_count, failed_count);
+    debug!(
+        "llm_phase: llm_count={}, failed_count={}",
+        llm_count, failed_count
+    );
     logging::append_main(format!(
         "LLM 翻译阶段完成: 成功 {llm_count} 条目, 失败 {failed_count} 条目",
-    )).ok();
+    ))
+    .ok();
 
     // Flush final Completed events for all LLM results to ensure no entry
     // is left stuck in Translating/Pending state on the frontend.
@@ -740,7 +889,9 @@ fn llm_phase(
     }
 
     Ok(LlmPhaseResult {
-        accumulated_token_usage: token_usage_mutex.into_inner().unwrap_or_else(|e| e.into_inner()),
+        accumulated_token_usage: token_usage_mutex
+            .into_inner()
+            .unwrap_or_else(|e| e.into_inner()),
         llm_count,
         failed_count,
     })
@@ -751,11 +902,16 @@ fn llm_phase(
 struct ScanExtractPhase;
 
 impl Phase for ScanExtractPhase {
-    fn name(&self) -> &'static str { "scan+extract" }
+    fn name(&self) -> &'static str {
+        "scan+extract"
+    }
     fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
         let _ = ctx.progress_tx.send(PipelineProgress {
-            current: 0, total: 1, phase: PipelinePhase::Scanning,
-            mod_name: String::new(), sub_step: None,
+            current: 0,
+            total: 1,
+            phase: PipelinePhase::Scanning,
+            mod_name: String::new(),
+            sub_step: None,
             stage_status: StageStatus::Running,
         });
 
@@ -763,7 +919,9 @@ impl Phase for ScanExtractPhase {
 
         if scan_summary.cancelled || ctx.cancel.is_cancelled(ctx.job_id) {
             return Ok(PhaseOutcome::StopAndReturn(PipelineResult {
-                completed: 0, non_llm_count: 0, llm_count: 0,
+                completed: 0,
+                non_llm_count: 0,
+                llm_count: 0,
                 token_usage: TokenUsage::default(),
                 actual_source_language: ctx.config.source_language.clone(),
                 job_id: ctx.job_id.to_string(),
@@ -774,8 +932,11 @@ impl Phase for ScanExtractPhase {
         ctx.dict_db_path = Some(paths::dictionary_db_path(&ctx.config.root));
 
         let _ = ctx.progress_tx.send(PipelineProgress {
-            current: 0, total: 1, phase: PipelinePhase::Extracting,
-            mod_name: String::new(), sub_step: None,
+            current: 0,
+            total: 1,
+            phase: PipelinePhase::Extracting,
+            mod_name: String::new(),
+            sub_step: None,
             stage_status: StageStatus::Running,
         });
 
@@ -783,14 +944,19 @@ impl Phase for ScanExtractPhase {
         ctx.total = ctx.pending_entries.len().max(1);
 
         let _ = ctx.progress_tx.send(PipelineProgress {
-            current: 1, total: 1, phase: PipelinePhase::Extracting,
-            mod_name: String::new(), sub_step: None,
+            current: 1,
+            total: 1,
+            phase: PipelinePhase::Extracting,
+            mod_name: String::new(),
+            sub_step: None,
             stage_status: StageStatus::Completed,
         });
 
         if ctx.cancel.is_cancelled(ctx.job_id) {
             return Ok(PhaseOutcome::StopAndReturn(PipelineResult {
-                completed: 0, non_llm_count: 0, llm_count: 0,
+                completed: 0,
+                non_llm_count: 0,
+                llm_count: 0,
                 token_usage: TokenUsage::default(),
                 actual_source_language: scan_summary.source_language.clone(),
                 job_id: ctx.job_id.to_string(),
@@ -804,7 +970,9 @@ impl Phase for ScanExtractPhase {
 struct DictionaryPhase;
 
 impl Phase for DictionaryPhase {
-    fn name(&self) -> &'static str { "dictionary" }
+    fn name(&self) -> &'static str {
+        "dictionary"
+    }
     fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
         if ctx.pending_entries.is_empty() {
             ctx.non_llm_count = 0;
@@ -841,9 +1009,13 @@ impl Phase for DictionaryPhase {
 struct LlmPhase;
 
 impl Phase for LlmPhase {
-    fn name(&self) -> &'static str { "llm" }
+    fn name(&self) -> &'static str {
+        "llm"
+    }
     fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
-        let memory_dict = ctx.memory_dict.as_ref()
+        let memory_dict = ctx
+            .memory_dict
+            .as_ref()
             .ok_or_else(|| "LLM 阶段需要 MemoryDictionary，但未加载".to_string())?
             .clone();
         let llm_entries = std::mem::take(&mut ctx.llm_only_entries);
@@ -860,20 +1032,33 @@ impl Phase for LlmPhase {
 struct FinalizePhase;
 
 impl Phase for FinalizePhase {
-    fn name(&self) -> &'static str { "finalize" }
+    fn name(&self) -> &'static str {
+        "finalize"
+    }
     fn run(&self, ctx: &mut PipelineContext) -> Result<PhaseOutcome, String> {
         let total = ctx.total;
         let non_llm_count = ctx.non_llm_count;
         let llm_count = ctx.llm_count;
         let failed_count = ctx.failed_count;
         let completed = non_llm_count + llm_count;
-        debug!("FinalizePhase: non_llm={}, llm={}, completed={}", non_llm_count, llm_count, completed);
+        debug!(
+            "FinalizePhase: non_llm={}, llm={}, completed={}",
+            non_llm_count, llm_count, completed
+        );
 
         if ctx.cancel.is_cancelled(ctx.job_id) {
             let _ = logging::append_job(ctx.job_id, "翻译任务在完成前被取消");
-            save_job_progress(&ctx.config.root, ctx.job_id, completed, failed_count, jobs::TranslationStatus::Cancelled);
+            save_job_progress(
+                &ctx.config.root,
+                ctx.job_id,
+                completed,
+                failed_count,
+                jobs::TranslationStatus::Cancelled,
+            );
             return Ok(PhaseOutcome::StopAndReturn(PipelineResult {
-                completed, non_llm_count, llm_count,
+                completed,
+                non_llm_count,
+                llm_count,
                 token_usage: ctx.accumulated_token_usage.clone(),
                 actual_source_language: ctx.config.source_language.clone(),
                 job_id: ctx.job_id.to_string(),
@@ -881,24 +1066,30 @@ impl Phase for FinalizePhase {
         }
 
         if ctx.accumulated_token_usage.total_tokens > 0 {
-            let _ = logging::append_job(ctx.job_id, format!(
-                "LLM Token 使用: prompt={}, completion={}, total={}",
-                ctx.accumulated_token_usage.prompt_tokens,
-                ctx.accumulated_token_usage.completion_tokens,
-                ctx.accumulated_token_usage.total_tokens,
-            ));
+            let _ = logging::append_job(
+                ctx.job_id,
+                format!(
+                    "LLM Token 使用: prompt={}, completion={}, total={}",
+                    ctx.accumulated_token_usage.prompt_tokens,
+                    ctx.accumulated_token_usage.completion_tokens,
+                    ctx.accumulated_token_usage.total_tokens,
+                ),
+            );
         }
 
         let _ = ctx.progress_tx.send(PipelineProgress {
-            current: total, total,
+            current: total,
+            total,
             phase: PipelinePhase::Completed,
-            mod_name: String::new(), sub_step: None,
+            mod_name: String::new(),
+            sub_step: None,
             stage_status: StageStatus::Completed,
         });
 
-        let _ = logging::append_job(ctx.job_id, format!(
-            "翻译完成: {total}/{total} 条目 (非 LLM: {non_llm_count}, LLM: {llm_count})"
-        ));
+        let _ = logging::append_job(
+            ctx.job_id,
+            format!("翻译完成: {total}/{total} 条目 (非 LLM: {non_llm_count}, LLM: {llm_count})"),
+        );
 
         // ── 将 LLM/reviewed 结果写入词典（内存 + SQLite 同步） ──
         if let Some(mem_dict) = &ctx.memory_dict {
@@ -909,7 +1100,12 @@ impl Phase for FinalizePhase {
                     if let Ok(all_results) = job_loader.load_results(ctx.job_id) {
                         // Use MemoryDictionary.save_llm_results: batch transaction + memory sync
                         let mut dict = mem_dict.write().unwrap_or_else(|e| e.into_inner());
-                        match dict.save_llm_results(&dict_conn, &all_results, &ctx.config.target_language) {
+                        match dict.save_llm_results(
+                            &dict_conn,
+                            &all_results,
+                            &ctx.config.source_language,
+                            &ctx.config.target_language,
+                        ) {
                             Ok((inserted, updated)) => {
                                 if inserted + updated > 0 {
                                     let _ = logging::append_job(ctx.job_id, format!(
@@ -919,7 +1115,10 @@ impl Phase for FinalizePhase {
                                 let _ = logging::append_job(ctx.job_id, "词典写入完成".to_string());
                             }
                             Err(e) => {
-                                let _ = logging::append_job(ctx.job_id, format!("词典写入失败 (SQL 错误): {e}"));
+                                let _ = logging::append_job(
+                                    ctx.job_id,
+                                    format!("词典写入失败 (SQL 错误): {e}"),
+                                );
                             }
                         }
                     }
@@ -929,12 +1128,23 @@ impl Phase for FinalizePhase {
                 }
             }
         } else {
-            let _ = logging::append_job(ctx.job_id, "MemoryDictionary 未加载，跳过词典写入".to_string());
+            let _ = logging::append_job(
+                ctx.job_id,
+                "MemoryDictionary 未加载，跳过词典写入".to_string(),
+            );
         }
 
-        save_job_progress(&ctx.config.root, ctx.job_id, completed, failed_count, jobs::TranslationStatus::Completed);
+        save_job_progress(
+            &ctx.config.root,
+            ctx.job_id,
+            completed,
+            failed_count,
+            jobs::TranslationStatus::Completed,
+        );
         Ok(PhaseOutcome::StopAndReturn(PipelineResult {
-            completed, non_llm_count, llm_count,
+            completed,
+            non_llm_count,
+            llm_count,
             token_usage: ctx.accumulated_token_usage.clone(),
             actual_source_language: ctx.config.source_language.clone(),
             job_id: ctx.job_id.to_string(),
@@ -944,29 +1154,14 @@ impl Phase for FinalizePhase {
 
 // ── Main pipeline ─────────────────────────────────────────────
 
-/// Check if a previous translation run left checkpointed results for this job.
-/// Returns the set of already-translated keys so the pipeline can skip them.
-/// NOTE: 检查点恢复已禁用 (2026-06-09 deep-interview spec)，此函数不再被调用。
-/// 保留函数体是为了在将来可能需要此功能时复用，且不删除测试依赖引用。
-#[allow(dead_code)]
-fn load_completed_keys(root: &std::path::Path, job_id: &str) -> HashSet<String> {
-    let results_path = paths::translate_job_results_path(root, job_id);
-    if !results_path.exists() {
-        return HashSet::new();
-    }
-    let mut completed = HashSet::new();
-    if let Ok(content) = std::fs::read_to_string(&results_path) {
-        for line in content.lines() {
-            if let Ok(result) = serde_json::from_str::<jobs::TranslationResult>(line) {
-                completed.insert(result.key);
-            }
-        }
-    }
-    completed
-}
-
 /// Persist job progress counters to disk. Called in both completion and cancellation paths.
-fn save_job_progress(root: &std::path::Path, job_id: &str, completed: usize, failed: usize, status: jobs::TranslationStatus) {
+fn save_job_progress(
+    root: &std::path::Path,
+    job_id: &str,
+    completed: usize,
+    failed: usize,
+    status: jobs::TranslationStatus,
+) {
     let manager = jobs::JobManager::new(root.to_path_buf());
     match manager.load(job_id) {
         Ok(Some(mut job)) => {
@@ -981,7 +1176,10 @@ fn save_job_progress(root: &std::path::Path, job_id: &str, completed: usize, fai
             }
         }
         Ok(None) => {
-            let _ = logging::append_job(job_id, format!("保存进度时未找到 job 状态文件 (可能已清理)，跳过"));
+            let _ = logging::append_job(
+                job_id,
+                format!("保存进度时未找到 job 状态文件 (可能已清理)，跳过"),
+            );
         }
         Err(err) => {
             let _ = logging::append_job(job_id, format!("保存进度时加载 job 状态失败: {err}"));
@@ -1041,35 +1239,68 @@ fn prepare_llm_batch<'a>(
     HashMap<String, (String, shield::ShieldResult)>,
     Vec<TranslationEntry>,
 ) {
-    let mut batch_refs = Vec::new();
-    let mut seen_ref = HashSet::new();
-    {
-        let dict_guard = memory_dict.read().unwrap_or_else(|e| e.into_inner());
-        for (entry, _) in batch {
-            let matches = dict_guard.fuzzy_search(&entry.text, &entry.language, target_language, 5);
-            for m in &matches {
-                if seen_ref.insert(m.source_text.clone()) {
-                    batch_refs.push((m.source_text.clone(), m.target_text.clone()));
-                }
-            }
-        }
-    }
-
     let mut batch_shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
-    let entries: Vec<TranslationEntry> = batch.iter().map(|(entry, _)| {
-        let sr = shield::protect(&entry.text);
-        batch_shield_map.insert(entry.key.clone(), (entry.text.clone(), sr.clone()));
-        TranslationEntry {
-            key: entry.key.clone(),
-            text: sr.protected,
-            mod_id: entry.mod_id.clone(),
-            source_lang: entry.language.clone(),
-            target_lang: target_language.to_string(),
-            references: batch_refs.clone(),
-        }
-    }).collect();
+    let dict_guard = memory_dict.read().unwrap_or_else(|e| e.into_inner());
+    let entries: Vec<TranslationEntry> = batch
+        .iter()
+        .map(|(entry, file_name)| {
+            let sr = shield::protect(&entry.text);
+            batch_shield_map.insert(entry.key.clone(), (entry.text.clone(), sr.clone()));
+            let references = dict_guard
+                .reference_search(
+                    &entry.text,
+                    &entry.key,
+                    &entry.language,
+                    target_language,
+                    LLM_REFERENCE_MATCHES_PER_ENTRY,
+                )
+                .into_iter()
+                .map(reference_pair)
+                .collect();
+            TranslationEntry {
+                key: entry.key.clone(),
+                text: sr.protected,
+                mod_id: entry.mod_id.clone(),
+                mod_name: file_name.clone(),
+                source_lang: entry.language.clone(),
+                target_lang: target_language.to_string(),
+                references,
+            }
+        })
+        .collect();
 
     (batch_shield_map, entries)
+}
+
+fn reference_pair(match_item: CfpaMatch) -> (String, String) {
+    (match_item.source_text, match_item.target_text)
+}
+
+fn load_entry_references(
+    root: &std::path::Path,
+    key: &str,
+    source_text: &str,
+    source_language: &str,
+    target_language: &str,
+) -> Vec<(String, String)> {
+    let dict_db_path = paths::dictionary_db_path(root);
+    let Ok(dict_conn) = dictionary::open(&dict_db_path) else {
+        return Vec::new();
+    };
+    let Ok(mem_dict) = dictionary::MemoryDictionary::load(&dict_conn) else {
+        return Vec::new();
+    };
+    mem_dict
+        .reference_search(
+            source_text,
+            key,
+            source_language,
+            target_language,
+            LLM_REFERENCE_MATCHES_PER_ENTRY,
+        )
+        .into_iter()
+        .map(reference_pair)
+        .collect()
 }
 
 /// Shared: write-locked flush of result buffer + save job checkpoint.
@@ -1088,7 +1319,13 @@ fn flush_llm_results(
     let _ = jobs::batch_append_results(root, job_id, result_buf);
     let completed = global_llm_count.load(Ordering::Relaxed);
     let failed = global_failed_count.load(Ordering::Relaxed);
-    save_job_progress(root, job_id, completed, failed, jobs::TranslationStatus::Running);
+    save_job_progress(
+        root,
+        job_id,
+        completed,
+        failed,
+        jobs::TranslationStatus::Running,
+    );
     result_buf.clear();
 }
 
@@ -1099,8 +1336,12 @@ fn count_result(
     failed_counter: &std::sync::atomic::AtomicUsize,
 ) {
     match entry.source_type.as_str() {
-        "llm" => { llm_counter.fetch_add(1, Ordering::Relaxed); }
-        "failed" => { failed_counter.fetch_add(1, Ordering::Relaxed); }
+        "llm" => {
+            llm_counter.fetch_add(1, Ordering::Relaxed);
+        }
+        "failed" => {
+            failed_counter.fetch_add(1, Ordering::Relaxed);
+        }
         _ => {}
     }
 }
@@ -1112,7 +1353,11 @@ pub fn shield_restore_result(
     shield_map: &HashMap<String, (String, shield::ShieldResult)>,
 ) -> (String, String, bool) {
     let Some((_, sr)) = shield_map.get(&result.key) else {
-        return (result.original_text.clone(), result.translated_text.clone(), true);
+        return (
+            result.original_text.clone(),
+            result.translated_text.clone(),
+            true,
+        );
     };
     let restored_source = shield::restore(&result.original_text, &sr.tokens);
     let restored_target = shield::restore(&result.translated_text, &sr.tokens);
@@ -1164,13 +1409,12 @@ fn normalize_path_for_compare(path: &str) -> String {
         .canonicalize()
         .map(paths::display_path)
         .unwrap_or_else(|_| paths::display_path(path_buf));
-    display
-        .trim_end_matches('/')
-        .to_ascii_lowercase()
+    display.trim_end_matches('/').to_ascii_lowercase()
 }
 
 fn scan_summary_matches_config(summary: &ScanSummary, config: &PipelineConfig) -> bool {
-    normalize_path_for_compare(&summary.instance_path) == normalize_path_for_compare(&config.instance_path)
+    normalize_path_for_compare(&summary.instance_path)
+        == normalize_path_for_compare(&config.instance_path)
         && summary.source_language == config.source_language
         && summary.target_language == config.target_language
 }
@@ -1229,7 +1473,8 @@ fn resolve_scan(
                     stage_status: StageStatus::Failed,
                 });
                 return Err(
-                    "扫描结果缓存与当前实例或语言设置不一致，请重新扫描实例后再开始翻译".to_string()
+                    "扫描结果缓存与当前实例或语言设置不一致，请重新扫描实例后再开始翻译"
+                        .to_string(),
                 );
             }
             Err(err) => {
@@ -1269,7 +1514,8 @@ fn resolve_scan(
         config.resource_pack_names.clone(),
         &|| cancel.is_scan_cancelled(),
         &relay,
-    ).map_err(|e| format!("扫描失败: {e}"))?;
+    )
+    .map_err(|e| format!("扫描失败: {e}"))?;
 
     Ok(summary)
 }
@@ -1310,7 +1556,8 @@ pub fn retry_failed_entries(
     let manager = jobs::JobManager::new(root.to_path_buf());
     let all_results = manager.load_results(job_id)?;
 
-    let failed: Vec<&jobs::TranslationResult> = all_results.iter()
+    let failed: Vec<&jobs::TranslationResult> = all_results
+        .iter()
         .filter(|r| r.source_type == "failed")
         .collect();
 
@@ -1320,7 +1567,8 @@ pub fn retry_failed_entries(
 
     let total = failed.len();
     let _ = progress_tx.send(PipelineProgress {
-        current: 0, total,
+        current: 0,
+        total,
         phase: PipelinePhase::Translating,
         mod_name: String::new(),
         sub_step: Some("重试失败条目...".to_string()),
@@ -1335,6 +1583,9 @@ pub fn retry_failed_entries(
     let batch_size = llm_cfg.batch_size.max(1);
     let total_batches = (total + batch_size - 1) / batch_size;
     let mut completed_batches = 0usize;
+    let retry_memory_dict = dictionary::open(&paths::dictionary_db_path(root))
+        .and_then(|conn| dictionary::MemoryDictionary::load(&conn))
+        .ok();
 
     for chunk in failed.chunks(batch_size) {
         if cancel.is_cancelled(job_id) {
@@ -1342,22 +1593,42 @@ pub fn retry_failed_entries(
         }
 
         let mut shield_map: HashMap<String, (String, shield::ShieldResult)> = HashMap::new();
-        let entries: Vec<TranslationEntry> = chunk.iter().map(|r| {
-            let sr = shield::protect(&r.source_text);
-            shield_map.insert(r.key.clone(), (r.source_text.clone(), sr.clone()));
-            TranslationEntry {
-                key: r.key.clone(),
-                text: sr.protected,
-                mod_id: r.mod_id.clone(),
-                source_lang: source_language.to_string(),
-                target_lang: target_language.to_string(),
-                references: Vec::new(),
-            }
-        }).collect();
+        let entries: Vec<TranslationEntry> = chunk
+            .iter()
+            .map(|r| {
+                let sr = shield::protect(&r.source_text);
+                shield_map.insert(r.key.clone(), (r.source_text.clone(), sr.clone()));
+                let references = retry_memory_dict
+                    .as_ref()
+                    .map(|dict| {
+                        dict.reference_search(
+                            &r.source_text,
+                            &r.key,
+                            source_language,
+                            target_language,
+                            LLM_REFERENCE_MATCHES_PER_ENTRY,
+                        )
+                        .into_iter()
+                        .map(reference_pair)
+                        .collect()
+                    })
+                    .unwrap_or_default();
+                TranslationEntry {
+                    key: r.key.clone(),
+                    text: sr.protected,
+                    mod_id: r.mod_id.clone(),
+                    mod_name: r.mod_name.clone(),
+                    source_lang: source_language.to_string(),
+                    target_lang: target_language.to_string(),
+                    references,
+                }
+            })
+            .collect();
 
         // Send Translating status for each entry
         for r in chunk.iter() {
-            let original_text = shield_map.get(&r.key)
+            let original_text = shield_map
+                .get(&r.key)
                 .map(|(orig, _)| orig.clone())
                 .unwrap_or_else(|| r.source_text.clone());
             let _ = entry_progress_tx.send(EntryProgress {
@@ -1371,18 +1642,32 @@ pub fn retry_failed_entries(
         }
 
         // Build a (mod_id, mod_name) index keyed by TranslationResult key
-        let meta: HashMap<&str, (&str, &str)> = chunk.iter()
+        let meta: HashMap<&str, (&str, &str)> = chunk
+            .iter()
             .map(|r| (r.key.as_str(), (r.mod_id.as_str(), r.mod_name.as_str())))
             .collect();
 
         let on_complete = |results: &[TranslateResult]| {
             for r in results {
-                let (restored_source, restored_target, valid) = shield_restore_result(r, &shield_map);
-                let target_text = if r.success { restored_target } else { r.translated_text.clone() };
-                let status = if r.success && valid { EntryStatus::Completed } else { EntryStatus::Failed };
-                let error_message = if !r.success { r.error.clone() }
-                    else if !valid { Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string()) }
-                    else { None };
+                let (restored_source, restored_target, valid) =
+                    shield_restore_result(r, &shield_map);
+                let target_text = if r.success {
+                    restored_target
+                } else {
+                    r.translated_text.clone()
+                };
+                let status = if r.success && valid {
+                    EntryStatus::Completed
+                } else {
+                    EntryStatus::Failed
+                };
+                let error_message = if !r.success {
+                    r.error.clone()
+                } else if !valid {
+                    Some("翻译结果缺少占位符，可能被 LLM 破坏".to_string())
+                } else {
+                    None
+                };
                 let &(_, fname) = meta.get(r.key.as_str()).unwrap_or(&("", ""));
                 let _ = entry_progress_tx.send(EntryProgress {
                     key: r.key.clone(),
@@ -1395,7 +1680,11 @@ pub fn retry_failed_entries(
             }
         };
 
-        let (results, _token) = client.translate_batch(&entries, Some(&on_complete), Some(&|| cancel.is_cancelled(job_id)));
+        let (results, _token) = client.translate_batch(
+            &entries,
+            Some(&on_complete),
+            Some(&|| cancel.is_cancelled(job_id)),
+        );
 
         for r in results.into_iter() {
             let &(mid, fname) = meta.get(r.key.as_str()).unwrap_or(&("", ""));
@@ -1441,20 +1730,8 @@ pub fn translate_single_entry(
         register_translation_task(jid);
     }
 
-    // ── Load dictionary references for higher translation quality ──
-    let mut references: Vec<(String, String)> = Vec::new();
-    let dict_db_path = paths::dictionary_db_path(root);
-    if let Ok(dict_conn) = dictionary::open(&dict_db_path) {
-        if let Ok(mem_dict) = dictionary::MemoryDictionary::load(&dict_conn) {
-            let matches = mem_dict.fuzzy_search(source_text, source_language, target_language, 5);
-            let mut seen = std::collections::HashSet::new();
-            for m in &matches {
-                if seen.insert(m.source_text.clone()) {
-                    references.push((m.source_text.clone(), m.target_text.clone()));
-                }
-            }
-        }
-    }
+    let references =
+        load_entry_references(root, key, source_text, source_language, target_language);
 
     let sr = shield::protect(source_text);
 
@@ -1462,13 +1739,14 @@ pub fn translate_single_entry(
         key: key.to_string(),
         text: sr.protected,
         mod_id: mod_id.to_string(),
+        mod_name: _mod_name.to_string(),
         source_lang: source_language.to_string(),
         target_lang: target_language.to_string(),
         references,
     };
 
-    let (results, _token) = if let Some(c) = cancel {
-        let check = || c.is_cancelled(job_id.unwrap_or(""));
+    let (results, _token) = if let (Some(c), Some(jid)) = (cancel, job_id) {
+        let check = || c.is_cancelled(jid);
         client.translate_batch(&[entry], None, Some(&check))
     } else {
         client.translate_batch(&[entry], None, None)
@@ -1573,10 +1851,16 @@ mod tests {
         let pending = extract_pending_entries(&summary);
         assert_eq!(pending.len(), 2);
         // item.test.one has existing zh_cn translation
-        let one = pending.iter().find(|(e, _, _)| e.key == "item.test.one").unwrap();
+        let one = pending
+            .iter()
+            .find(|(e, _, _)| e.key == "item.test.one")
+            .unwrap();
         assert_eq!(one.2.as_deref(), Some("物品一"));
         // item.test.two has no zh_cn translation
-        let two = pending.iter().find(|(e, _, _)| e.key == "item.test.two").unwrap();
+        let two = pending
+            .iter()
+            .find(|(e, _, _)| e.key == "item.test.two")
+            .unwrap();
         assert_eq!(two.2, None);
     }
 }

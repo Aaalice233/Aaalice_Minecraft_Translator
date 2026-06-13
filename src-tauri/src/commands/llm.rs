@@ -1,8 +1,8 @@
 use tracing::info;
 
 use crate::core::{
-    llm::LlmClient,
-    models::{LlmModel, LlmModelsResponse},
+    llm::{LlmClient, TranslationEntry},
+    models::{LlmModel, LlmModelsResponse, DEFAULT_SYSTEM_PROMPT},
 };
 
 /// Validate a URL to prevent SSRF: ensure scheme is http/https
@@ -50,7 +50,10 @@ pub(crate) fn validate_url(url_str: &str) -> Result<(), String> {
     }
 
     // Check common internal hostnames
-    if lower.ends_with(".local") || lower.ends_with(".internal") || lower == "metadata.google.internal" {
+    if lower.ends_with(".local")
+        || lower.ends_with(".internal")
+        || lower == "metadata.google.internal"
+    {
         return Err("不允许访问内网地址".to_string());
     }
 
@@ -58,7 +61,8 @@ pub(crate) fn validate_url(url_str: &str) -> Result<(), String> {
     if let Ok(ip) = bare_host.parse::<std::net::IpAddr>() {
         match ip {
             std::net::IpAddr::V4(v4) => {
-                if v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified() {
+                if v4.is_loopback() || v4.is_private() || v4.is_link_local() || v4.is_unspecified()
+                {
                     return Err("不允许访问内网地址".to_string());
                 }
             }
@@ -114,7 +118,10 @@ fn parse_llm_models(body: serde_json::Value) -> Vec<LlmModel> {
 
 /// Lightweight version used by the warmup pipeline — skips SSRF validation
 /// (the caller is responsible for validating URLs) and uses a shorter timeout.
-pub fn fetch_llm_models_internal(base_url: String, api_key: String) -> Result<LlmModelsResponse, String> {
+pub fn fetch_llm_models_internal(
+    base_url: String,
+    api_key: String,
+) -> Result<LlmModelsResponse, String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
@@ -208,23 +215,47 @@ pub fn fetch_llm_models(base_url: String, api_key: String) -> Result<LlmModelsRe
 }
 
 #[tauri::command]
-pub fn check_llm_connection(base_url: String, api_key: String, model: String) -> Result<bool, String> {
+pub fn check_llm_connection(
+    base_url: String,
+    api_key: String,
+    model: String,
+) -> Result<bool, String> {
     info!("check_llm_connection: model={}", &model);
+    validate_url(&base_url)?;
     let client = LlmClient {
         base_url,
         api_key,
         model,
-        temperature: 1.0,
-        max_tokens: 0,
+        temperature: 0.0,
+        max_tokens: 64,
         concurrency: 1,
         batch_size: 1,
         retry_count: 1,
         timeout_secs: 30,
-        system_prompt: String::new(),
+        system_prompt: DEFAULT_SYSTEM_PROMPT.to_string(),
         http_client: LlmClient::build_http_client(30),
         effective_concurrency: std::sync::atomic::AtomicUsize::new(1),
         consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
     };
     client.validate()?;
+    let entry = TranslationEntry {
+        key: "connection.test".to_string(),
+        text: "Connection Test".to_string(),
+        mod_id: "aaalice_mc_translator".to_string(),
+        mod_name: String::new(),
+        source_lang: "en_us".to_string(),
+        target_lang: "zh_cn".to_string(),
+        references: Vec::new(),
+    };
+    let (results, _) = client.translate_batch(&[entry], None, None);
+    let Some(result) = results.first() else {
+        return Err("API 测试未返回结果".to_string());
+    };
+    if !result.success || result.translated_text.trim().is_empty() {
+        return Err(result
+            .error
+            .clone()
+            .unwrap_or_else(|| "API 测试返回空译文".to_string()));
+    }
     Ok(true)
 }

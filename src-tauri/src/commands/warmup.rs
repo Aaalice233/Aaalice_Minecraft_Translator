@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 use tracing::info;
 
+use super::i18n_dict;
 use crate::core::models::{Settings, StageStatus, WarmupPhase, WarmupProgress};
 use crate::core::{paths, settings};
 
@@ -30,26 +31,32 @@ fn mark_warmup_done(root: &std::path::Path) {
 /// Phase 1: Load and validate settings (0–25%)
 fn phase_settings(root: &PathBuf, app: &AppHandle) -> Result<Settings, String> {
     info!("Warmup Phase 1: 加载设置");
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Settings,
-        percent: 5,
-        status: StageStatus::Running,
-        message: Some("加载设置…".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Settings,
+            percent: 5,
+            status: StageStatus::Running,
+            message: Some("加载设置…".to_string()),
+            error: None,
+        },
+    );
 
     let settings = settings::load_settings(root).map_err(|e| format!("加载设置失败: {e}"))?;
 
     // Brief pause to let the animation breathe
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Settings,
-        percent: 25,
-        status: StageStatus::Completed,
-        message: Some("设置已加载".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Settings,
+            percent: 25,
+            status: StageStatus::Completed,
+            message: Some("设置已加载".to_string()),
+            error: None,
+        },
+    );
 
     Ok(settings)
 }
@@ -58,13 +65,16 @@ fn phase_settings(root: &PathBuf, app: &AppHandle) -> Result<Settings, String> {
 fn phase_local(settings: &Settings, app: &AppHandle) -> Result<(), String> {
     info!("Warmup Phase 2: 验证本地元数据");
 
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Local,
-        percent: 28,
-        status: StageStatus::Running,
-        message: Some("验证实例路径…".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Local,
+            percent: 28,
+            status: StageStatus::Running,
+            message: Some("验证实例路径…".to_string()),
+            error: None,
+        },
+    );
 
     if !settings.instance_path.is_empty() {
         let instance = std::path::Path::new(&settings.instance_path);
@@ -81,13 +91,16 @@ fn phase_local(settings: &Settings, app: &AppHandle) -> Result<(), String> {
 
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Local,
-        percent: 50,
-        status: StageStatus::Completed,
-        message: Some("本地元数据已加载".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Local,
+            percent: 50,
+            status: StageStatus::Completed,
+            message: Some("本地元数据已加载".to_string()),
+            error: None,
+        },
+    );
 
     Ok(())
 }
@@ -96,13 +109,16 @@ fn phase_local(settings: &Settings, app: &AppHandle) -> Result<(), String> {
 fn phase_dictionary(root: &PathBuf, app: &AppHandle) -> Result<(), String> {
     info!("Warmup Phase 3: 词典预热");
 
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Dictionary,
-        percent: 55,
-        status: StageStatus::Running,
-        message: Some("打开词典数据库…".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Dictionary,
+            percent: 55,
+            status: StageStatus::Running,
+            message: Some("打开词典数据库…".to_string()),
+            error: None,
+        },
+    );
 
     let db_path = paths::dictionary_db_path(root);
     let db_exists = db_path.exists();
@@ -121,7 +137,9 @@ fn phase_dictionary(root: &PathBuf, app: &AppHandle) -> Result<(), String> {
 
             if table_count > 0 {
                 let entry_count: i64 = conn
-                    .query_row("SELECT COUNT(*) FROM dictionary_entries", [], |row| row.get(0))
+                    .query_row("SELECT COUNT(*) FROM dictionary_entries", [], |row| {
+                        row.get(0)
+                    })
                     .unwrap_or(0);
                 info!("词典就绪: {entry_count} 条记录 (新建: {})", !db_exists);
             }
@@ -136,16 +154,25 @@ fn phase_dictionary(root: &PathBuf, app: &AppHandle) -> Result<(), String> {
         }
     }
 
+    match i18n_dict::ensure_bundled_i18n_dict_installed(app) {
+        Ok(Some(count)) => info!("已安装内置 i18n 模组词典: {count} 条"),
+        Ok(None) => info!("i18n 模组词典已安装，跳过内置导入"),
+        Err(e) => return Err(format!("安装内置 i18n 模组词典失败: {e}")),
+    }
+
     // Brief pause
     std::thread::sleep(std::time::Duration::from_millis(100));
 
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Dictionary,
-        percent: 75,
-        status: StageStatus::Completed,
-        message: Some("词典已就绪".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Dictionary,
+            percent: 75,
+            status: StageStatus::Completed,
+            message: Some("词典已就绪".to_string()),
+            error: None,
+        },
+    );
 
     Ok(())
 }
@@ -155,24 +182,30 @@ fn phase_dictionary(root: &PathBuf, app: &AppHandle) -> Result<(), String> {
 fn phase_llm(settings: &Settings, app: &AppHandle, is_first: bool) -> Result<(), String> {
     info!("Warmup Phase 4: LLM 连接检查");
 
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Llm,
-        percent: 80,
-        status: StageStatus::Running,
-        message: Some("验证 LLM 配置…".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Llm,
+            percent: 80,
+            status: StageStatus::Running,
+            message: Some("验证 LLM 配置…".to_string()),
+            error: None,
+        },
+    );
 
     // Build a minimal client just for validation
     if settings.api_key.is_empty() || settings.base_url.is_empty() {
         info!("LLM 未配置完整，跳过连接检查");
-        let _ = app.emit("warmup-progress", WarmupProgress {
-            phase: WarmupPhase::Llm,
-            percent: 95,
-            status: StageStatus::Completed,
-            message: Some("LLM 未配置".to_string()),
-            error: None,
-        });
+        let _ = app.emit(
+            "warmup-progress",
+            WarmupProgress {
+                phase: WarmupPhase::Llm,
+                percent: 95,
+                status: StageStatus::Completed,
+                message: Some("LLM 未配置".to_string()),
+                error: None,
+            },
+        );
         return Ok(());
     }
 
@@ -192,13 +225,16 @@ fn phase_llm(settings: &Settings, app: &AppHandle, is_first: bool) -> Result<(),
         consecutive_429s: std::sync::atomic::AtomicUsize::new(0),
     };
 
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Llm,
-        percent: 85,
-        status: StageStatus::Running,
-        message: Some("检查 LLM 连接…".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Llm,
+            percent: 85,
+            status: StageStatus::Running,
+            message: Some("检查 LLM 连接…".to_string()),
+            error: None,
+        },
+    );
 
     match client.validate() {
         Ok(()) => {
@@ -217,23 +253,29 @@ fn phase_llm(settings: &Settings, app: &AppHandle, is_first: bool) -> Result<(),
                 info!("LLM 配置有效，跳过模型列表 (后续启动)");
             }
 
-            let _ = app.emit("warmup-progress", WarmupProgress {
-                phase: WarmupPhase::Llm,
-                percent: 98,
-                status: StageStatus::Completed,
-                message: Some("LLM 已就绪".to_string()),
-                error: None,
-            });
+            let _ = app.emit(
+                "warmup-progress",
+                WarmupProgress {
+                    phase: WarmupPhase::Llm,
+                    percent: 98,
+                    status: StageStatus::Completed,
+                    message: Some("LLM 已就绪".to_string()),
+                    error: None,
+                },
+            );
         }
         Err(e) => {
             info!("LLM 配置验证未通过: {e}");
-            let _ = app.emit("warmup-progress", WarmupProgress {
-                phase: WarmupPhase::Llm,
-                percent: 95,
-                status: StageStatus::Completed,
-                message: Some("LLM 离线模式".to_string()),
-                error: Some(e),
-            });
+            let _ = app.emit(
+                "warmup-progress",
+                WarmupProgress {
+                    phase: WarmupPhase::Llm,
+                    percent: 95,
+                    status: StageStatus::Completed,
+                    message: Some("LLM 离线模式".to_string()),
+                    error: Some(e),
+                },
+            );
         }
     }
 
@@ -242,24 +284,30 @@ fn phase_llm(settings: &Settings, app: &AppHandle, is_first: bool) -> Result<(),
 
 /// Emit a final completed event so the frontend can transition out of splash.
 fn emit_completed(app: &AppHandle) {
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase: WarmupPhase::Completed,
-        percent: 100,
-        status: StageStatus::Completed,
-        message: Some("预热完成".to_string()),
-        error: None,
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase: WarmupPhase::Completed,
+            percent: 100,
+            status: StageStatus::Completed,
+            message: Some("预热完成".to_string()),
+            error: None,
+        },
+    );
 }
 
 /// Emit a failed-phase progress event.
 fn emit_failed(app: &AppHandle, phase: WarmupPhase, percent: u8, error: String) {
-    let _ = app.emit("warmup-progress", WarmupProgress {
-        phase,
-        percent,
-        status: StageStatus::Failed,
-        message: None,
-        error: Some(error),
-    });
+    let _ = app.emit(
+        "warmup-progress",
+        WarmupProgress {
+            phase,
+            percent,
+            status: StageStatus::Failed,
+            message: None,
+            error: Some(error),
+        },
+    );
 }
 
 /// Check cancellation flag and emit completed if cancelled.

@@ -135,6 +135,10 @@ Aaalice_Minecraft_Translator/
 - [MineAI-Modpack-Translator](https://github.com/Thedrezik/MineAI-Modpack-Translator)
 - [mc-autotranslator](https://gitee.com/li27744/mc-autotranslator)
 
+## 致谢
+
+- 内置 i18n 模组词典来自 [CFPATools/i18n-dict](https://github.com/CFPATools/i18n-dict)，原始发布页见 [i18n-dict releases](https://github.com/CFPATools/i18n-dict/releases)。
+
 ## 许可证
 
 本项目使用 [MIT License](LICENSE)。

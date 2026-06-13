@@ -3,7 +3,7 @@ import { SearchInput } from "../components/SearchInput";
 import { DataTable } from "../components/DataTable";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSortFilter } from "../hooks/useSortFilter";
-import { cancelTranslation, loadLatestTranslationJobMeta, loadTranslationResults, retryFailedEntries, startTranslation } from "../api/tauri";
+import { cancelTranslation, loadLatestTranslationJobMeta, loadTranslationResults, retryFailedEntries, scanInstance, startTranslation } from "../api/tauri";
 import { MOCK_TRANSLATION_ENTRIES } from "../mocks/browser-translation-log";
 import { useAppState } from "../app/AppContext";
 import { t } from "../i18n/translations";
@@ -12,7 +12,7 @@ import { toErrorMessage } from "../utils";
 import { CompletionSummary } from "../components/CompletionSummary";
 import { PageHeader } from "../components/PageHeader";
 import type { ColumnConfig } from "../components/SortableTableHeader";
-import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress, TranslationResult } from "../types";
+import type { AppLanguage, EntryProgress, ScanSummary, TranslateLogEntry, TranslateProgress, TranslationJobListItem, TranslationResult } from "../types";
 
 function csvQuote(val: string): string {
   if (val.indexOf(",") >= 0 || val.indexOf('"') >= 0 || val.indexOf(" ") >= 0) {
@@ -81,7 +81,7 @@ const STATUS_META: Array<{ key: keyof EntryStatusCounts; color: string }> = [
   { key: "failed", color: "#ef4444" },
 ];
 
-const KNOWN_SOURCE_TYPES = ["llm", "dictionary", "existing", "skipped", "failed"] as const;
+const KNOWN_SOURCE_TYPES = ["llm", "dictionary", "existing", "skipped", "reviewed", "failed"] as const;
 const KNOWN_STATUSES = ["pending", "dictionaryHit", "skip", "translating", "completed", "failed"] as const;
 
 function entryProgKey(modName: string, key: string): string {
@@ -96,6 +96,7 @@ function getEntryStatusFromEP(
   if (ep) return ep.status;
   switch (entry.sourceType) {
     case "llm":
+    case "reviewed":
     case "existing":
       return "completed";
     case "skipped":
@@ -338,9 +339,9 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   async function handleStart() {
     if (!scanSummary) return;
     cancelledRef.current = false;
-    const instPath = settings.instancePath || scanSummary.instancePath;
-    const srcLang = settings.sourceLanguage || scanSummary.sourceLanguage;
-    const tgtLang = settings.targetLanguage || scanSummary.targetLanguage;
+    const instPath = scanSummary.instancePath || settings.instancePath;
+    const srcLang = scanSummary.sourceLanguage || settings.sourceLanguage;
+    const tgtLang = scanSummary.targetLanguage || settings.targetLanguage;
 
     startTimeRef.current = performance.now();
     setTranslateElapsedMs(null);
@@ -381,7 +382,6 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
           }).catch((err) => { console.warn("get translation job ID failed:", err); return null; }),
           (async () => {
             try {
-              const { scanInstance } = await import("../api/tauri");
               postCompletionRescan.current = true;
               onScanSummaryChange(await scanInstance(instPath, srcLang, tgtLang));
             } catch (scanErr) {
@@ -410,17 +410,22 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
   async function handleRetry() {
     if (retryingRef.current) return;
     cancelledRef.current = false;
-    const srcLang = settings.sourceLanguage || scanSummary?.sourceLanguage || "auto";
-    const tgtLang = settings.targetLanguage || scanSummary?.targetLanguage || "zh_cn";
 
     let retryJobId = state.translationJobId;
-    if (!retryJobId) {
-      try {
-        const job = await loadLatestTranslationJobMeta();
-        if (!job || job.status !== "completed") return;
+    let retryJob: TranslationJobListItem | null = null;
+    try {
+      const job = await loadLatestTranslationJobMeta();
+      if (job && (!retryJobId || job.jobId === retryJobId)) {
+        if (!retryJobId && job.status !== "completed") return;
+        retryJob = job;
         retryJobId = job.jobId;
-      } catch { return; }
+      }
+    } catch {
+      if (!retryJobId) return;
     }
+    if (!retryJobId) return;
+    const srcLang = retryJob?.sourceLanguage || scanSummary?.sourceLanguage || settings.sourceLanguage || "auto";
+    const tgtLang = retryJob?.targetLanguage || scanSummary?.targetLanguage || settings.targetLanguage || "zh_cn";
 
     startTimeRef.current = performance.now();
     retryingRef.current = true;
@@ -490,12 +495,13 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
    *  All counts come from the authoritative JSONL file, not event channels,
    *  so they are accurate even when late EntryProgress events haven't arrived. */
   const sourceTypeCounts = useMemo(() => {
-    const c = { llm: 0, existing: 0, skipped: 0, dictionary: 0 };
+    const c = { llm: 0, existing: 0, skipped: 0, dictionary: 0, reviewed: 0 };
     for (const e of logRef.current) {
       if (e.sourceType === "llm") c.llm++;
       else if (e.sourceType === "existing") c.existing++;
       else if (e.sourceType === "skipped") c.skipped++;
       else if (e.sourceType === "dictionary") c.dictionary++;
+      else if (e.sourceType === "reviewed") c.reviewed++;
     }
     return c;
   }, [logVersion]);
@@ -869,7 +875,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
             {
               icon: <Bot size={15} />,
               template: t(language, "summary.llm"),
-              count: sourceTypeCounts.llm,
+              count: sourceTypeCounts.llm + sourceTypeCounts.reviewed,
             },
             ...(Math.max(entryCounts.failed, savedFailedEntriesRef.current) > 0
               ? [{ icon: <XCircle size={15} />, template: t(language, "summary.failed"), count: Math.max(entryCounts.failed, savedFailedEntriesRef.current) }]

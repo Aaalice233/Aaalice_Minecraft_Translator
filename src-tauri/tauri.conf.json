@@ -24,6 +24,10 @@
     "active": true,
     "targets": ["nsis"],
     "createUpdaterArtifacts": true,
+    "resources": [
+      "resources/i18n-dict/Dict-Sqlite.db",
+      "resources/i18n-dict/metadata.json"
+    ],
     "windows": {
       "nsis": {
         "installMode": "currentUser"

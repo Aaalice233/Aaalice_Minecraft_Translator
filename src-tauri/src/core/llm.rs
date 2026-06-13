@@ -20,6 +20,8 @@ pub struct TranslationEntry {
     pub key: String,
     pub text: String,
     pub mod_id: String,
+    #[serde(default)]
+    pub mod_name: String,
     pub source_lang: String,
     pub target_lang: String,
     /// CFPA 参考词典对照（原文→译文），用于增强 LLM 提示上下文
@@ -140,7 +142,10 @@ impl LlmClient {
             body["max_tokens"] = serde_json::json!(self.max_tokens);
         }
 
-        let url = format!("{}/v1/chat/completions", self.base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/v1/chat/completions",
+            self.base_url.trim_end_matches('/')
+        );
 
         let mut last_error = String::new();
         let max_retries = self.retry_count.max(1);
@@ -255,8 +260,8 @@ fn try_single_request(
             )
         })?;
 
-    let results = healing_parse_response(content_str, entries)
-        .map_err(|e| format!("解析响应失败: {e}"))?;
+    let results =
+        healing_parse_response(content_str, entries).map_err(|e| format!("解析响应失败: {e}"))?;
 
     Ok((results, token_usage))
 }
@@ -281,33 +286,31 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
         }
     }
 
-    // Collect distinct mod_ids for context
-    let mod_ids: Vec<&str> = entries.iter()
-        .map(|e| e.mod_id.as_str())
-        .collect::<std::collections::BTreeSet<_>>()
-        .into_iter()
-        .collect();
-    let mod_context = if mod_ids.len() > 1 {
-        format!(
-            "本次请求中的条目来自以下 {} 个模组：{}\n请根据每个模组的语境选择合适的译法。\n\n",
-            mod_ids.len(),
-            mod_ids.join(", "),
-        )
-    } else if mod_ids.len() == 1 {
-        format!("模组：{}\n\n", mod_ids[0])
-    } else {
-        String::new()
-    };
+    let mod_context = build_mod_context(entries);
 
     let entries_json = serde_json::to_string_pretty(
-        &entries.iter().map(|e| serde_json::json!({
-            "key": e.key,
-            "text": e.text,
-            "mod_id": e.mod_id,
-        })).collect::<Vec<_>>()
-    ).unwrap_or_default();
+        &entries
+            .iter()
+            .map(|e| {
+                let mut value = serde_json::json!({
+                    "key": e.key,
+                    "text": e.text,
+                    "mod_id": e.mod_id,
+                });
+                if !e.references.is_empty() {
+                    value["references"] = serde_json::json!(e
+                        .references
+                        .iter()
+                        .map(|(source, target)| format!("{source} → {target}"))
+                        .collect::<Vec<_>>());
+                }
+                value
+            })
+            .collect::<Vec<_>>(),
+    )
+    .unwrap_or_default();
 
-    let mut prompt = format!(
+    let prompt = format!(
         r#"请将以下 Minecraft 模组文本从 {source_label} ({source_lang}) 翻译为 {target_label} ({target_lang})。
 
 {mod_context}规则：
@@ -315,8 +318,11 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
    - 这些标记包含 § 颜色/格式码（§b=淡蓝色、§r=重置、§l=加粗、§o=斜体），它们控制文字外观，不是装饰
    - 删除它们会导致游戏内文字丢失颜色和格式，不同段落混在一起无法辨认
 2. 保留所有占位符（{{player}}、{{0}}、<> 等）
-3. 保持 JSON 结构不变
-4. 只返回 JSON 数组，格式为 [{{"key": "...", "text": "翻译文本"}}, ...]
+3. 保持输入条目顺序和 key 不变
+4. 只返回 JSON 对象，格式为 {{"translations":[{{"key":"...","text":"翻译文本"}}, ...]}}，每个数组对象只包含 key 和 text
+5. 不要额外添加书名号《》、引号或多余括号
+6. mod_id 只作为语境参考，不需要返回
+7. references 是该条文本专属的参考译法，只作用于同一个输入对象；没有把握时不要强行套用
 
 输入：
 {entries_json}"#,
@@ -328,30 +334,31 @@ fn build_prompt(entries: &[TranslationEntry], source_lang: &str, target_lang: &s
         entries_json = entries_json,
     );
 
-    // Append CFPA reference dictionary if available
-    let mut seen = std::collections::HashSet::new();
-    let ref_lines: Vec<String> = entries.iter()
-        .flat_map(|e| e.references.iter())
-        .filter(|(s, _)| seen.insert(s.clone()))
-        .take(30)
-        .map(|(s, t)| format!("{} → {}", s, t))
+    prompt
+}
+
+fn build_mod_context(entries: &[TranslationEntry]) -> String {
+    let mods: Vec<&str> = entries
+        .iter()
+        .map(|e| e.mod_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
         .collect();
 
-    if !ref_lines.is_empty() {
-        prompt = format!(
-                "{}
-
-## 参考词汇表（CFPA 汉化组词典中可能相关的对照）
-```
-{}
-```
-以上译法供参考，请根据具体模组语境选择最合适的翻译。",
-                prompt,
-                ref_lines.join("\n")
-            );
+    if mods.is_empty() {
+        return String::new();
     }
 
-    prompt
+    if mods.len() == 1 {
+        return format!("模组：{}\n\n", mods[0]);
+    }
+
+    let lines = mods.join(", ");
+    format!(
+        "本次请求中的条目来自以下 {} 个模组：{}\n请根据每个模组的语境选择合适的译法。\n\n",
+        mods.len(),
+        lines,
+    )
 }
 
 /// Send the HTTP request and return the raw response body as a Value.
@@ -411,9 +418,18 @@ fn send_request(
 fn extract_token_usage(response_body: &Value) -> Option<super::models::TokenUsage> {
     let usage = response_body.get("usage")?;
     Some(super::models::TokenUsage {
-        prompt_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        completion_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-        total_tokens: usage.get("total_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
+        prompt_tokens: usage
+            .get("prompt_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        completion_tokens: usage
+            .get("completion_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
+        total_tokens: usage
+            .get("total_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0),
     })
 }
 
@@ -465,7 +481,9 @@ fn healing_parse_response(
             if let Ok(v) = serde_json::from_str::<Value>(&fixed) {
                 if let (Some(key), Some(text)) = (
                     v.get("key").and_then(|k| k.as_str()),
-                    v.get("text").or(v.get("translation")).and_then(|t| t.as_str()),
+                    v.get("text")
+                        .or(v.get("translation"))
+                        .and_then(|t| t.as_str()),
                 ) {
                     pairs.push((key.to_string(), text.to_string()));
                 }
@@ -477,7 +495,10 @@ fn healing_parse_response(
         return Ok(map_results(pairs, entries));
     }
 
-    Err(format!("无法解析 LLM 响应: {}", &content[..content.len().min(200)]))
+    Err(format!(
+        "无法解析 LLM 响应: {}",
+        &content[..content.len().min(200)]
+    ))
 }
 
 /// 修复常见 JSON 格式错误
@@ -521,17 +542,30 @@ fn fix_json_errors(s: &str) -> String {
 }
 
 /// 从已解析的 Value 中提取 translations 数组
-fn parse_translations_from_value(parsed: &Value, entries: &[TranslationEntry]) -> Result<Vec<TranslateResult>, String> {
+fn parse_translations_from_value(
+    parsed: &Value,
+    entries: &[TranslationEntry],
+) -> Result<Vec<TranslateResult>, String> {
     let translations = parsed
         .get("translations")
-        .or_else(|| if parsed.is_array() { Some(parsed) } else { None })
+        .or_else(|| {
+            if parsed.is_array() {
+                Some(parsed)
+            } else {
+                None
+            }
+        })
         .and_then(|v| v.as_array())
         .ok_or_else(|| "JSON 缺少 translations 数组".to_string())?;
 
     let mut pairs = Vec::new();
     for item in translations {
         let key = item.get("key").and_then(|k| k.as_str()).unwrap_or_default();
-        let text = item.get("text").or(item.get("translation")).and_then(|t| t.as_str()).unwrap_or_default();
+        let text = item
+            .get("text")
+            .or(item.get("translation"))
+            .and_then(|t| t.as_str())
+            .unwrap_or_default();
         if !key.is_empty() {
             pairs.push((key.to_string(), text.to_string()));
         }
@@ -542,20 +576,27 @@ fn parse_translations_from_value(parsed: &Value, entries: &[TranslationEntry]) -
 
 /// Map all entries to failed TranslateResults with the given error.
 fn make_failed_results(entries: &[TranslationEntry], error: String) -> Vec<TranslateResult> {
-    entries.iter().map(|e| TranslateResult {
-        key: e.key.clone(),
-        original_text: e.text.clone(),
-        translated_text: e.text.clone(),
-        success: false,
-        error: Some(error.clone()),
-    }).collect()
+    entries
+        .iter()
+        .map(|e| TranslateResult {
+            key: e.key.clone(),
+            original_text: e.text.clone(),
+            translated_text: e.text.clone(),
+            success: false,
+            error: Some(error.clone()),
+        })
+        .collect()
 }
 
 /// 将 (key, text) 对映射回 entries 顺序
 fn map_results(pairs: Vec<(String, String)>, entries: &[TranslationEntry]) -> Vec<TranslateResult> {
-    let map: std::collections::HashMap<&str, &str> = pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-    entries.iter().map(|e| {
-        match map.get(e.key.as_str()) {
+    let map: std::collections::HashMap<&str, &str> = pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    entries
+        .iter()
+        .map(|e| match map.get(e.key.as_str()) {
             Some(text) if !text.is_empty() => TranslateResult {
                 key: e.key.clone(),
                 original_text: e.text.clone(),
@@ -577,8 +618,8 @@ fn map_results(pairs: Vec<(String, String)>, entries: &[TranslationEntry]) -> Ve
                 success: false,
                 error: Some("LLM 响应中未找到该条目".to_string()),
             },
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────
@@ -595,6 +636,7 @@ mod tests {
                 key: "item.a".into(),
                 text: "Item A".into(),
                 mod_id: "test".into(),
+                mod_name: "Test Mod.jar".into(),
                 source_lang: "en_us".into(),
                 target_lang: "zh_cn".into(),
                 references: Vec::new(),
@@ -603,6 +645,7 @@ mod tests {
                 key: "item.b".into(),
                 text: "Item B".into(),
                 mod_id: "test".into(),
+                mod_name: "Test Mod.jar".into(),
                 source_lang: "en_us".into(),
                 target_lang: "zh_cn".into(),
                 references: Vec::new(),
@@ -652,17 +695,17 @@ mod tests {
 
     #[test]
     fn healing_markdown_code_block_with_label() {
-        let content = "```json\n{\"translations\": [{\"key\": \"item.a\", \"text\": \"物品A\"}]}\n```";
-        let entries = vec![
-            TranslationEntry {
-                key: "item.a".into(),
-                text: "Item A".into(),
-                mod_id: "test".into(),
-                source_lang: "en_us".into(),
-                target_lang: "zh_cn".into(),
-                references: Vec::new(),
-            },
-        ];
+        let content =
+            "```json\n{\"translations\": [{\"key\": \"item.a\", \"text\": \"物品A\"}]}\n```";
+        let entries = vec![TranslationEntry {
+            key: "item.a".into(),
+            text: "Item A".into(),
+            mod_id: "test".into(),
+            mod_name: "Test Mod.jar".into(),
+            source_lang: "en_us".into(),
+            target_lang: "zh_cn".into(),
+            references: Vec::new(),
+        }];
         let results = healing_parse_response(content, &entries).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].translated_text, "物品A");
@@ -702,16 +745,15 @@ mod tests {
     fn healing_translation_field() {
         // 使用 translation 而非 text 字段
         let content = r#"{"translations": [{"key": "item.a", "translation": "物品A"}]}"#;
-        let entries = vec![
-            TranslationEntry {
-                key: "item.a".into(),
-                text: "Item A".into(),
-                mod_id: "test".into(),
-                source_lang: "en_us".into(),
-                target_lang: "zh_cn".into(),
-                references: Vec::new(),
-            },
-        ];
+        let entries = vec![TranslationEntry {
+            key: "item.a".into(),
+            text: "Item A".into(),
+            mod_id: "test".into(),
+            mod_name: "Test Mod.jar".into(),
+            source_lang: "en_us".into(),
+            target_lang: "zh_cn".into(),
+            references: Vec::new(),
+        }];
         let results = healing_parse_response(content, &entries).unwrap();
         assert_eq!(results[0].translated_text, "物品A");
     }
@@ -724,5 +766,57 @@ mod tests {
         assert!(!results[1].success);
         assert_eq!(results[0].translated_text, "物品A");
         assert_eq!(results[1].translated_text, "Item B"); // fallback = source
+    }
+
+    #[test]
+    fn prompt_uses_mod_id_without_file_name_context() {
+        let entries = vec![TranslationEntry {
+            key: "itemGroup.scguns".into(),
+            text: "Scorched Guns".into(),
+            mod_id: "scguns".into(),
+            mod_name: "ScorchedGuns-1.4.4.1.jar".into(),
+            source_lang: "en_us".into(),
+            target_lang: "zh_cn".into(),
+            references: Vec::new(),
+        }];
+
+        let prompt = build_prompt(&entries, "en_us", "zh_cn");
+
+        assert!(prompt.contains("模组：scguns"));
+        assert!(prompt.contains("不要额外添加书名号"));
+        assert!(prompt.contains("\"translations\""));
+        assert!(!prompt.contains("只返回 JSON 数组"));
+        assert!(!prompt.contains("ScorchedGuns-1.4.4.1.jar"));
+        assert!(!prompt.contains("\"mod_name\""));
+    }
+
+    #[test]
+    fn prompt_includes_per_entry_references() {
+        let entries = vec![
+            TranslationEntry {
+                key: "block.refurbished_furniture.oak_table".into(),
+                text: "Oak Table".into(),
+                mod_id: "refurbished_furniture".into(),
+                mod_name: "refurbished_furniture.jar".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                references: vec![("Oak Table".into(), "橡木桌".into())],
+            },
+            TranslationEntry {
+                key: "block.refurbished_furniture.computer".into(),
+                text: "Computer".into(),
+                mod_id: "refurbished_furniture".into(),
+                mod_name: "refurbished_furniture.jar".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                references: Vec::new(),
+            },
+        ];
+
+        let prompt = build_prompt(&entries, "en_us", "zh_cn");
+
+        assert!(prompt.contains("\"references\""));
+        assert!(prompt.contains("Oak Table → 橡木桌"));
+        assert!(!prompt.contains("## 参考词汇表"));
     }
 }

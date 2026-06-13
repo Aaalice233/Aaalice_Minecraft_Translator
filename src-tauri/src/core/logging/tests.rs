@@ -18,7 +18,13 @@ fn test_log_format_frontend_compatible() {
 /// Test various log level formats all parse correctly
 #[test]
 fn test_log_format_various_levels() {
-    for (level, label) in [("ERROR", "error"), ("WARN", "warn"), ("INFO", "info"), ("DEBUG", "debug"), ("TRACE", "trace")] {
+    for (level, label) in [
+        ("ERROR", "error"),
+        ("WARN", "warn"),
+        ("INFO", "info"),
+        ("DEBUG", "debug"),
+        ("TRACE", "trace"),
+    ] {
         let line = format!("[0] {level} {label} message");
         let (_, parsed_level, parsed_msg) = parse_log_line(&line);
         assert_eq!(parsed_level, level, "level {level} 应正确解析");

@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   generatePackFromJob,
   loadLatestTranslationJobMeta,
+  openPath,
 } from "../api/tauri";
 import { AnimatedCount } from "../components/AnimatedCount";
 import { PageHeader } from "../components/PageHeader";
@@ -32,6 +33,10 @@ interface Props {
   settings?: { instancePath: string };
   onBusyChange?: (busy: boolean) => void;
   onPackComplete?: (done: boolean) => void;
+}
+
+function defaultOutputDir(instancePath?: string | null): string | null {
+  return instancePath ? `${instancePath.replace(/\\/g, "/")}/resourcepacks` : null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -108,11 +113,12 @@ export const PackagesPage = React.memo(function PackagesPage({
 
   const [reviewRequired, setReviewRequired] = useState(false);
   const [outputDir, setOutputDir] = useState<string | null>(() =>
-    settings.instancePath ? `${settings.instancePath.replace(/\\/g, "/")}/resourcepacks` : null,
+    defaultOutputDir(scanSummary?.instancePath || settings.instancePath),
   );
 
   const progressFrameRef = useRef<number>(0);
   const pageRef = useRef<HTMLElement>(null);
+  const outputDirTouchedRef = useRef(false);
 
   // 抑制外层 page-layer 滚动 — CSS :has() 后备
   useEffect(() => {
@@ -122,6 +128,14 @@ export const PackagesPage = React.memo(function PackagesPage({
     layer.style.overflow = "hidden";
     return () => { layer.style.overflow = prevOverflow; };
   }, []);
+
+  useEffect(() => {
+    if (outputDirTouchedRef.current) return;
+    const nextOutputDir = defaultOutputDir(scanSummary?.instancePath || settings.instancePath);
+    if (nextOutputDir && outputDir !== nextOutputDir) {
+      setOutputDir(nextOutputDir);
+    }
+  }, [outputDir, scanSummary?.instancePath, settings.instancePath]);
 
   // ═══════════════════════════════════════════════════════════
   // Handlers (useCallback — must be BEFORE effects that use them)
@@ -165,7 +179,10 @@ export const PackagesPage = React.memo(function PackagesPage({
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const dir = await open({ directory: true, title: t(language, "packages.outputDir") });
-      if (dir) setOutputDir(dir);
+      if (dir) {
+        outputDirTouchedRef.current = true;
+        setOutputDir(dir);
+      }
     } catch (err) {
       // Not in Tauri runtime — ignore
     }
@@ -205,7 +222,7 @@ export const PackagesPage = React.memo(function PackagesPage({
           // reviewed === false → 需要校对（新 job）
           // reviewed === null/undefined → 旧数据向后兼容视为已校对
           // reviewed === true → 已校对
-          setReviewRequired(job.reviewed === false);
+          setReviewRequired(job.reviewed === false || job.failedEntries > 0);
         }
       })
       .catch((err) => console.warn("load latest translation job failed:", err));
@@ -244,11 +261,7 @@ export const PackagesPage = React.memo(function PackagesPage({
         onPackComplete?.(true);
         // 自动在资源管理器中打开输出文件夹
         if (packResult.outputDir && ("__TAURI_INTERNALS__" in window)) {
-          import("@tauri-apps/api/core").then(({ invoke }) => {
-            invoke("open_path", { path: packResult.outputDir }).catch((err) => {
-              setError(t(language, "packages.openOutputDirFailed", { error: toErrorMessage(err) }));
-            });
-          }).catch((err) => {
+          openPath(packResult.outputDir).catch((err) => {
             setError(t(language, "packages.openOutputDirFailed", { error: toErrorMessage(err) }));
           });
         }
@@ -258,7 +271,7 @@ export const PackagesPage = React.memo(function PackagesPage({
     if (!loading) {
       setPackComplete(false);
     }
-  }, [packResult, loading, onPackComplete]);
+  }, [packResult, loading, onPackComplete, language]);
 
   // ═══════════════════════════════════════════════════════════
   // Derived state

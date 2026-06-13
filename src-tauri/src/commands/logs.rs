@@ -30,9 +30,7 @@ pub struct ReadLogsResult {
 pub struct LogOffset(pub Mutex<(u64, usize)>);
 
 #[tauri::command]
-pub fn read_logs(
-    offset_state: State<'_, LogOffset>,
-) -> Result<ReadLogsResult, String> {
+pub fn read_logs(offset_state: State<'_, LogOffset>) -> Result<ReadLogsResult, String> {
     let root = paths::runtime_root().map_err(|e| format!("获取运行时路径失败: {e}"))?;
     let log_path = root.join("logs").join("main.log");
 
@@ -43,12 +41,9 @@ pub fn read_logs(
         });
     }
 
-    let mut file = std::fs::File::open(&log_path)
-        .map_err(|e| format!("打开日志文件失败: {e}"))?;
+    let mut file = std::fs::File::open(&log_path).map_err(|e| format!("打开日志文件失败: {e}"))?;
 
-    let file_size = file.metadata()
-        .map(|m| m.len())
-        .unwrap_or(0);
+    let file_size = file.metadata().map(|m| m.len()).unwrap_or(0);
 
     let mut state = offset_state.0.lock().map_err(|e| format!("锁错误: {e}"))?;
     let (byte_offset, mut line_count) = *state;

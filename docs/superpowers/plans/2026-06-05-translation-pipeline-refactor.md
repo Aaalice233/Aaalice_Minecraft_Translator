@@ -25,7 +25,7 @@
 | `src-tauri/src/commands/settings.rs` | 设置命令（get_settings、save_settings） |
 | `src-tauri/src/commands/llm.rs` | LLM 命令（fetch_llm_models、check_llm_connection） |
 | `src-tauri/src/commands/dictionary.rs` | 词典命令（search/update/delete/export/import/stats） |
-| `src-tauri/src/commands/game.rs` | 杂项命令（fetch_game_versions、get_log_content、open_path） |
+| `src-tauri/src/commands/game.rs` | 杂项命令（open_path） |
 | `src/app/AppContext.tsx` | React Context + Provider + Reducer |
 
 ### 修改
@@ -909,8 +909,6 @@ Expected: 编译成功或仅有可修复错误
 - `get_dictionary_stats()`
 
 **game.rs:**
-- `fetch_game_versions()`
-- `get_log_content(path: String)`
 - `open_path(path: String)`
 
 - [ ] **Step 1: 创建 pack.rs**— 从原 commands.rs 复制打包相关函数

@@ -21,6 +21,7 @@ export interface Settings {
   batchSize: number;
   timeoutSecs: number;
   retryCount: number;
+  autoRetryCount: number;
   rateLimitRpm: number;
   preferUserDictionary: boolean;
   resetMainLogOnStart: boolean;
@@ -164,6 +165,22 @@ export interface ImportResult {
   imported: number;
   skipped: number;
   conflicts: string[];
+}
+
+export interface I18nDictUpdateInfo {
+  currentTag?: string | null;
+  latestTag: string;
+  latestName: string;
+  publishedAt: string;
+  assetName: string;
+  installedEntries: number;
+  updateAvailable: boolean;
+}
+
+export interface I18nDictUpdateResult {
+  tag: string;
+  publishedAt: string;
+  importedEntries: number;
 }
 
 // ── P3: Translation types ─────────────────────────────────────────

@@ -407,6 +407,14 @@ function AppShell() {
       </aside>
 
       <main className="main">
+        {settings && !settings.apiKey.trim() && (
+          <div className="api-key-banner">
+            <span>{t(language, "app.apiKeyMissing")}</span>
+            <button type="button" className="text-button" onClick={() => setActivePage("settings")}>
+              {t(language, "app.openApiSettings")}
+            </button>
+          </div>
+        )}
         {settings ? (
           <div className="page-stack">
           {ALL_PAGE_KEYS.map((page) => (

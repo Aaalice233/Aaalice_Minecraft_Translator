@@ -27,7 +27,9 @@ fn percent_regex() -> &'static Regex {
     // 注意：flags 中不含空格，防止匹配到 %% of 中的 "% o" 这类虚假 token。
     // 空格是 Java Formatter 的合法 flag（正数前加空格），但在 Minecraft lang
     // 文件中极为罕见，且利大于弊地排除它避免了 %% 转义后的 false positive。
-    RE.get_or_init(|| Regex::new(r"%(\d+\$)?[-#+0,]*(\d+)?(\.\d+)?[tT]?[dsfFeEgGxXoOaAcCbBhHn]").unwrap())
+    RE.get_or_init(|| {
+        Regex::new(r"%(\d+\$)?[-#+0,]*(\d+)?(\.\d+)?[tT]?[dsfFeEgGxXoOaAcCbBhHn]").unwrap()
+    })
 }
 
 fn brace_regex() -> &'static Regex {
@@ -129,7 +131,12 @@ pub fn validate_entry(text: &str) -> EntryValidation {
     // Check: no token collisions (all tokens are distinct)
     let mut seen = Vec::new();
     let no_duplicates = result.tokens.iter().all(|t| {
-        if seen.contains(&t.token) { false } else { seen.push(t.token.clone()); true }
+        if seen.contains(&t.token) {
+            false
+        } else {
+            seen.push(t.token.clone());
+            true
+        }
     });
 
     EntryValidation {
@@ -150,10 +157,7 @@ pub struct EntryValidation {
 
 /// Apply protect → LLM translations → restore chain to a batch of texts.
 /// Returns the restored texts (None for entries that failed validation).
-pub fn process_batch(
-    texts: &[&str],
-    translations: &[String],
-) -> Vec<Option<String>> {
+pub fn process_batch(texts: &[&str], translations: &[String]) -> Vec<Option<String>> {
     let protections: Vec<ShieldResult> = texts.iter().map(|t| protect(t)).collect();
 
     texts
@@ -330,8 +334,14 @@ mod tests {
     #[test]
     fn protects_tag_references() {
         let result = protect("获得 <item:minecraft:diamond> 和 <block:minecraft:stone>");
-        assert!(result.tokens.iter().any(|t| t.original == "<item:minecraft:diamond>"));
-        assert!(result.tokens.iter().any(|t| t.original == "<block:minecraft:stone>"));
+        assert!(result
+            .tokens
+            .iter()
+            .any(|t| t.original == "<item:minecraft:diamond>"));
+        assert!(result
+            .tokens
+            .iter()
+            .any(|t| t.original == "<block:minecraft:stone>"));
     }
 
     #[test]
@@ -354,11 +364,25 @@ mod tests {
         let src = "Your sharpened tool has 75%% of its uses left.";
         let tgt = "你磨过的工具还有 75% 的使用次数。";
         let shield = protect(src);
-        assert!(shield.tokens.is_empty(), "%% should produce NO tokens, got {}: {:?}", shield.tokens.len(), shield.tokens);
-        assert_eq!(shield.protected, src, "protected text should equal original when no placeholders");
+        assert!(
+            shield.tokens.is_empty(),
+            "%% should produce NO tokens, got {}: {:?}",
+            shield.tokens.len(),
+            shield.tokens
+        );
+        assert_eq!(
+            shield.protected, src,
+            "protected text should equal original when no placeholders"
+        );
         let restored = restore(&tgt, &shield.tokens);
-        assert_eq!(restored, tgt, "restore should not change LLM output when no tokens");
-        assert!(validate(&shield.tokens, &restored), "validate should return true when no tokens");
+        assert_eq!(
+            restored, tgt,
+            "restore should not change LLM output when no tokens"
+        );
+        assert!(
+            validate(&shield.tokens, &restored),
+            "validate should return true when no tokens"
+        );
     }
 
     #[test]
@@ -396,7 +420,10 @@ mod tests {
     #[test]
     fn process_batch_succeeds_when_tokens_preserved() {
         let texts = vec!["按住 %s 打开", "欢迎 {player}"];
-        let translations = vec!["按住 __SHIELD_0__ 打开".to_string(), "欢迎 __SHIELD_0__".to_string()];
+        let translations = vec![
+            "按住 __SHIELD_0__ 打开".to_string(),
+            "欢迎 __SHIELD_0__".to_string(),
+        ];
         let results = process_batch(&texts, &translations);
         assert_eq!(results.len(), 2);
         assert!(results[0].is_some());

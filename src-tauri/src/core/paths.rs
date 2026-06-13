@@ -52,7 +52,9 @@ pub fn build_output_dir(root: &std::path::Path) -> std::path::PathBuf {
 
 /// Path to a translation job's state file (for cross-session recovery)
 pub fn job_state_path(root: &std::path::Path, job_id: &str) -> std::path::PathBuf {
-    root.join("data").join("jobs").join(format!("{job_id}.json"))
+    root.join("data")
+        .join("jobs")
+        .join(format!("{job_id}.json"))
 }
 
 /// Directory for all job state files
@@ -66,7 +68,9 @@ pub fn jobs_dir(root: &std::path::Path) -> std::path::PathBuf {
 /// This function no longer adds a redundant prefix, so the file name is `translate_xxx.json`.
 /// See also `translate_job_results_path`.
 pub fn translate_job_state_path(root: &std::path::Path, job_id: &str) -> std::path::PathBuf {
-    root.join("data").join("jobs").join(format!("{job_id}.json"))
+    root.join("data")
+        .join("jobs")
+        .join(format!("{job_id}.json"))
 }
 
 /// Path to a translation job's results file (JSONL, one result per line).
@@ -74,7 +78,9 @@ pub fn translate_job_state_path(root: &std::path::Path, job_id: &str) -> std::pa
 /// NOTE: `job_id` already contains the "translate_" prefix from `new_job_id("translate")`.
 /// This function no longer adds a redundant prefix, so the file name is `translate_xxx_results.jsonl`.
 pub fn translate_job_results_path(root: &std::path::Path, job_id: &str) -> std::path::PathBuf {
-    root.join("data").join("jobs").join(format!("{job_id}_results.jsonl"))
+    root.join("data")
+        .join("jobs")
+        .join(format!("{job_id}_results.jsonl"))
 }
 
 /// Path to the default resource pack icon (pack.png) bundled with the app.

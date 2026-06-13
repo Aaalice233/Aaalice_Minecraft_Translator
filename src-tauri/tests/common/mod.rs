@@ -28,7 +28,14 @@ pub struct FakeLlmConfig {
 
 impl Default for FakeLlmConfig {
     fn default() -> Self {
-        Self { port: 11451, delay_ms: 10, malformed: false, rate_limit: false, partial_failure: false, placeholder_broken: false }
+        Self {
+            port: 11451,
+            delay_ms: 10,
+            malformed: false,
+            rate_limit: false,
+            partial_failure: false,
+            placeholder_broken: false,
+        }
     }
 }
 
@@ -52,17 +59,32 @@ fn handle_client(mut stream: TcpStream, config: &FakeLlmConfig) {
     let mut n = 0usize;
     for _ in 0..100 {
         match stream.read(&mut buf[n..]) {
-            Ok(0) if n == 0 => { thread::sleep(Duration::from_millis(5)); continue; }
+            Ok(0) if n == 0 => {
+                thread::sleep(Duration::from_millis(5));
+                continue;
+            }
             Ok(0) => break,
-            Ok(len) => { n += len; if len < 4096 { break; } }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => { thread::sleep(Duration::from_millis(5)); continue; }
+            Ok(len) => {
+                n += len;
+                if len < 4096 {
+                    break;
+                }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(5));
+                continue;
+            }
             Err(_) => break,
         }
     }
 
     if n == 0 {
         let fallback = r#"{"choices":[{"message":{"content":"{\"translations\":[]}"}}]}"#;
-        let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", fallback.len(), fallback);
+        let resp = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}",
+            fallback.len(),
+            fallback
+        );
         let _ = stream.write_all(resp.as_bytes());
         return;
     }
@@ -83,15 +105,28 @@ fn handle_client(mut stream: TcpStream, config: &FakeLlmConfig) {
         vec![]
     } else if config.partial_failure {
         let half = keys.len().max(1) / 2;
-        keys.iter().take(half.max(1)).map(|k| format!("{{\"key\": \"{}\", \"text\": \"[FAKE] partial: {}\"}}", k, k)).collect()
+        keys.iter()
+            .take(half.max(1))
+            .map(|k| {
+                format!(
+                    "{{\"key\": \"{}\", \"text\": \"[FAKE] partial: {}\"}}",
+                    k, k
+                )
+            })
+            .collect()
     } else {
-        keys.iter().map(|k| {
-            if config.placeholder_broken {
-                format!("{{\"key\": \"{}\", \"text\": \"模拟翻译\"}}", k)
-            } else {
-                format!("{{\"key\": \"{}\", \"text\": \"[FAKE] translate: {}\"}}", k, k)
-            }
-        }).collect()
+        keys.iter()
+            .map(|k| {
+                if config.placeholder_broken {
+                    format!("{{\"key\": \"{}\", \"text\": \"模拟翻译\"}}", k)
+                } else {
+                    format!(
+                        "{{\"key\": \"{}\", \"text\": \"[FAKE] translate: {}\"}}",
+                        k, k
+                    )
+                }
+            })
+            .collect()
     };
 
     let inner_json = if config.malformed {
@@ -110,7 +145,8 @@ fn handle_client(mut stream: TcpStream, config: &FakeLlmConfig) {
 
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n{}",
-        body.len(), body
+        body.len(),
+        body
     );
     let _ = stream.write_all(response.as_bytes());
 }
@@ -125,12 +161,17 @@ impl FakeLlmServer {
             let addr = format!("127.0.0.1:{}", cfg.port);
             let listener = match TcpListener::bind(&addr) {
                 Ok(l) => l,
-                Err(e) => { eprintln!("Fake LLM bind error: {e}"); return; }
+                Err(e) => {
+                    eprintln!("Fake LLM bind error: {e}");
+                    return;
+                }
             };
             listener.set_nonblocking(true).ok();
 
             for stream in listener.incoming() {
-                if s.load(Ordering::Relaxed) { break; }
+                if s.load(Ordering::Relaxed) {
+                    break;
+                }
                 match stream {
                     Ok(stream) => {
                         let cfg = Arc::clone(&cfg);
@@ -156,9 +197,13 @@ impl FakeLlmServer {
         }
     }
 
-    pub fn stop(&self) { self.shutdown.store(true, Ordering::Relaxed); }
+    pub fn stop(&self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+    }
 }
 
 impl Drop for FakeLlmServer {
-    fn drop(&mut self) { self.stop(); }
+    fn drop(&mut self) {
+        self.stop();
+    }
 }

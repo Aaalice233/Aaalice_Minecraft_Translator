@@ -1,0 +1,1 @@
+src-tauri/resources/i18n-dict/Dict-Sqlite.db filter=lfs diff=lfs merge=lfs -text

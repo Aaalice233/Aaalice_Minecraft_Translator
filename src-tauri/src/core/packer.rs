@@ -6,9 +6,15 @@ use serde::{Deserialize, Serialize};
 
 /// Replace dangerous path characters with underscores.
 fn sanitize_name(name: &str) -> String {
-    name.replace(|c: char| c.is_ascii_control() || matches!(c, '/' | '\\' | ':' | '>' | '<' | '"' | '|' | '?' | '*'), "_")
-        .trim_matches('.')
-        .to_string()
+    name.replace(
+        |c: char| {
+            c.is_ascii_control()
+                || matches!(c, '/' | '\\' | ':' | '>' | '<' | '"' | '|' | '?' | '*')
+        },
+        "_",
+    )
+    .trim_matches('.')
+    .to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,9 +35,8 @@ pub struct PackOptions {
     pub dry_run: bool,
     pub output_dir: String,
     /// Minecraft resource pack format version.
-    /// 15  = 1.20.5–1.21.0
-    /// 34  = 1.21.1–1.21.4
-    /// 42+ = 1.21.5+
+    /// 15 = 1.20–1.20.1, 18 = 1.20.2, 22 = 1.20.3–1.20.4,
+    /// 32 = 1.20.5–1.20.6, 34 = 1.21–1.21.1.
     /// Default 15 for backward compatibility.
     #[serde(default = "default_pack_format")]
     pub pack_format: u32,
@@ -43,7 +48,35 @@ pub struct PackOptions {
     pub icon_path: Option<String>,
 }
 
-fn default_pack_format() -> u32 { 15 }
+fn default_pack_format() -> u32 {
+    15
+}
+
+pub fn pack_format_for_mc_version(version: &str) -> u32 {
+    let parts: Vec<u32> = version
+        .split(['.', '-'])
+        .take(3)
+        .filter_map(|part| part.parse::<u32>().ok())
+        .collect();
+    let major = parts.first().copied().unwrap_or(0);
+    let minor = parts.get(1).copied().unwrap_or(0);
+    let patch = parts.get(2).copied().unwrap_or(0);
+
+    match (major, minor, patch) {
+        (1, 21, 0..=1) => 34,
+        (1, 20, 5..=u32::MAX) => 32,
+        (1, 20, 3..=4) => 22,
+        (1, 20, 2) => 18,
+        (1, 20, 0..=1) => 15,
+        _ => default_pack_format(),
+    }
+}
+
+fn format_generated_at() -> String {
+    chrono::Local::now()
+        .format("%Y年%m月%d日 %H:%M")
+        .to_string()
+}
 
 /// Default pack icon embedded at compile time.
 /// 128×128 PNG, sourced from assets/pack.png at project root.
@@ -93,10 +126,15 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
             if let Ok(pack_dir_path) = std::fs::read_dir(&pack_dir) {
                 for entry in pack_dir_path.flatten() {
                     if entry.path().is_dir() {
-                        let lang_path = entry.path().join("lang").join(format!("{}.json", options.target_language));
+                        let lang_path = entry
+                            .path()
+                            .join("lang")
+                            .join(format!("{}.json", options.target_language));
                         if lang_path.exists() {
                             if let Ok(content) = std::fs::read_to_string(&lang_path) {
-                                if let Ok(existing) = serde_json::from_str::<HashMap<String, String>>(&content) {
+                                if let Ok(existing) =
+                                    serde_json::from_str::<HashMap<String, String>>(&content)
+                                {
                                     for e in &options.entries {
                                         if let Some(existing_text) = existing.get(&e.key) {
                                             if existing_text != &e.text {
@@ -143,13 +181,15 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
     // which first introduced supported_formats support. Object format
     // {min_inclusive, max_inclusive} was added in 1.21.5 (pack_format 42+).
     std::fs::create_dir_all(&pack_dir)?;
+    let generated_at = format_generated_at();
     let mcmeta = serde_json::json!({
         "pack": {
             "pack_format": options.pack_format,
             "description": format!(
-                "§6§n由 Aaalice MC Translator 生成§0-§2§o模组：§c§l{}  §5§n文本：§c§l{}  §9§o版本：§b§l{}",
+                "§6Aaalice MC Translator§r\n§7模组 {} 个 · 文本 {} 条\n§8生成于 {} · {}",
                 by_mod.len(),
                 options.entries.len(),
+                generated_at,
                 options.build_name,
             ),
             "supported_formats": [1, 99]
@@ -171,7 +211,9 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
         if icon_src.exists() {
             match std::fs::copy(icon_src, pack_dir.join("pack.png")) {
                 Ok(_) => tracing::info!(path = %icon_src.display(), "Custom icon copied to pack"),
-                Err(e) => tracing::warn!(path = %icon_src.display(), error = %e, "Failed to copy custom pack icon"),
+                Err(e) => {
+                    tracing::warn!(path = %icon_src.display(), error = %e, "Failed to copy custom pack icon")
+                }
             }
         }
     }
@@ -213,14 +255,14 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
             lang_map.insert(e.key.clone(), e.text.clone());
         }
 
-        std::fs::write(
-            &lang_path,
-            serde_json::to_string_pretty(&lang_map)?,
-        )?;
+        std::fs::write(&lang_path, serde_json::to_string_pretty(&lang_map)?)?;
     }
 
     // Generate zip (using safe_build_name to prevent path traversal)
-    let zip_path = output_dir.join(format!("{}-{}.zip", safe_build_name, options.target_language));
+    let zip_path = output_dir.join(format!(
+        "{}-{}.zip",
+        safe_build_name, options.target_language
+    ));
     create_zip(&pack_dir, &zip_path)?;
 
     // Clean up the source directory; only the zip is needed as final output.
@@ -229,7 +271,12 @@ pub fn generate_pack(options: &PackOptions) -> io::Result<PackResult> {
     }
 
     let zip_size = std::fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
-    tracing::info!(entry_count = options.entries.len(), mod_count = by_mod.len(), zip_size, "Resource pack generated successfully");
+    tracing::info!(
+        entry_count = options.entries.len(),
+        mod_count = by_mod.len(),
+        zip_size,
+        "Resource pack generated successfully"
+    );
     Ok(PackResult {
         output_dir: options.output_dir.clone(),
         zip_path: zip_path.to_string_lossy().to_string(),
@@ -260,7 +307,8 @@ fn add_dir_to_zip(
     for entry in std::fs::read_dir(current)? {
         let entry = entry?;
         let path = entry.path();
-        let name = path.strip_prefix(base)
+        let name = path
+            .strip_prefix(base)
             .map_err(|_| io::Error::new(io::ErrorKind::Other, "path strip failed"))?
             .to_string_lossy()
             .replace('\\', "/");
@@ -365,10 +413,23 @@ mod tests {
     use std::io::Read;
 
     #[test]
+    fn pack_format_matches_common_mc_versions() {
+        assert_eq!(pack_format_for_mc_version("1.21.1"), 34);
+        assert_eq!(pack_format_for_mc_version("1.21"), 34);
+        assert_eq!(pack_format_for_mc_version("1.20.6"), 32);
+        assert_eq!(pack_format_for_mc_version("1.20.4"), 22);
+        assert_eq!(pack_format_for_mc_version("1.20.2"), 18);
+        assert_eq!(pack_format_for_mc_version("1.20.1"), 15);
+    }
+
+    #[test]
     fn dry_run_returns_stats() {
-        let entries = vec![
-            PackEntry { mod_id: "testmod".into(), key: "test.key".into(), text: "你好".into(), source_text: "Hello".into() },
-        ];
+        let entries = vec![PackEntry {
+            mod_id: "testmod".into(),
+            key: "test.key".into(),
+            text: "你好".into(),
+            source_text: "Hello".into(),
+        }];
         let options = PackOptions {
             target_language: "zh_cn".into(),
             entries,
@@ -387,9 +448,12 @@ mod tests {
     fn generated_pack_includes_embedded_icon() {
         let tmp = std::env::temp_dir().join("packer-test-icon");
         let _ = std::fs::remove_dir_all(&tmp);
-        let entries = vec![
-            PackEntry { mod_id: "testmod".into(), key: "test.key".into(), text: "你好".into(), source_text: "Hello".into() },
-        ];
+        let entries = vec![PackEntry {
+            mod_id: "testmod".into(),
+            key: "test.key".into(),
+            text: "你好".into(),
+            source_text: "Hello".into(),
+        }];
         let options = PackOptions {
             target_language: "zh_cn".into(),
             entries,
@@ -400,17 +464,72 @@ mod tests {
             icon_path: None,
         };
         let result = generate_pack(&options).unwrap();
-        assert!(std::path::Path::new(&result.zip_path).exists(), "ZIP file should exist");
+        assert!(
+            std::path::Path::new(&result.zip_path).exists(),
+            "ZIP file should exist"
+        );
 
         // Verify pack.png exists inside the zip with valid PNG magic bytes
         let zip_file = std::fs::File::open(&result.zip_path).unwrap();
         let mut archive = zip::ZipArchive::new(zip_file).unwrap();
-        let mut icon_entry = archive.by_name("pack.png").expect("pack.png should be in ZIP");
+        let mut icon_entry = archive
+            .by_name("pack.png")
+            .expect("pack.png should be in ZIP");
         let mut header = [0u8; 8];
         icon_entry.read_exact(&mut header).unwrap();
-        assert_eq!(header, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A], "pack.png must have valid PNG magic bytes");
+        assert_eq!(
+            header,
+            [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A],
+            "pack.png must have valid PNG magic bytes"
+        );
 
         // Cleanup
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn generated_pack_metadata_includes_time_without_changing_zip_name() {
+        let tmp = std::env::temp_dir().join("packer-test-metadata");
+        let _ = std::fs::remove_dir_all(&tmp);
+        let entries = vec![PackEntry {
+            mod_id: "testmod".into(),
+            key: "test.key".into(),
+            text: "你好".into(),
+            source_text: "Hello".into(),
+        }];
+        let options = PackOptions {
+            target_language: "zh_cn".into(),
+            entries,
+            build_name: "MetaTest".into(),
+            dry_run: false,
+            output_dir: tmp.to_string_lossy().to_string(),
+            pack_format: 34,
+            icon_path: None,
+        };
+        let result = generate_pack(&options).unwrap();
+        assert!(
+            result.zip_path.ends_with("MetaTest-zh_cn.zip"),
+            "ZIP filename format must stay buildName-targetLanguage.zip"
+        );
+
+        let zip_file = std::fs::File::open(&result.zip_path).unwrap();
+        let mut archive = zip::ZipArchive::new(zip_file).unwrap();
+        let mut mcmeta_entry = archive
+            .by_name("pack.mcmeta")
+            .expect("pack.mcmeta should be in ZIP");
+        let mut mcmeta = String::new();
+        mcmeta_entry.read_to_string(&mut mcmeta).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&mcmeta).unwrap();
+        assert_eq!(value["pack"]["pack_format"].as_u64(), Some(34));
+        let description = value["pack"]["description"].as_str().unwrap();
+        assert!(description.contains("Aaalice MC Translator"));
+        assert!(description.contains("模组 1 个 · 文本 1 条"));
+        assert!(description.contains("生成于 "));
+        assert!(description.contains("年"));
+        assert!(description.contains("月"));
+        assert!(description.contains("日"));
+        assert!(description.contains("MetaTest"));
+
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

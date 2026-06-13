@@ -7,6 +7,19 @@ export type TranslationKey =
   | "app.noInstance"
   | "pipeline.validate"
   | "app.ready"
+  | "app.apiKeyMissing"
+  | "app.openApiSettings"
+  | "auto.label"
+  | "auto.tooltip"
+  | "auto.hint"
+  | "auto.status.translating"
+  | "auto.status.retrying"
+  | "auto.status.reviewing"
+  | "auto.status.packing"
+  | "auto.status.done"
+  | "auto.status.failed"
+  | "auto.error.noJob"
+  | "auto.error.failedEntries"
   | "nav.dashboard"
   | "nav.jobs"
   | "nav.dictionary"
@@ -14,8 +27,8 @@ export type TranslationKey =
   | "nav.validate"
   | "nav.settings"
   | "nav.logs"
-| "nav.collapse"
-| "nav.expand"
+  | "nav.collapse"
+  | "nav.expand"
   | "dashboard.title"
   | "dashboard.subtitle"
   | "dashboard.scan"
@@ -24,6 +37,7 @@ export type TranslationKey =
   | "dashboard.instancePlaceholder"
   | "dashboard.pickInstance"
   | "dashboard.pickInstanceError"
+  | "dashboard.invalidInstancePath"
   | "dashboard.rescan"
   | "dashboard.warningsCount"
   | "dashboard.stats.mods"
@@ -87,6 +101,10 @@ export type TranslationKey =
   | "dictionary.search"
   | "dictionary.export"
   | "dictionary.import"
+  | "dictionary.clear"
+  | "dictionary.clearTooltip"
+  | "dictionary.clearConfirm"
+  | "dictionary.cleared"
   | "dictionary.empty"
   | "dictionary.col.source"
   | "dictionary.col.target"
@@ -211,6 +229,9 @@ export type TranslationKey =
   | "settings.save"
   | "settings.saved"
   | "settings.fetchModels"
+  | "settings.testApi"
+  | "settings.testingApi"
+  | "settings.apiTestSuccess"
   | "settings.modelsFetched"
   | "settings.autosaveHint"
   | "settings.provider"
@@ -220,7 +241,6 @@ export type TranslationKey =
   | "settings.tab.performance"
   | "settings.tab.reuse"
   | "settings.tab.logs"
-  | "settings.tab.advanced"
   | "settings.tab.appearance"
   | "settings.apiKey"
   | "settings.appLanguage"
@@ -265,13 +285,14 @@ export type TranslationKey =
   | "settings.timeoutSecsHint"
   | "settings.retryCount"
   | "settings.retryCountHint"
+  | "settings.autoRetryCount"
+  | "settings.autoRetryCountHint"
   | "settings.rateLimitRpm"
   | "settings.rateLimitRpmHint"
   | "settings.preferDictionary"
   | "settings.resetMainLog"
   | "settings.enableDebug"
   | "settings.enableHttp"
-  | "settings.defaultInstance"
   | "settings.translationPacks"
   | "settings.resourcePackName"
   | "settings.resourcePackHint"
@@ -285,7 +306,22 @@ export type TranslationKey =
   | "settings.card.concurrency"
   | "settings.card.timeouts"
   | "settings.card.dictionary"
-  | "settings.futureAdvanced"
+  | "settings.i18nDictTitle"
+  | "settings.i18nDictDescription"
+  | "settings.i18nDictCheck"
+  | "settings.i18nDictUpdate"
+  | "settings.i18nDictChecking"
+  | "settings.i18nDictUpdating"
+  | "settings.i18nDictInstalled"
+  | "settings.i18nDictCurrent"
+  | "settings.i18nDictLatest"
+  | "settings.i18nDictUpdateAvailable"
+  | "settings.i18nDictUpToDate"
+  | "settings.i18nDictUpdated"
+  | "settings.checkingUpdate"
+  | "settings.aboutIntro"
+  | "settings.projectHome"
+  | "settings.bilibiliHome"
   | "settings.providerOpenai"
   | "splash.phase.settings"
   | "splash.phase.local"
@@ -327,6 +363,7 @@ export type TranslationKey =
   | "tooltip.rescan"
   | "tooltip.saveSettings"
   | "tooltip.fetchModels"
+  | "tooltip.testApi"
   | "tooltip.generatePack"
   | "tooltip.dryRun"
   | "tooltip.copyToInstance"
@@ -373,6 +410,7 @@ export type TranslationKey =
   | "validate.noMatch"
   | "validate.noResults"
   | "validate.reviewed"
+  | "validate.failedEntriesWarning"
   | "validate.searchPlaceholder"
   // ── Updater ────────────────────────────────────────────────
   | "settings.tab.about"
@@ -429,6 +467,19 @@ const zhCn: TranslationMap = {
   "app.noInstance": "未选择实例",
   "app.ready": "就绪",
   "pipeline.validate": "校验",
+  "app.apiKeyMissing": "还没有配置 API Key，请先到设置里填写后再开始翻译。",
+  "app.openApiSettings": "打开 API 设置",
+  "auto.label": "全自动模式",
+  "auto.tooltip": "扫描完成后自动翻译、重试失败项、确认校对并生成资源包",
+  "auto.hint": "开启后，点击扫描会一路自动推进到打包；失败条目会按设置中的次数自动重试。",
+  "auto.status.translating": "全自动模式：正在开始翻译...",
+  "auto.status.retrying": "全自动模式：正在重试失败条目（第 {attempt}/{total} 次）...",
+  "auto.status.reviewing": "全自动模式：正在确认校对...",
+  "auto.status.packing": "全自动模式：正在生成资源包...",
+  "auto.status.done": "全自动模式已完成：翻译、校对和打包都已处理。",
+  "auto.status.failed": "全自动模式执行失败",
+  "auto.error.noJob": "未找到可用于自动推进的翻译任务",
+  "auto.error.failedEntries": "仍有 {count} 条翻译失败，已停止自动校对和打包。请重试或手动检查失败条目。",
   "nav.dashboard": "扫描",
   "nav.jobs": "翻译",
   "nav.validate": "校验",
@@ -443,9 +494,10 @@ const zhCn: TranslationMap = {
   "dashboard.scan": "开始扫描",
   "dashboard.scanProgress": "{current} / {total}",
   "dashboard.instancePath": "实例路径",
-  "dashboard.instancePlaceholder": "E:/PCL2/.minecraft/versions/Aaalice Craft",
+  "dashboard.instancePlaceholder": "请选择 Minecraft 实例目录",
   "dashboard.pickInstance": "选择实例",
   "dashboard.pickInstanceError": "选择实例失败：",
+  "dashboard.invalidInstancePath": "请先选择有效的 Minecraft 实例目录",
   "dashboard.rescan": "重新扫描",
   "dashboard.warningsCount": "{count} 条扫描提示",
   "dashboard.stats.mods": "已扫描模组",
@@ -520,6 +572,10 @@ const zhCn: TranslationMap = {
   "dictionary.search": "搜索",
   "dictionary.export": "导出",
   "dictionary.import": "导入",
+  "dictionary.clear": "清空词库",
+  "dictionary.clearTooltip": "删除词库中的全部条目",
+  "dictionary.clearConfirm": "确定要清空整个词库吗？此操作不可撤销。",
+  "dictionary.cleared": "已清空词库，删除 {count} 条条目",
   "dictionary.empty": "词典为空，请先扫描并翻译模组",
   "dictionary.col.source": "原文",
   "dictionary.col.target": "译文",
@@ -635,7 +691,7 @@ const zhCn: TranslationMap = {
   "packages.outputDir": "输出目录",
   "packages.outputDirBrowse": "浏览...",
   "packages.readyToPack": "翻译已就绪，点击「生成资源包」开始打包",
-  "packages.reviewRequired": "当前翻译任务尚未完成校对。请前往「校对」页面完成校对后再打包。",
+  "packages.reviewRequired": "当前翻译任务尚未完成校对，或仍有失败条目。请前往「校对」页面处理后再打包。",
   "packages.openOutputDirFailed": "打开输出文件夹失败: {error}",
   "settings.title": "设置中心",
   "settings.subtitle": "常用选项会持久化保存到本地设置文件。",
@@ -644,12 +700,27 @@ const zhCn: TranslationMap = {
   "settings.save": "保存设置",
   "settings.saved": "设置已保存",
   "settings.fetchModels": "拉取模型",
+  "settings.testApi": "测试连通性",
+  "settings.testingApi": "测试中...",
+  "settings.apiTestSuccess": "API 连通性测试通过",
   "settings.modelsFetched": "已从 {url} 拉取 {count} 个模型",
   "settings.autosaveHint": "自动保存已启用，改动后自动保存",
   "settings.card.apiParams": "API 参数",
   "settings.card.concurrency": "并发设置",
   "settings.card.timeouts": "超时与重试",
   "settings.card.dictionary": "词典",
+  "settings.i18nDictTitle": "i18n 模组词典",
+  "settings.i18nDictDescription": "来自 CFPATools/i18n-dict，用作发送给 AI 的 CFPA 参考词汇表；应用词典仍作为本地翻译缓存。",
+  "settings.i18nDictCheck": "检查 i18n 词典更新",
+  "settings.i18nDictUpdate": "一键更新 i18n 词典",
+  "settings.i18nDictChecking": "正在检查...",
+  "settings.i18nDictUpdating": "正在更新...",
+  "settings.i18nDictInstalled": "已导入 {count} 条参考词条",
+  "settings.i18nDictCurrent": "当前版本：{tag}",
+  "settings.i18nDictLatest": "最新版本：{tag}",
+  "settings.i18nDictUpdateAvailable": "发现新的 i18n 模组词典",
+  "settings.i18nDictUpToDate": "i18n 模组词典已是最新",
+  "settings.i18nDictUpdated": "i18n 模组词典更新完成，导入 {count} 条参考词条",
   "settings.provider": "供应商",
   "settings.baseUrl": "API 地址",
   "settings.tab.language": "语言与翻译",
@@ -657,7 +728,6 @@ const zhCn: TranslationMap = {
   "settings.tab.performance": "性能设置",
   "settings.tab.reuse": "资源复用",
   "settings.tab.logs": "日志设置",
-  "settings.tab.advanced": "高级设置",
   "settings.tab.appearance": "界面",
   "settings.apiKey": "API 密钥",
   "settings.appLanguage": "应用语言",
@@ -695,20 +765,21 @@ const zhCn: TranslationMap = {
   "settings.customModel": "输入自定义模型",
   "settings.pickFromList": "从列表选择",
   "settings.concurrency": "并发请求数",
-  "settings.concurrencyHint": "同时发送的 API 请求数量（默认 10）。程序会自动根据 API 限流情况动态调整，遇 429 自动降级，无需手动操心。",
+  "settings.concurrencyHint": "同时发送的 API 请求数量（默认 100）。程序会自动根据 API 限流情况动态调整，遇 429 自动降级，无需手动操心。",
   "settings.batchSize": "Batch size",
   "settings.batchSizeHint": "每批最多包含的条目数（默认 80）。较大的 batch 可提高 Token 利用率，但单次响应时间更长。建议保持默认。",
   "settings.timeoutSecs": "超时时间（秒）",
   "settings.timeoutSecsHint": "单次 API 请求的超时秒数（默认 180）。翻译大批量时可适当增加。",
   "settings.retryCount": "重试次数",
   "settings.retryCountHint": "API 请求失败时的重试次数（默认 5）。限流导致的失败有特殊处理。",
+  "settings.autoRetryCount": "全自动失败重试次数",
+  "settings.autoRetryCountHint": "全自动模式中，翻译结束后对失败条目的额外重试次数（默认 2）。",
   "settings.rateLimitRpm": "速率限制（RPM）",
   "settings.rateLimitRpmHint": "每分钟最多请求数（默认 3000）。0 表示不限速。超过此值时自动等待。",
   "settings.preferDictionary": "优先使用用户词典",
   "settings.resetMainLog": "启动时重置 main.log",
   "settings.enableDebug": "启用调试日志",
   "settings.enableHttp": "启用 HTTP 请求日志",
-  "settings.defaultInstance": "默认实例路径",
   "settings.translationPacks": "汉化资源包",
   "settings.resourcePackName": "资源包文件名",
   "settings.resourcePackHint": "扫描 resourcepacks/ 时会按此名称在实例中匹配资源包",
@@ -718,13 +789,13 @@ const zhCn: TranslationMap = {
   "settings.packDefaultI18n": "默认含 CFPAOrg (i18n) 和 VM 汉化资源包",
   "settings.outputPackName": "输出资源包名称",
   "settings.placeholderHint": "可使用 {{mc_version}} 占位符自动替换为实例版本号",
-  "settings.futureAdvanced": "词典、打包和实验功能设置会在对应阶段接入。",
   "settings.providerOpenai": "OpenAI 兼容",
   // ── Updater ────────────────────────────────────────────
   "settings.tab.about": "关于",
   "settings.aboutAndUpdate": "关于与更新",
   "settings.currentVersion": "当前版本",
   "settings.checkUpdate": "检查更新",
+  "settings.checkingUpdate": "正在检查...",
   "settings.upToDate": "已是最新版本",
   "settings.updateAvailable": "发现新版本 v{version}",
   "settings.downloading": "正在下载更新 ({percent}%)",
@@ -734,6 +805,9 @@ const zhCn: TranslationMap = {
   "settings.updaterError": "更新错误: {error}",
   "settings.updateReleaseNotes": "更新说明",
   "settings.viewReleaseNotes": "查看更新日志",
+  "settings.aboutIntro": "Aaalice Minecraft Translator 是一个面向 Minecraft 整合包的桌面汉化工具，用于扫描模组语言文件、调用 LLM 翻译并生成可热重载测试的资源包。",
+  "settings.projectHome": "项目原址",
+  "settings.bilibiliHome": "Aaalice 的 B 站主页",
   "splash.phase.settings": "设置",
   "splash.phase.local": "本地",
   "splash.phase.dictionary": "词典",
@@ -742,12 +816,12 @@ const zhCn: TranslationMap = {
   "splash.firstLaunch": "首次启动，正在初始化…",
   "splash.skip": "跳过，直接进入",
   "logs.title": "日志中心",
-  "logs.subtitle": "第一阶段已写入 main、job 和 error 日志；完整过滤器在后续阶段接入。",
+  "logs.subtitle": "实时查看应用日志，支持按级别过滤、暂停滚动、复制和清空当前视图。",
   "logs.recentJob": "最近任务",
   "logs.jobId": "任务 ID：{id}",
   "logs.instance": "实例：{path}",
   "logs.warning": "warning：{count}",
-  "logs.empty": "尚未执行扫描任务。",
+  "logs.empty": "暂无日志。",
   "logs.pause": "暂停滚动",
   "logs.resume": "继续滚动",
   "logs.copyAll": "复制全部日志",
@@ -763,6 +837,7 @@ const zhCn: TranslationMap = {
   "tooltip.rescan": "重新扫描所有模组",
   "tooltip.saveSettings": "保存并应用当前的设置更改",
   "tooltip.fetchModels": "从 API 拉取可用模型列表",
+  "tooltip.testApi": "发送一条测试翻译请求，确认 API、Key 和模型可用",
   "tooltip.generatePack": "生成翻译资源包",
   "tooltip.dryRun": "预览将生成的翻译内容",
   "tooltip.copyToInstance": "将资源包复制到实例目录",
@@ -809,6 +884,7 @@ const zhCn: TranslationMap = {
   "validate.noMatch": "没有匹配的条目",
   "validate.noResults": "暂无翻译结果",
   "validate.reviewed": "已校对",
+  "validate.failedEntriesWarning": "仍有 {count} 条失败或缺失条目，请先修正后再完成校对。",
   "validate.searchPlaceholder": "搜索模组名、ModId、键名、原文或译文...",
 };
 
@@ -820,6 +896,19 @@ const enUs: TranslationMap = {
   "app.noInstance": "No instance selected",
   "app.ready": "Ready",
   "pipeline.validate": "Validate",
+  "app.apiKeyMissing": "No API Key is configured yet. Please add one in Settings before translating.",
+  "app.openApiSettings": "Open API settings",
+  "auto.label": "Auto mode",
+  "auto.tooltip": "After scanning, automatically translate, retry failures, mark reviewed, and generate a pack",
+  "auto.hint": "When enabled, Start Scan will continue through translation, review, and packaging automatically.",
+  "auto.status.translating": "Auto mode: starting translation...",
+  "auto.status.retrying": "Auto mode: retrying failed entries ({attempt}/{total})...",
+  "auto.status.reviewing": "Auto mode: marking review complete...",
+  "auto.status.packing": "Auto mode: generating resource pack...",
+  "auto.status.done": "Auto mode complete: translation, review, and packaging finished.",
+  "auto.status.failed": "Auto mode failed",
+  "auto.error.noJob": "No translation job was found for auto mode",
+  "auto.error.failedEntries": "{count} entries still failed. Auto review and packaging were stopped.",
   "nav.dashboard": "Scan",
   "nav.jobs": "Translate",
   "nav.validate": "Validate",
@@ -881,12 +970,27 @@ const enUs: TranslationMap = {
   "settings.save": "Save settings",
   "settings.saved": "Settings saved",
   "settings.fetchModels": "Fetch models",
+  "settings.testApi": "Test API",
+  "settings.testingApi": "Testing...",
+  "settings.apiTestSuccess": "API connectivity test passed",
   "settings.modelsFetched": "Fetched {count} models from {url}",
   "settings.autosaveHint": "Auto-save enabled — changes are saved automatically",
   "settings.card.apiParams": "API Parameters",
   "settings.card.concurrency": "Concurrency",
   "settings.card.timeouts": "Timeouts & Retries",
   "settings.card.dictionary": "Dictionary",
+  "settings.i18nDictTitle": "i18n mod dictionary",
+  "settings.i18nDictDescription": "From CFPATools/i18n-dict, used as CFPA references for AI prompts. The app dictionary remains the local translation cache.",
+  "settings.i18nDictCheck": "Check i18n dictionary",
+  "settings.i18nDictUpdate": "Update i18n dictionary",
+  "settings.i18nDictChecking": "Checking...",
+  "settings.i18nDictUpdating": "Updating...",
+  "settings.i18nDictInstalled": "{count} reference entries imported",
+  "settings.i18nDictCurrent": "Current: {tag}",
+  "settings.i18nDictLatest": "Latest: {tag}",
+  "settings.i18nDictUpdateAvailable": "New i18n mod dictionary available",
+  "settings.i18nDictUpToDate": "i18n mod dictionary is up to date",
+  "settings.i18nDictUpdated": "i18n mod dictionary updated, imported {count} references",
   "settings.provider": "Provider",
   "settings.baseUrl": "Base URL",
   "settings.tab.language": "Language & translation",
@@ -894,7 +998,6 @@ const enUs: TranslationMap = {
   "settings.tab.performance": "Performance",
   "settings.tab.reuse": "Reuse",
   "settings.tab.logs": "Logs",
-  "settings.tab.advanced": "Advanced",
   "settings.tab.appearance": "Appearance",
   "settings.apiKey": "API Key",
   "settings.appLanguage": "App language",
@@ -930,19 +1033,20 @@ const enUs: TranslationMap = {
   "settings.customModel": "Enter custom model",
   "settings.pickFromList": "Pick from list",
   "settings.concurrency": "Concurrent requests",
-  "settings.concurrencyHint": "Concurrent API requests (default 10). Auto-adapts to rate limits — 429 responses trigger automatic backoff.",
+  "settings.concurrencyHint": "Concurrent API requests (default 100). Auto-adapts to rate limits — 429 responses trigger automatic backoff.",
   "settings.batchSizeHint": "Max entries per batch (default 80). Larger batches use tokens more efficiently but take longer per request.",
   "settings.timeoutSecs": "Timeout (seconds)",
   "settings.timeoutSecsHint": "Single request timeout in seconds (default 180). Increase for large batches.",
   "settings.retryCount": "Retry count",
   "settings.retryCountHint": "Retry count on failure (default 5). Rate limit failures have special handling.",
+  "settings.autoRetryCount": "Auto retry count",
+  "settings.autoRetryCountHint": "Extra retries for failed entries in auto mode after translation completes (default 2).",
   "settings.rateLimitRpm": "Rate limit (RPM)",
   "settings.rateLimitRpmHint": "Max requests per minute (default 3000). 0 = unlimited.",
   "settings.preferDictionary": "Prefer user dictionary",
   "settings.resetMainLog": "Reset main.log on startup",
   "settings.enableDebug": "Enable debug log",
   "settings.enableHttp": "Enable HTTP request log",
-  "settings.defaultInstance": "Default instance path",
   "settings.translationPacks": "Translation packs",
   "settings.resourcePackName": "Pack filename",
   "settings.resourcePackHint": "Scanner matches resource packs in resourcepacks/ by this name",
@@ -952,13 +1056,12 @@ const enUs: TranslationMap = {
   "settings.packDefaultI18n": "Defaults include CFPAOrg (i18n) and VM translation packs",
   "settings.outputPackName": "Output pack name",
   "settings.placeholderHint": "Use {{mc_version}} as placeholder for the instance version",
-  "settings.futureAdvanced": "Dictionary, packaging, and lab settings will be connected in later phases.",
   "logs.title": "Logs",
-  "logs.subtitle": "Phase 1 writes main, job, and error logs; full filters arrive later.",
+  "logs.subtitle": "Watch application logs live, with level filters, pause, copy, and clear actions.",
   "logs.recentJob": "Recent job",
   "logs.jobId": "Job ID: {id}",
   "logs.instance": "Instance: {path}",
-  "logs.empty": "No scan job has run yet.",
+  "logs.empty": "No logs yet.",
   "jobs.stage.matching": "Matching dictionary",
   "jobs.stage.translating": "Translating",
   "jobs.stage.packaging": "Packaging",
@@ -1008,6 +1111,7 @@ const enUs: TranslationMap = {
   "tooltip.rescan": "Rescan all mods",
   "tooltip.saveSettings": "Save and apply current settings",
   "tooltip.fetchModels": "Fetch available models from the API",
+  "tooltip.testApi": "Send a small test translation request to verify the API, key, and model",
   "tooltip.generatePack": "Generate translation resource pack",
   "tooltip.dryRun": "Preview translation contents",
   "tooltip.copyToInstance": "Copy resource pack to instance directory",
@@ -1056,6 +1160,10 @@ const enUs: TranslationMap = {
   "dashboard.rangeFrom": "From",
   "dashboard.rangeTo": "To",
   "dashboard.resourceFilesEntries": "{files} files / {entries} entries",
+  "dictionary.clear": "Clear dictionary",
+  "dictionary.clearTooltip": "Delete all dictionary entries",
+  "dictionary.clearConfirm": "Clear the entire dictionary? This cannot be undone.",
+  "dictionary.cleared": "Dictionary cleared, removed {count} entries",
   "dictionary.doubleClickEdit": "Double-click to edit",
   "dictionary.readOnly": "Read-only",
   "editPanel.accept": "Accept",
@@ -1117,7 +1225,7 @@ const enUs: TranslationMap = {
   "packages.outputDir": "Output directory",
   "packages.outputDirBrowse": "Browse...",
   "packages.readyToPack": "Ready to pack. Click 'Generate' to create the resource pack.",
-  "packages.reviewRequired": "The current translation job has not been reviewed. Please review it on the Validate page first.",
+  "packages.reviewRequired": "The current translation job has not been reviewed, or failed entries remain. Please resolve it on the Validate page first.",
   "packages.openOutputDirFailed": "Failed to open output folder: {error}",
   "settings.providerOpenai": "OpenAI Compatible",
   // ── Updater ────────────────────────────────────────────
@@ -1125,6 +1233,7 @@ const enUs: TranslationMap = {
   "settings.aboutAndUpdate": "About & Updates",
   "settings.currentVersion": "Current Version",
   "settings.checkUpdate": "Check for Updates",
+  "settings.checkingUpdate": "Checking...",
   "settings.upToDate": "You're up to date",
   "settings.updateAvailable": "New version v{version} available",
   "settings.downloading": "Downloading update ({percent}%)",
@@ -1134,6 +1243,9 @@ const enUs: TranslationMap = {
   "settings.updaterError": "Update error: {error}",
   "settings.updateReleaseNotes": "Release Notes",
   "settings.viewReleaseNotes": "View Release Notes",
+  "settings.aboutIntro": "Aaalice Minecraft Translator is a desktop localization tool for Minecraft modpacks. It scans mod language files, translates them with an LLM, and generates resource packs for hot-reload testing.",
+  "settings.projectHome": "Project home",
+  "settings.bilibiliHome": "Aaalice on Bilibili",
   "splash.firstLaunch": "First launch, initializing…",
   "splash.offline": "Offline mode",
   "splash.phase.dictionary": "Dictionary",
@@ -1147,6 +1259,7 @@ const enUs: TranslationMap = {
   "validate.noMatch": "No matching entries",
   "validate.noResults": "No translation results",
   "validate.reviewed": "Reviewed",
+  "validate.failedEntriesWarning": "{count} failed or missing entries remain. Fix them before marking the job reviewed.",
   "validate.searchPlaceholder": "Search mod name, ModId, key, source or target text...",
 };
 
@@ -1219,6 +1332,18 @@ const jaJp: TranslationMap = {
   "settings.card.concurrency": "並列設定",
   "settings.card.timeouts": "タイムアウトとリトライ",
   "settings.card.dictionary": "辞書",
+  "settings.i18nDictTitle": "i18n Mod 辞書",
+  "settings.i18nDictDescription": "CFPATools/i18n-dict 由来。AI プロンプトの CFPA 参考語彙として使います。アプリ辞書はローカル翻訳キャッシュのままです。",
+  "settings.i18nDictCheck": "i18n 辞書の更新確認",
+  "settings.i18nDictUpdate": "i18n 辞書を更新",
+  "settings.i18nDictChecking": "確認中...",
+  "settings.i18nDictUpdating": "更新中...",
+  "settings.i18nDictInstalled": "{count} 件の参考語彙を導入済み",
+  "settings.i18nDictCurrent": "現在: {tag}",
+  "settings.i18nDictLatest": "最新: {tag}",
+  "settings.i18nDictUpdateAvailable": "新しい i18n Mod 辞書があります",
+  "settings.i18nDictUpToDate": "i18n Mod 辞書は最新です",
+  "settings.i18nDictUpdated": "i18n Mod 辞書を更新しました。{count} 件を導入しました",
   "settings.provider": "プロバイダ",
   "settings.baseUrl": "ベース URL",
   "settings.tab.language": "言語と翻訳",
@@ -1226,7 +1351,6 @@ const jaJp: TranslationMap = {
   "settings.tab.performance": "性能設定",
   "settings.tab.reuse": "再利用",
   "settings.tab.logs": "ログ設定",
-  "settings.tab.advanced": "詳細設定",
   "settings.tab.appearance": "外観",
   "settings.apiKey": "API キー",
   "settings.appLanguage": "アプリ言語",
@@ -1269,7 +1393,6 @@ const jaJp: TranslationMap = {
   "settings.resetMainLog": "起動時に main.log をリセット",
   "settings.enableDebug": "デバッグログを有効化",
   "settings.enableHttp": "HTTP リクエストログを有効化",
-  "settings.defaultInstance": "既定のインスタンスパス",
   "settings.translationPacks": "翻訳リソースパック",
   "settings.resourcePackName": "リソースパックファイル名",
   "settings.resourcePackHint": "スキャナーは resourcepacks/ 内をこの名前で検索します",
@@ -1279,14 +1402,13 @@ const jaJp: TranslationMap = {
   "settings.packDefaultI18n": "デフォルトで CFPAOrg (i18n) と VM 翻訳パックを含みます",
   "settings.outputPackName": "出力リソースパック名",
   "settings.placeholderHint": "{{mc_version}} プレースホルダーでインスタンスバージョンに自動置換",
-  "settings.futureAdvanced": "辞書、パッケージング、実験機能の設定は後続フェーズで接続します。",
   "logs.title": "ログ",
-  "logs.subtitle": "フェーズ1では main、job、error ログを書き込みます。完全なフィルターは後続フェーズで接続します。",
+  "logs.subtitle": "アプリログをリアルタイムで表示し、レベル別フィルター、一時停止、コピー、クリアに対応します。",
   "logs.recentJob": "最近のジョブ",
   "logs.jobId": "ジョブ ID：{id}",
   "logs.instance": "インスタンス：{path}",
   "logs.warning": "warning：{count}",
-  "logs.empty": "まだスキャンジョブは実行されていません。",
+  "logs.empty": "ログはまだありません。",
   "tooltip.scan": "Mod の言語ファイルをスキャンします",
   "tooltip.cancelScan": "進行中のスキャンをキャンセル",
   "tooltip.pickInstance": "Minecraft インスタンスディレクトリを選択",
@@ -1435,7 +1557,7 @@ const jaJp: TranslationMap = {
   "common.loading": "読み込み中...",
   "common.save": "保存",
   "dashboard.column.pending": "未翻訳",
-  "dashboard.instancePlaceholder": "E:/PCL2/.minecraft/versions/Aaalice Craft",
+  "dashboard.instancePlaceholder": "Minecraft インスタンスディレクトリを選択",
   "dashboard.scanProgress": "{current} / {total}",
   "dashboard.stats.actualPending": "翻訳キュー合計",
   "dashboard.stats.actualPendingHint": "翻訳が必要なエントリ（既存除く）",
@@ -1453,6 +1575,10 @@ const jaJp: TranslationMap = {
   "dictionary.empty": "辞書が空です。先にModをスキャンして翻訳してください",
   "dictionary.export": "エクスポート",
   "dictionary.import": "インポート",
+  "dictionary.clear": "辞書をクリア",
+  "dictionary.clearTooltip": "辞書内のすべての項目を削除",
+  "dictionary.clearConfirm": "辞書全体をクリアしますか？この操作は元に戻せません。",
+  "dictionary.cleared": "辞書をクリアしました。{count} 件を削除しました",
   "dictionary.moreResults": "先頭500件を表示。あと {count} 件あります",
   "dictionary.saved": "保存しました",
   "dictionary.search": "検索",
@@ -1519,7 +1645,7 @@ const jaJp: TranslationMap = {
   "packages.title": "リソースパックパッケージング",
   "settings.batchSize": "Batch size",
   "settings.batchSizeHint": "1バッチあたりの最大エントリ数（デフォルト80）。大きいバッチはトークン効率が良いが応答時間が長くなります。",
-  "settings.concurrencyHint": "同時APIリクエスト数（デフォルト10）。429応答時に自動的にバックオフします。",
+  "settings.concurrencyHint": "同時APIリクエスト数（デフォルト100）。429応答時に自動的にバックオフします。",
   "settings.maxTokens": "Max tokens",
   "settings.modelsFetched": "{url} から {count} 個のモデルを取得しました",
   "settings.rateLimitRpmHint": "1分あたりの最大リクエスト数（デフォルト3000）。0 = 無制限。",
@@ -1611,6 +1737,18 @@ const koKr: TranslationMap = {
   "settings.card.concurrency": "동시 설정",
   "settings.card.timeouts": "시간 초과 및 재시도",
   "settings.card.dictionary": "사전",
+  "settings.i18nDictTitle": "i18n 모드 사전",
+  "settings.i18nDictDescription": "CFPATools/i18n-dict에서 가져오며 AI 프롬프트의 CFPA 참고 용어로 사용됩니다. 앱 사전은 로컬 번역 캐시로 유지됩니다.",
+  "settings.i18nDictCheck": "i18n 사전 업데이트 확인",
+  "settings.i18nDictUpdate": "i18n 사전 업데이트",
+  "settings.i18nDictChecking": "확인 중...",
+  "settings.i18nDictUpdating": "업데이트 중...",
+  "settings.i18nDictInstalled": "참고 항목 {count}개 가져옴",
+  "settings.i18nDictCurrent": "현재: {tag}",
+  "settings.i18nDictLatest": "최신: {tag}",
+  "settings.i18nDictUpdateAvailable": "새 i18n 모드 사전 사용 가능",
+  "settings.i18nDictUpToDate": "i18n 모드 사전이 최신입니다",
+  "settings.i18nDictUpdated": "i18n 모드 사전 업데이트 완료, 참고 항목 {count}개 가져옴",
   "settings.provider": "공급자",
   "settings.baseUrl": "기본 URL",
   "settings.tab.language": "언어 및 번역",
@@ -1618,7 +1756,6 @@ const koKr: TranslationMap = {
   "settings.tab.performance": "성능 설정",
   "settings.tab.reuse": "재사용",
   "settings.tab.logs": "로그 설정",
-  "settings.tab.advanced": "고급 설정",
   "settings.tab.appearance": "외관",
   "settings.apiKey": "API 키",
   "settings.appLanguage": "앱 언어",
@@ -1661,7 +1798,6 @@ const koKr: TranslationMap = {
   "settings.resetMainLog": "시작 시 main.log 초기화",
   "settings.enableDebug": "디버그 로그 활성화",
   "settings.enableHttp": "HTTP 요청 로그 활성화",
-  "settings.defaultInstance": "기본 인스턴스 경로",
   "settings.translationPacks": "번역 리소스 팩",
   "settings.resourcePackName": "리소스 팩 파일명",
   "settings.resourcePackHint": "스캐너가 resourcepacks/ 에서 이 이름으로 검색합니다",
@@ -1671,14 +1807,13 @@ const koKr: TranslationMap = {
   "settings.packDefaultI18n": "기본적으로 CFPAOrg (i18n) 및 VM 번역 팩 포함",
   "settings.outputPackName": "출력 리소스 팩 이름",
   "settings.placeholderHint": "{{mc_version}} 플레이스홀더로 인스턴스 버전 자동 대체",
-  "settings.futureAdvanced": "사전, 패키징, 실험 기능 설정은 이후 단계에서 연결됩니다.",
   "logs.title": "로그",
-  "logs.subtitle": "1단계에서는 main, job, error 로그를 기록하며 전체 필터는 이후 단계에서 연결됩니다.",
+  "logs.subtitle": "앱 로그를 실시간으로 보고, 레벨 필터, 일시 정지, 복사, 지우기를 사용할 수 있습니다.",
   "logs.recentJob": "최근 작업",
   "logs.jobId": "작업 ID: {id}",
   "logs.instance": "인스턴스: {path}",
   "logs.warning": "warning: {count}",
-  "logs.empty": "아직 스캔 작업이 실행되지 않았습니다.",
+  "logs.empty": "아직 로그가 없습니다.",
   "tooltip.scan": "모드 언어 파일 스캔 시작",
   "tooltip.cancelScan": "진행 중인 스캔 취소",
   "tooltip.pickInstance": "Minecraft 인스턴스 디렉토리 선택",
@@ -1827,7 +1962,7 @@ const koKr: TranslationMap = {
   "common.loading": "로딩 중...",
   "common.save": "저장",
   "dashboard.column.pending": "번역 대기",
-  "dashboard.instancePlaceholder": "E:/PCL2/.minecraft/versions/Aaalice Craft",
+  "dashboard.instancePlaceholder": "Minecraft 인스턴스 디렉토리 선택",
   "dashboard.scanProgress": "{current} / {total}",
   "dashboard.stats.actualPending": "번역 대기열 합계",
   "dashboard.stats.actualPendingHint": "번역이 필요한 항목 (기존 번역 제외)",
@@ -1845,6 +1980,10 @@ const koKr: TranslationMap = {
   "dictionary.empty": "사전이 비어 있습니다. 먼저 모드를 스캔하고 번역해주세요",
   "dictionary.export": "내보내기",
   "dictionary.import": "가져오기",
+  "dictionary.clear": "사전 비우기",
+  "dictionary.clearTooltip": "사전의 모든 항목 삭제",
+  "dictionary.clearConfirm": "전체 사전을 비우시겠습니까? 이 작업은 되돌릴 수 없습니다.",
+  "dictionary.cleared": "사전을 비웠습니다. {count}개 항목 삭제됨",
   "dictionary.moreResults": "처음 500개 표시. {count}개 더 있음",
   "dictionary.saved": "저장됨",
   "dictionary.search": "검색",
@@ -1911,7 +2050,7 @@ const koKr: TranslationMap = {
   "packages.title": "리소스팩 패키징",
   "settings.batchSize": "Batch size",
   "settings.batchSizeHint": "배치당 최대 항목 수(기본 80). 큰 배치는 토큰 효율이 좋지만 응답 시간이 길어집니다.",
-  "settings.concurrencyHint": "동시 API 요청 수(기본 10). 429 응답 시 자동 백오프됩니다.",
+  "settings.concurrencyHint": "동시 API 요청 수(기본 100). 429 응답 시 자동 백오프됩니다.",
   "settings.maxTokens": "Max tokens",
   "settings.modelsFetched": "{url}에서 {count}개 모델을 가져왔습니다",
   "settings.rateLimitRpmHint": "분당 최대 요청 수(기본 3000). 0 = 무제한.",
@@ -1958,7 +2097,7 @@ const ruRu: TranslationMap = {
   "dashboard.scan": "Начать сканирование",
   "dashboard.scanProgress": "{current} / {total}",
   "dashboard.instancePath": "Путь к экземпляру",
-  "dashboard.instancePlaceholder": "E:/PCL2/.minecraft/versions/Aaalice Craft",
+  "dashboard.instancePlaceholder": "Выберите директорию экземпляра Minecraft",
   "dashboard.pickInstance": "Выбрать экземпляр",
   "dashboard.pickInstanceError": "Не удалось выбрать экземпляр: ",
   "dashboard.rescan": "Пересканировать",
@@ -2019,6 +2158,10 @@ const ruRu: TranslationMap = {
   "dictionary.search": "Поиск",
   "dictionary.export": "Экспорт",
   "dictionary.import": "Импорт",
+  "dictionary.clear": "Очистить словарь",
+  "dictionary.clearTooltip": "Удалить все записи словаря",
+  "dictionary.clearConfirm": "Очистить весь словарь? Это действие нельзя отменить.",
+  "dictionary.cleared": "Словарь очищен, удалено записей: {count}",
   "dictionary.col.source": "Исходный",
   "dictionary.col.target": "Перевод",
   "dictionary.col.mod": "Мод",
@@ -2077,6 +2220,18 @@ const ruRu: TranslationMap = {
   "settings.card.concurrency": "Параллельность",
   "settings.card.timeouts": "Таймауты и повторы",
   "settings.card.dictionary": "Словарь",
+  "settings.i18nDictTitle": "i18n словарь модов",
+  "settings.i18nDictDescription": "Источник CFPATools/i18n-dict. Используется как справочник CFPA для AI-запросов; словарь приложения остается локальным кэшем переводов.",
+  "settings.i18nDictCheck": "Проверить i18n словарь",
+  "settings.i18nDictUpdate": "Обновить i18n словарь",
+  "settings.i18nDictChecking": "Проверка...",
+  "settings.i18nDictUpdating": "Обновление...",
+  "settings.i18nDictInstalled": "Импортировано справочных записей: {count}",
+  "settings.i18nDictCurrent": "Текущий: {tag}",
+  "settings.i18nDictLatest": "Последний: {tag}",
+  "settings.i18nDictUpdateAvailable": "Доступен новый i18n словарь модов",
+  "settings.i18nDictUpToDate": "i18n словарь модов актуален",
+  "settings.i18nDictUpdated": "i18n словарь модов обновлен, импортировано записей: {count}",
   "settings.provider": "Провайдер",
   "settings.baseUrl": "Базовый URL",
   "settings.tab.language": "Язык и перевод",
@@ -2084,7 +2239,6 @@ const ruRu: TranslationMap = {
   "settings.tab.performance": "Производительность",
   "settings.tab.reuse": "Повторное использование",
   "settings.tab.logs": "Логи",
-  "settings.tab.advanced": "Расширенные",
   "settings.tab.appearance": "Внешний вид",
   "settings.apiKey": "API ключ",
   "settings.appLanguage": "Язык приложения",
@@ -2130,7 +2284,6 @@ const ruRu: TranslationMap = {
   "settings.resetMainLog": "Сбрасывать main.log при запуске",
   "settings.enableDebug": "Включить отладочный лог",
   "settings.enableHttp": "Включить лог HTTP запросов",
-  "settings.defaultInstance": "Путь к экземпляру по умолчанию",
   "settings.translationPacks": "Ресурс-паки перевода",
   "settings.resourcePackName": "Имя файла ресурс-пака",
   "settings.resourcePackHint": "Сканер ищет ресурс-паки в resourcepacks/ по этому имени",
@@ -2140,14 +2293,13 @@ const ruRu: TranslationMap = {
   "settings.packDefaultI18n": "По умолчанию включает CFPAOrg (i18n) и VM ресурс-паки",
   "settings.outputPackName": "Имя выходного ресурс-пака",
   "settings.placeholderHint": "Используйте {{mc_version}} для автоматической замены на версию экземпляра",
-  "settings.futureAdvanced": "Настройки словаря и упаковки будут позже.",
   "logs.title": "Логи",
-  "logs.subtitle": "Фаза 1 записывает main, job и error логи.",
+  "logs.subtitle": "Просмотр логов приложения в реальном времени с фильтрами уровней, паузой, копированием и очисткой.",
   "logs.recentJob": "Последняя задача",
   "logs.jobId": "ID задачи: {id}",
   "logs.instance": "Экземпляр: {path}",
   "logs.warning": "warning: {count}",
-  "logs.empty": "Сканирование еще не выполнялось.",
+  "logs.empty": "Логов пока нет.",
   "tooltip.scan": "Начать сканирование языковых файлов модов",
   "tooltip.cancelScan": "Отменить текущее сканирование",
   "tooltip.pickInstance": "Выбрать директорию экземпляра Minecraft",
@@ -2308,7 +2460,7 @@ const ruRu: TranslationMap = {
   "jobs.sourceType.reviewed": "Проверено",
   "jobs.sourceType.skipped": "Пропущено",
   "settings.batchSizeHint": "Максимум записей в пачке (по умолчанию 80). Большие пачки эффективнее по токенам, но дольше выполняются.",
-  "settings.concurrencyHint": "Параллельных запросов API (по умолчанию 10). Автоматически адаптируется к ограничениям — 429 вызывает автоматическую паузу.",
+  "settings.concurrencyHint": "Параллельных запросов API (по умолчанию 100). Автоматически адаптируется к ограничениям — 429 вызывает автоматическую паузу.",
   "settings.rateLimitRpmHint": "Максимум запросов в минуту (по умолчанию 3000). 0 = без лимита.",
   "settings.retryCountHint": "Количество повторов при ошибке (по умолчанию 5). Ошибки лимита запросов обрабатываются отдельно.",
   "settings.systemPrompt": "Системный промпт",

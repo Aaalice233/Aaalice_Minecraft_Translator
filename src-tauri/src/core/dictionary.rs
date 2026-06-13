@@ -4,8 +4,6 @@ use std::path::Path;
 use rusqlite::{params, Connection, Result as SqlResult, Row};
 use serde::{Deserialize, Serialize};
 
-use crate::core::models::LanguageEntry;
-
 /// Shared SQL schema: table + indexes used by both `open` and `open_in_memory`.
 const SCHEMA_SQL: &str = "CREATE TABLE IF NOT EXISTS dictionary_entries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,7 +25,12 @@ CREATE INDEX IF NOT EXISTS idx_source_hash ON dictionary_entries(source_hash);
 CREATE INDEX IF NOT EXISTS idx_source_lang ON dictionary_entries(source_lang);
 CREATE INDEX IF NOT EXISTS idx_target_lang ON dictionary_entries(target_lang);
 CREATE INDEX IF NOT EXISTS idx_mod_id ON dictionary_entries(mod_id);
-CREATE INDEX IF NOT EXISTS idx_source_type ON dictionary_entries(source_type);";
+CREATE INDEX IF NOT EXISTS idx_source_type ON dictionary_entries(source_type);
+CREATE TABLE IF NOT EXISTS dictionary_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);";
 
 /// Map a SQLite row to a DictionaryEntry.
 fn map_row(row: &Row) -> SqlResult<DictionaryEntry> {
@@ -45,6 +48,16 @@ fn map_row(row: &Row) -> SqlResult<DictionaryEntry> {
         created_at: row.get(10)?,
         updated_at: row.get(11)?,
     })
+}
+
+fn local_source_priority(source_type: &str) -> u8 {
+    match source_type {
+        "manual" => 4,
+        "reviewed" => 3,
+        "resourcepack" => 2,
+        "llm" => 1,
+        _ => 0,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,6 +92,14 @@ pub struct DictionaryStats {
     pub mod_ids: Vec<String>,
 }
 
+/// i18n reference dictionary match used as per-entry LLM context.
+#[derive(Debug, Clone)]
+pub struct CfpaMatch {
+    pub source_text: String,
+    pub target_text: String,
+    pub similarity: f64,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DictionaryQuery {
@@ -98,7 +119,9 @@ pub fn open(db_path: &Path) -> SqlResult<Connection> {
         std::fs::create_dir_all(parent).ok();
     }
     let conn = Connection::open(db_path)?;
-    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;")?;
+    conn.execute_batch(
+        "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;",
+    )?;
     conn.execute_batch(SCHEMA_SQL)?;
     Ok(conn)
 }
@@ -110,7 +133,8 @@ pub fn open_in_memory(conn: &Connection) -> SqlResult<()> {
 }
 
 /// Shared column list for SELECT queries returning full DictionaryEntry rows.
-const SELECT_COLS: &str = "SELECT id, source_text, target_text, source_lang, target_lang, source_type, \
+const SELECT_COLS: &str =
+    "SELECT id, source_text, target_text, source_lang, target_lang, source_type, \
     mod_id, translation_key, context, confidence, created_at, updated_at \
     FROM dictionary_entries";
 
@@ -165,11 +189,11 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
     let source_hash = hash_text(&entry.source_text);
     let target_hash = hash_text(&entry.target_text);
 
-    // Check if an entry with the same source_hash + target_lang exists
+    // CFPA/i18n entries are reference data only; local cache/manual entries must not collide with them.
     let existing: Option<(i64,)> = conn
         .query_row(
             "SELECT id FROM dictionary_entries
-             WHERE source_hash = ?1 AND target_lang = ?2
+             WHERE source_hash = ?1 AND target_lang = ?2 AND source_type <> 'cfpa'
              LIMIT 1",
             params![source_hash, entry.target_lang],
             |row| Ok((row.get(0)?,)),
@@ -187,19 +211,15 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
             )
             .unwrap_or_default();
 
-        // Priority: manual > cfpa > resourcepack > llm
+        // Priority: manual > reviewed > resourcepack > llm. CFPA is excluded above.
         let should_update = match (current_info.0.as_str(), entry.source_type.as_str()) {
-            // Current is manual: never overwrite with lower priority
             ("manual", _) => false,
-            // Current is cfpa: overwrite only with manual
             (_, "manual") => true,
-            // Current is resourcepack: overwrite with cfpa
-            ("resourcepack", "cfpa") => true,
-            // Current is llm: overwrite with anything
+            ("reviewed", _) => false,
+            (_, "reviewed") => true,
+            ("resourcepack", "llm") => false,
             ("llm", _) => true,
-            // Same type: update only if new confidence is strictly higher than existing
             (a, b) if a == b => entry.confidence > current_info.1,
-            // Default: don't overwrite
             _ => false,
         };
 
@@ -236,9 +256,7 @@ pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<Dicti
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
     if let Some(ref search) = query.search {
-        sql.push_str(
-            " AND (source_text LIKE ? OR target_text LIKE ? OR translation_key LIKE ?)",
-        );
+        sql.push_str(" AND (source_text LIKE ? OR target_text LIKE ? OR translation_key LIKE ?)");
         let pattern = format!("%{}%", search);
         param_values.push(Box::new(pattern.clone()));
         param_values.push(Box::new(pattern.clone()));
@@ -247,6 +265,8 @@ pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<Dicti
     if let Some(ref source_type) = query.source_type {
         sql.push_str(" AND source_type = ?");
         param_values.push(Box::new(source_type.clone()));
+    } else {
+        sql.push_str(" AND source_type <> 'cfpa'");
     }
     if let Some(ref mod_id) = query.mod_id {
         sql.push_str(" AND mod_id = ?");
@@ -269,7 +289,8 @@ pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<Dicti
     param_values.push(Box::new(limit as i64));
     param_values.push(Box::new(offset as i64));
 
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(param_refs.as_slice(), map_row)?;
 
@@ -289,12 +310,21 @@ pub fn search_by_hash(
     source_hash: &str,
     target_lang: &str,
 ) -> SqlResult<Vec<DictionaryEntry>> {
-    let mut stmt = conn.prepare(
-        &format!("{SELECT_COLS}
-         WHERE source_hash = ?1 AND target_lang = ?2
-         ORDER BY updated_at DESC
-         LIMIT 5"),
-    )?;
+    let mut stmt = conn.prepare(&format!(
+        "{SELECT_COLS}
+         WHERE source_hash = ?1 AND target_lang = ?2 AND source_type <> 'cfpa'
+         ORDER BY
+             CASE source_type
+                 WHEN 'manual' THEN 4
+                 WHEN 'reviewed' THEN 3
+                 WHEN 'resourcepack' THEN 2
+                 WHEN 'llm' THEN 1
+                 ELSE 0
+             END DESC,
+             confidence DESC,
+             updated_at DESC
+         LIMIT 5"
+    ))?;
 
     let rows = stmt.query_map(params![source_hash, target_lang], map_row)?;
 
@@ -340,17 +370,19 @@ pub fn count_hits_batch(
         // Use COUNT(DISTINCT source_hash) since same hash may be duplicated across entries
         let sql = format!(
             "SELECT COUNT(DISTINCT source_hash) FROM dictionary_entries \
-             WHERE target_lang = ?1 AND source_hash IN ({})",
+             WHERE target_lang = ?1 AND source_type <> 'cfpa' AND source_hash IN ({})",
             placeholders.join(",")
         );
 
         let mut stmt = conn.prepare(&sql)?;
-        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(hashes.len() + 1);
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> =
+            Vec::with_capacity(hashes.len() + 1);
         param_values.push(Box::new(target_lang.to_string()));
         for h in &hashes {
             param_values.push(Box::new(h.clone()));
         }
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
         let count: i64 = stmt.query_row(param_refs.as_slice(), |row| row.get(0))?;
         hits += count as usize;
     }
@@ -369,7 +401,8 @@ pub fn load_source_hashes_for_target(
     target_lang: &str,
 ) -> SqlResult<HashSet<String>> {
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT source_hash FROM dictionary_entries WHERE target_lang = ?1",
+        "SELECT DISTINCT source_hash FROM dictionary_entries
+         WHERE target_lang = ?1 AND source_type <> 'cfpa'",
     )?;
     let rows = stmt.query_map(params![target_lang], |row| row.get::<_, String>(0))?;
 
@@ -388,9 +421,7 @@ pub fn load_source_hashes_for_target(
 /// Get a single entry by ID.
 pub fn get_by_id(conn: &Connection, id: i64) -> SqlResult<Option<DictionaryEntry>> {
     tracing::debug!(entry_id = id, "查询词典条目");
-    let mut stmt = conn.prepare(
-        &format!("{SELECT_COLS} WHERE id = ?1"),
-    )?;
+    let mut stmt = conn.prepare(&format!("{SELECT_COLS} WHERE id = ?1"))?;
 
     let mut rows = stmt.query_map(params![id], map_row)?;
 
@@ -402,7 +433,11 @@ pub fn get_by_id(conn: &Connection, id: i64) -> SqlResult<Option<DictionaryEntry
 
 /// Update the target_text of an entry. Sets source_type to 'manual'.
 pub fn update_translation(conn: &Connection, id: i64, new_target: &str) -> SqlResult<bool> {
-    tracing::info!(entry_id = id, new_target_len = new_target.len(), "更新词典译文");
+    tracing::info!(
+        entry_id = id,
+        new_target_len = new_target.len(),
+        "更新词典译文"
+    );
     let target_hash = hash_text(new_target);
     let affected = conn.execute(
         "UPDATE dictionary_entries
@@ -416,11 +451,25 @@ pub fn update_translation(conn: &Connection, id: i64, new_target: &str) -> SqlRe
 /// Delete an entry by ID.
 pub fn delete(conn: &Connection, id: i64) -> SqlResult<bool> {
     tracing::info!(entry_id = id, "删除词典条目");
-    let affected = conn.execute(
-        "DELETE FROM dictionary_entries WHERE id = ?1",
-        params![id],
-    )?;
+    let affected = conn.execute("DELETE FROM dictionary_entries WHERE id = ?1", params![id])?;
     Ok(affected > 0)
+}
+
+/// Delete all dictionary entries. Returns the number of removed rows.
+pub fn clear_all(conn: &Connection) -> SqlResult<usize> {
+    tracing::warn!("清空词典条目");
+    let affected = conn.execute("DELETE FROM dictionary_entries", [])?;
+    Ok(affected)
+}
+
+/// Delete local application dictionary entries while keeping external CFPA references.
+pub fn clear_local_entries(conn: &Connection) -> SqlResult<usize> {
+    tracing::warn!("清空本地词典条目，保留 CFPA 参考词典");
+    let affected = conn.execute(
+        "DELETE FROM dictionary_entries WHERE source_type <> 'cfpa'",
+        [],
+    )?;
+    Ok(affected)
 }
 
 /// Get total count of entries.
@@ -432,120 +481,47 @@ pub fn count(conn: &Connection) -> SqlResult<usize> {
     Ok(count)
 }
 
-/// Import resource pack entries into the dictionary.
-/// TODO: Integrate into translation pipeline when resource pack reuse is enabled.
-#[allow(dead_code)]
-pub fn import_resource_pack_entries(
-    conn: &Connection,
-    entries: &[LanguageEntry],
-    target_lang: &str,
-) -> SqlResult<ImportResult> {
-    let mut imported = 0usize;
-    let mut skipped = 0usize;
-    let mut conflicts = Vec::new();
-
-    for entry in entries {
-        if entry.language != target_lang {
-            skipped += 1;
-            continue;
-        }
-
-        let source_hash = hash_text(&entry.text);
-        let existing: Option<(String, String)> = conn
-            .query_row(
-                "SELECT source_type, target_text FROM dictionary_entries
-                 WHERE source_hash = ?1 AND target_lang = ?2
-                 LIMIT 1",
-                params![source_hash, target_lang],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .ok();
-
-        match existing {
-            Some((_, ref existing_text)) if *existing_text == entry.text => {
-                skipped += 1;
-            }
-            Some((ref existing_type, ref existing_text)) => {
-                conflicts.push(format!(
-                    "条目「{}」已有译文「{}」（来源: {}），资源包译文「{}」被跳过",
-                    entry.text, existing_text, existing_type, entry.text
-                ));
-                skipped += 1;
-            }
-            None => {
-                let dict_entry = DictionaryEntry {
-                    id: None,
-                    source_text: entry.text.clone(),
-                    target_text: entry.text.clone(),
-                    source_lang: entry.language.clone(),
-                    target_lang: target_lang.to_string(),
-                    source_type: "resourcepack".to_string(),
-                    mod_id: Some(entry.mod_id.clone()),
-                    translation_key: Some(entry.key.clone()),
-                    context: None,
-                    confidence: 0.8,
-                    created_at: None,
-                    updated_at: None,
-                };
-                upsert(conn, &dict_entry)?;
-                imported += 1;
-            }
-        }
-    }
-
-    Ok(ImportResult {
-        imported,
-        skipped,
-        conflicts,
-    })
+pub fn count_local_entries(conn: &Connection) -> SqlResult<usize> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM dictionary_entries WHERE source_type <> 'cfpa'",
+        [],
+        |row| row.get::<_, i64>(0).map(|v| v as usize),
+    )
 }
 
-/// Save LLM translation results into the dictionary.
-/// Used during the pack step when the user checks "更新词典".
-pub fn save_llm_results_to_dictionary(
-    conn: &Connection,
-    results: &[crate::core::jobs::TranslationResult],
-    target_lang: &str,
-) -> SqlResult<(usize, usize)> {
-    let mut inserted = 0usize;
-    let mut updated = 0usize;
-
-    for r in results {
-        if r.source_type != "llm" && r.source_type != "reviewed" {
-            continue;
-        }
-        if r.target_text.trim().is_empty() {
-            continue;
-        }
-
-        let entry = DictionaryEntry {
-            id: None,
-            source_text: r.source_text.clone(),
-            target_text: r.target_text.clone(),
-            source_lang: String::new(),       // auto-detect below
-            target_lang: target_lang.to_string(),
-            source_type: r.source_type.clone(),
-            mod_id: Some(r.mod_id.clone()),
-            translation_key: Some(r.key.clone()),
-            context: None,
-            confidence: 1.0,
-            created_at: None,
-            updated_at: None,
-        };
-        let (_, is_new) = upsert(conn, &entry)?;
-        if is_new {
-            inserted += 1;
-        } else {
-            updated += 1;
-        }
-    }
-
-    Ok((inserted, updated))
+pub fn count_by_source_type(conn: &Connection, source_type: &str) -> SqlResult<usize> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM dictionary_entries WHERE source_type = ?1",
+        params![source_type],
+        |row| row.get::<_, i64>(0).map(|v| v as usize),
+    )
 }
-pub fn export_jsonl(conn: &Connection) -> SqlResult<Vec<String>> {
-    let mut stmt = conn.prepare(
-        &format!("{SELECT_COLS} ORDER BY id"),
+
+pub fn get_metadata(conn: &Connection, key: &str) -> SqlResult<Option<String>> {
+    let value = conn
+        .query_row(
+            "SELECT value FROM dictionary_metadata WHERE key = ?1",
+            params![key],
+            |row| row.get::<_, String>(0),
+        )
+        .ok();
+    Ok(value)
+}
+
+pub fn set_metadata(conn: &Connection, key: &str, value: &str) -> SqlResult<()> {
+    conn.execute(
+        "INSERT INTO dictionary_metadata (key, value, updated_at)
+         VALUES (?1, ?2, datetime('now'))
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')",
+        params![key, value],
     )?;
+    Ok(())
+}
+
+pub fn export_jsonl(conn: &Connection) -> SqlResult<Vec<String>> {
+    let mut stmt = conn.prepare(&format!(
+        "{SELECT_COLS} WHERE source_type <> 'cfpa' ORDER BY id"
+    ))?;
 
     let rows = stmt.query_map([], map_row)?;
 
@@ -562,7 +538,10 @@ pub fn export_jsonl(conn: &Connection) -> SqlResult<Vec<String>> {
 
 /// Import entries from JSON lines. Returns import summary.
 pub fn import_jsonl(conn: &Connection, lines: &[&str]) -> SqlResult<ImportResult> {
-    tracing::info!(count = lines.len(), "Importing dictionary entries from JSONL");
+    tracing::info!(
+        count = lines.len(),
+        "Importing dictionary entries from JSONL"
+    );
     let mut imported = 0usize;
     let mut skipped = 0usize;
     let mut conflicts = Vec::new();
@@ -598,7 +577,9 @@ pub fn import_jsonl(conn: &Connection, lines: &[&str]) -> SqlResult<ImportResult
 pub fn distinct_mod_ids(conn: &Connection) -> SqlResult<Vec<String>> {
     tracing::debug!("获取词典中的模组列表");
     let mut stmt = conn.prepare(
-        "SELECT DISTINCT mod_id FROM dictionary_entries WHERE mod_id IS NOT NULL ORDER BY mod_id",
+        "SELECT DISTINCT mod_id FROM dictionary_entries
+         WHERE mod_id IS NOT NULL AND source_type <> 'cfpa'
+         ORDER BY mod_id",
     )?;
     let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
     let mut ids = Vec::new();
@@ -621,6 +602,8 @@ pub struct MemoryDictionary {
     /// All `cfpa`-type entries pre-sorted for fuzzy search:
     /// (source_text, target_text, source_lang, target_lang)
     cfpa_entries: Vec<(String, String, String, String)>,
+    /// (source_lang, target_lang, lowercase source_text) → cfpa_entries indices
+    cfpa_exact_index: HashMap<String, Vec<usize>>,
     /// Inverted word index: lowercase keyword → indices into cfpa_entries
     word_index: HashMap<String, Vec<usize>>,
 }
@@ -634,6 +617,7 @@ impl MemoryDictionary {
 
         let mut entries: HashMap<String, Vec<DictionaryEntry>> = HashMap::new();
         let mut cfpa_entries: Vec<(String, String, String, String)> = Vec::new();
+        let mut cfpa_exact_index: HashMap<String, Vec<usize>> = HashMap::new();
         let mut word_index: HashMap<String, Vec<usize>> = HashMap::new();
 
         for row in rows {
@@ -641,16 +625,25 @@ impl MemoryDictionary {
             let hash = hash_text(&entry.source_text);
             entries.entry(hash).or_default().push(entry.clone());
 
-            if entry.source_type == "cfpa" {
+            let source_text = entry.source_text.trim().to_string();
+            let target_text = entry.target_text.trim().to_string();
+            if entry.source_type == "cfpa" && is_useful_reference_pair(&source_text, &target_text) {
                 let idx = cfpa_entries.len();
                 cfpa_entries.push((
-                    entry.source_text.clone(),
-                    entry.target_text.clone(),
+                    source_text.clone(),
+                    target_text,
                     entry.source_lang.clone(),
                     entry.target_lang.clone(),
                 ));
-                // Index each word of the source text
-                for word in tokenize(&entry.source_text) {
+                cfpa_exact_index
+                    .entry(cfpa_exact_key(
+                        &entry.source_lang,
+                        &entry.target_lang,
+                        &source_text,
+                    ))
+                    .or_default()
+                    .push(idx);
+                for word in meaningful_tokens(&source_text) {
                     word_index.entry(word).or_default().push(idx);
                 }
             }
@@ -661,108 +654,272 @@ impl MemoryDictionary {
             cfpa = cfpa_entries.len(),
             "MemoryDictionary loaded"
         );
-        Ok(Self { entries, cfpa_entries, word_index })
+        Ok(Self {
+            entries,
+            cfpa_entries,
+            cfpa_exact_index,
+            word_index,
+        })
     }
 
-    /// O(1) lookup by source hash and target language.
+    /// O(1) lookup by source hash and target language for local reusable translations.
     /// Returns up to 5 matching entries (cloned owned data — negligible overhead vs. old SQLite query).
     pub fn search_by_hash(&self, source_hash: &str, target_lang: &str) -> Vec<DictionaryEntry> {
         self.entries
             .get(source_hash)
             .map(|vec| {
-                vec.iter()
-                    .filter(|e| e.target_lang == target_lang)
-                    .take(5)
+                let mut hits: Vec<DictionaryEntry> = vec
+                    .iter()
+                    .filter(|e| e.target_lang == target_lang && e.source_type != "cfpa")
                     .cloned()
-                    .collect()
+                    .collect();
+                hits.sort_by(|a, b| {
+                    local_source_priority(&b.source_type)
+                        .cmp(&local_source_priority(&a.source_type))
+                        .then_with(|| {
+                            b.confidence
+                                .partial_cmp(&a.confidence)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })
+                        .then_with(|| b.updated_at.cmp(&a.updated_at))
+                });
+                hits.truncate(5);
+                hits
             })
             .unwrap_or_default()
     }
 
-    /// In-memory fuzzy search over cfpa entries.
-    /// Replaces the old SQL-LIKE approach with a word-indexed search:
-    /// 1. Exact match → score 1.0
-    /// 2. Starts-with match → score 0.8
-    /// 3. Word-subset match (via inverted index) → score 0.5
-    pub fn fuzzy_search(
+    /// Search i18n reference terms for one source entry.
+    pub fn reference_search(
         &self,
         text: &str,
+        key: &str,
         source_lang: &str,
         target_lang: &str,
         limit: usize,
-    ) -> Vec<crate::core::cfpa::CfpaMatch> {
-        let limit = limit.min(20);
+    ) -> Vec<CfpaMatch> {
+        let limit = limit.min(10);
+        if limit == 0 {
+            return Vec::new();
+        }
         let query_lower = text.to_lowercase();
-        let query_words: Vec<String> = tokenize(text);
+        let query_words = meaningful_tokens(text);
+        let query_tokens = tokenize(text);
+        if query_lower.trim().is_empty() || query_words.is_empty() {
+            return Vec::new();
+        }
+        if is_long_reference_query(text, key) {
+            return self.contained_reference_search(
+                &query_lower,
+                &query_words,
+                source_lang,
+                target_lang,
+                limit,
+            );
+        }
 
-        // Score entries by relevance
         let mut scored: Vec<(f64, usize)> = Vec::new();
         let mut seen = std::collections::HashSet::new();
 
-        // Phase 1: exact match (score 1.0)
-        for (i, (src, _tgt, sl, tl)) in self.cfpa_entries.iter().enumerate() {
-            if sl != source_lang || tl != target_lang { continue; }
-            if src.to_lowercase() == query_lower {
-                if seen.insert(i) {
-                    scored.push((1.0, i));
+        if let Some(indices) =
+            self.cfpa_exact_index
+                .get(&cfpa_exact_key(source_lang, target_lang, text))
+        {
+            let mut seen_sources = HashSet::new();
+            for &idx in indices {
+                let (src, _, _, _) = &self.cfpa_entries[idx];
+                if seen.insert(idx) && seen_sources.insert(normalize_reference_source(src)) {
+                    scored.push((1.0, idx));
                 }
             }
         }
-
-        // Phase 2: starts-with (score 0.8)
-        if scored.len() < limit {
-            for (i, (src, _tgt, sl, tl)) in self.cfpa_entries.iter().enumerate() {
-                if sl != source_lang || tl != target_lang { continue; }
-                if seen.contains(&i) { continue; }
-                if src.to_lowercase().starts_with(&query_lower) {
-                    if seen.insert(i) {
-                        scored.push((0.8, i));
+        if is_mod_name_reference_key(key) {
+            return scored
+                .into_iter()
+                .take(limit)
+                .map(|(sim, idx)| {
+                    let (src, tgt, _, _) = &self.cfpa_entries[idx];
+                    CfpaMatch {
+                        source_text: src.clone(),
+                        target_text: tgt.clone(),
+                        similarity: sim,
                     }
-                }
-            }
+                })
+                .collect();
+        }
+        if query_words.len() == 1 && is_unstable_reference_token(&query_words[0]) {
+            return scored
+                .into_iter()
+                .take(limit)
+                .map(|(sim, idx)| {
+                    let (src, tgt, _, _) = &self.cfpa_entries[idx];
+                    CfpaMatch {
+                        source_text: src.clone(),
+                        target_text: tgt.clone(),
+                        similarity: sim,
+                    }
+                })
+                .collect();
         }
 
-        // Phase 3: word-level match via inverted index (score 0.5)
-        if scored.len() < limit {
-            let mut word_hits: HashMap<usize, usize> = HashMap::new(); // index → matched word count
-            for word in &query_words {
-                if let Some(indices) = self.word_index.get(word) {
-                    for &idx in indices {
-                        // Check language match
-                        let (_, _, sl, tl) = &self.cfpa_entries[idx];
-                        if sl != source_lang || tl != target_lang { continue; }
-                        if seen.contains(&idx) { continue; }
+        let mut word_hits: HashMap<usize, usize> = HashMap::new();
+        for word in &query_words {
+            if let Some(indices) = self.word_index.get(word) {
+                for &idx in indices {
+                    if seen.contains(&idx) {
+                        continue;
+                    }
+                    let (_, _, sl, tl) = &self.cfpa_entries[idx];
+                    if sl == source_lang && tl == target_lang {
                         *word_hits.entry(idx).or_default() += 1;
                     }
                 }
             }
-            // Sort by matched-word count descending
-            let mut hits: Vec<(usize, usize)> = word_hits.into_iter().collect();
-            hits.sort_by(|a, b| b.1.cmp(&a.1));
-            for (idx, _count) in hits {
-                if scored.len() >= limit { break; }
-                seen.insert(idx);
-                scored.push((0.5, idx));
-            }
         }
 
-        // Sort by score descending, build results
-        scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-        let mut results: Vec<crate::core::cfpa::CfpaMatch> = scored
-            .into_iter()
-            .take(limit)
-            .map(|(sim, i)| {
-                let (src, tgt, _, _) = &self.cfpa_entries[i];
-                crate::core::cfpa::CfpaMatch {
+        for (idx, matched_words) in word_hits {
+            let (src, _, _, _) = &self.cfpa_entries[idx];
+            let src_lower = src.to_lowercase();
+            let src_words = meaningful_tokens(src);
+            if src_words.is_empty() {
+                continue;
+            }
+            if src_words.len() == 1
+                && query_words.len() > 2
+                && !is_single_token_reference(&src_words[0])
+            {
+                continue;
+            }
+
+            let query_len = query_words.len();
+            let min_matches = if query_len <= 2 {
+                query_len
+            } else {
+                ((query_len as f64) * 0.6).ceil() as usize
+            };
+            let src_tokens = tokenize(src);
+            let phrase_related = contains_token_sequence(&src_tokens, &query_tokens)
+                || contains_token_sequence(&query_tokens, &src_tokens);
+            if matched_words < min_matches && !phrase_related {
+                continue;
+            }
+            if !phrase_related && src_words.len() > query_words.len() + 4 {
+                continue;
+            }
+
+            let coverage = matched_words as f64 / query_words.len() as f64;
+            let precision = matched_words as f64 / src_words.len() as f64;
+            let mut score = 0.55 * coverage + 0.45 * precision;
+            if src_lower.starts_with(&query_lower) {
+                score = score.max(0.88);
+            } else if phrase_related {
+                score = score.max(0.78);
+            }
+            if score < 0.58 {
+                continue;
+            }
+            scored.push((score.min(0.99), idx));
+        }
+
+        scored.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    let a_len = meaningful_tokens(&self.cfpa_entries[a.1].0).len();
+                    let b_len = meaningful_tokens(&self.cfpa_entries[b.1].0).len();
+                    a_len.cmp(&b_len)
+                })
+                .then_with(|| {
+                    self.cfpa_entries[a.1]
+                        .0
+                        .len()
+                        .cmp(&self.cfpa_entries[b.1].0.len())
+                })
+        });
+
+        let mut results: Vec<CfpaMatch> = Vec::new();
+        let mut result_sources = HashSet::new();
+        for (sim, idx) in scored {
+            if results.len() >= limit {
+                break;
+            }
+            if seen.insert(idx) || (sim - 1.0).abs() < f64::EPSILON {
+                let (src, tgt, _, _) = &self.cfpa_entries[idx];
+                if !result_sources.insert(normalize_reference_source(src)) {
+                    continue;
+                }
+                results.push(CfpaMatch {
                     source_text: src.clone(),
                     target_text: tgt.clone(),
                     similarity: sim,
-                }
-            })
-            .collect();
-        results.sort_by(|a, b| b.similarity.partial_cmp(&a.similarity).unwrap_or(std::cmp::Ordering::Equal));
-        results.truncate(limit);
+                });
+            }
+        }
+
         results
+    }
+
+    fn contained_reference_search(
+        &self,
+        query_lower: &str,
+        query_words: &[String],
+        source_lang: &str,
+        target_lang: &str,
+        limit: usize,
+    ) -> Vec<CfpaMatch> {
+        let mut scored: Vec<(f64, usize)> = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+        let query_tokens = tokenize(query_lower);
+        for word in query_words {
+            if let Some(indices) = self.word_index.get(word) {
+                for &idx in indices {
+                    if !seen.insert(idx) {
+                        continue;
+                    }
+                    let (src, _, sl, tl) = &self.cfpa_entries[idx];
+                    if sl != source_lang || tl != target_lang {
+                        continue;
+                    }
+                    let src_words = meaningful_tokens(src);
+                    if src_words.is_empty() {
+                        continue;
+                    }
+                    if src_words.len() == 1 && !is_single_token_reference(&src_words[0]) {
+                        continue;
+                    }
+                    let source_tokens = tokenize(src);
+                    if contains_token_sequence(&query_tokens, &source_tokens) {
+                        scored.push((0.82 + (src_words.len().min(3) as f64 * 0.03), idx));
+                    }
+                }
+            }
+        }
+
+        let mut seen_sources = HashSet::new();
+        scored.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| {
+                    let b_len = meaningful_tokens(&self.cfpa_entries[b.1].0).len();
+                    let a_len = meaningful_tokens(&self.cfpa_entries[a.1].0).len();
+                    b_len.cmp(&a_len)
+                })
+        });
+        scored
+            .into_iter()
+            .filter_map(|(sim, idx)| {
+                let (src, tgt, _, _) = &self.cfpa_entries[idx];
+                if !seen_sources.insert(normalize_reference_source(src)) {
+                    return None;
+                }
+                Some(CfpaMatch {
+                    source_text: src.clone(),
+                    target_text: tgt.clone(),
+                    similarity: sim.min(0.95),
+                })
+            })
+            .take(limit)
+            .collect()
     }
 
     /// Insert or update a single result in both memory and SQLite.
@@ -770,13 +927,14 @@ impl MemoryDictionary {
         &mut self,
         conn: &Connection,
         result: &crate::core::jobs::TranslationResult,
+        source_lang: &str,
         target_lang: &str,
     ) -> SqlResult<(i64, bool)> {
         let entry = DictionaryEntry {
             id: None,
             source_text: result.source_text.clone(),
             target_text: result.target_text.clone(),
-            source_lang: String::new(),
+            source_lang: source_lang.to_string(),
             target_lang: target_lang.to_string(),
             source_type: result.source_type.clone(),
             mod_id: Some(result.mod_id.clone()),
@@ -799,7 +957,7 @@ impl MemoryDictionary {
                 id: Some(id),
                 source_text: result.source_text.clone(),
                 target_text: result.target_text.clone(),
-                source_lang: String::new(),
+                source_lang: source_lang.to_string(),
                 target_lang: target_lang.to_string(),
                 source_type: result.source_type.clone(),
                 mod_id: Some(result.mod_id.clone()),
@@ -820,6 +978,7 @@ impl MemoryDictionary {
         &mut self,
         conn: &Connection,
         results: &[crate::core::jobs::TranslationResult],
+        source_lang: &str,
         target_lang: &str,
     ) -> SqlResult<(usize, usize)> {
         let mut inserted = 0usize;
@@ -828,10 +987,18 @@ impl MemoryDictionary {
         // Use an explicit transaction for batch upsert
         conn.execute_batch("BEGIN IMMEDIATE")?;
         for r in results {
-            if r.source_type != "llm" && r.source_type != "reviewed" { continue; }
-            if r.target_text.trim().is_empty() { continue; }
-            let (_, is_new) = self.upsert_result(conn, r, target_lang)?;
-            if is_new { inserted += 1; } else { updated += 1; }
+            if r.source_type != "llm" && r.source_type != "reviewed" {
+                continue;
+            }
+            if r.target_text.trim().is_empty() {
+                continue;
+            }
+            let (_, is_new) = self.upsert_result(conn, r, source_lang, target_lang)?;
+            if is_new {
+                inserted += 1;
+            } else {
+                updated += 1;
+            }
         }
         conn.execute_batch("COMMIT")?;
 
@@ -847,6 +1014,157 @@ fn tokenize(text: &str) -> Vec<String> {
         .filter(|w| w.len() > 1)
         .map(String::from)
         .collect()
+}
+
+fn meaningful_tokens(text: &str) -> Vec<String> {
+    let tokens: Vec<String> = tokenize(text)
+        .into_iter()
+        .filter(|w| {
+            !matches!(
+                w.as_str(),
+                "the"
+                    | "and"
+                    | "for"
+                    | "with"
+                    | "from"
+                    | "item"
+                    | "block"
+                    | "entity"
+                    | "tooltip"
+                    | "mod"
+                    | "more"
+                    | "light"
+                    | "of"
+                    | "to"
+                    | "at"
+                    | "in"
+                    | "on"
+                    | "by"
+                    | "as"
+                    | "is"
+                    | "are"
+                    | "be"
+                    | "a"
+                    | "an"
+                    | "one"
+            )
+        })
+        .collect();
+    if tokens.is_empty() {
+        Vec::new()
+    } else {
+        tokens
+    }
+}
+
+fn cfpa_exact_key(source_lang: &str, target_lang: &str, source_text: &str) -> String {
+    format!(
+        "{source_lang}\0{target_lang}\0{}",
+        normalize_reference_source(source_text)
+    )
+}
+
+fn normalize_reference_source(source_text: &str) -> String {
+    source_text.trim().to_lowercase()
+}
+
+fn contains_token_sequence(haystack: &[String], needle: &[String]) -> bool {
+    if needle.is_empty() || needle.len() > haystack.len() {
+        return false;
+    }
+    haystack
+        .windows(needle.len())
+        .any(|window| window == needle)
+}
+
+fn is_useful_reference_pair(source_text: &str, target_text: &str) -> bool {
+    let source = source_text.trim();
+    let target = target_text.trim();
+    if source.is_empty() || target.is_empty() {
+        return false;
+    }
+    if source.eq_ignore_ascii_case(target) || target.is_ascii() {
+        return false;
+    }
+    if source
+        .chars()
+        .chain(target.chars())
+        .any(|c| c.is_control() && c != '\n' && c != '\t')
+    {
+        return false;
+    }
+    source.chars().filter(|c| c.is_alphanumeric()).count() >= 3
+        && !meaningful_tokens(source).is_empty()
+        && !is_unstable_single_word_reference(source)
+}
+
+fn is_unstable_single_word_reference(source_text: &str) -> bool {
+    let tokens = meaningful_tokens(source_text);
+    if tokens.len() != 1 {
+        return false;
+    }
+    is_unstable_reference_token(&tokens[0])
+}
+
+fn is_unstable_reference_token(token: &str) -> bool {
+    matches!(
+        token,
+        "slicing"
+            | "heating"
+            | "baking"
+            | "toasting"
+            | "combining"
+            | "solidifying"
+            | "processing"
+            | "crafting"
+            | "pressing"
+            | "mixing"
+            | "filling"
+            | "cutting"
+    )
+}
+
+fn is_long_reference_query(text: &str, key: &str) -> bool {
+    text.chars().count() > 96
+        || meaningful_tokens(text).len() > 8
+        || key.contains(".desc")
+        || key.contains(".description")
+        || key.contains(".info")
+        || key.contains("tooltip.")
+}
+
+fn is_mod_name_reference_key(key: &str) -> bool {
+    key.starts_with("itemGroup.") || key.contains("creative_tab")
+}
+
+fn is_single_token_reference(token: &str) -> bool {
+    matches!(
+        token,
+        "gun"
+            | "guns"
+            | "pistol"
+            | "rifle"
+            | "musket"
+            | "shotgun"
+            | "shell"
+            | "round"
+            | "bullet"
+            | "ammo"
+            | "ammunition"
+            | "copper"
+            | "iron"
+            | "steel"
+            | "brass"
+            | "diamond"
+            | "standard"
+            | "heavy"
+            | "flintlock"
+            | "blunderbuss"
+            | "handcannon"
+            | "revolver"
+            | "cannon"
+            | "grenade"
+    )
 }
 
 #[cfg(test)]
@@ -959,7 +1277,7 @@ mod tests {
         let (id1, is_new) = upsert(&conn, &rp_entry).unwrap();
         assert!(is_new);
 
-        // CFPA should overwrite resourcepack
+        // CFPA is reference-only and must not overwrite local reusable entries.
         let cfpa_entry = DictionaryEntry {
             source_text: "hello".into(),
             target_text: "哈喽".into(),
@@ -970,8 +1288,21 @@ mod tests {
         };
         upsert(&conn, &cfpa_entry).unwrap();
         let retrieved = get_by_id(&conn, id1).unwrap().unwrap();
-        assert_eq!(retrieved.target_text, "哈喽");
-        assert_eq!(retrieved.source_type, "cfpa");
+        assert_eq!(retrieved.target_text, "你好");
+        assert_eq!(retrieved.source_type, "resourcepack");
+
+        let reviewed_entry = DictionaryEntry {
+            source_text: "hello".into(),
+            target_text: "您好".into(),
+            source_lang: "en_us".into(),
+            target_lang: "zh_cn".into(),
+            source_type: "reviewed".into(),
+            ..Default::default()
+        };
+        upsert(&conn, &reviewed_entry).unwrap();
+        let retrieved = get_by_id(&conn, id1).unwrap().unwrap();
+        assert_eq!(retrieved.target_text, "您好");
+        assert_eq!(retrieved.source_type, "reviewed");
     }
 
     #[test]
@@ -1024,6 +1355,333 @@ mod tests {
     }
 
     #[test]
+    fn memory_fuzzy_prefers_precise_matches() {
+        let conn = test_conn();
+        for (source, target) in [
+            ("Iron Sword", "铁剑"),
+            ("Iron Gear", "铁齿轮"),
+            ("Copper Sword", "铜剑"),
+            ("Iron Sword Blade", "铁剑刃"),
+        ] {
+            insert(
+                &conn,
+                &DictionaryEntry {
+                    source_text: source.into(),
+                    target_text: target.into(),
+                    source_lang: "en_us".into(),
+                    target_lang: "zh_cn".into(),
+                    source_type: "cfpa".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let results = dict.reference_search("Iron Sword", "", "en_us", "zh_cn", 5);
+        assert_eq!(results[0].source_text, "Iron Sword");
+        assert!(!results.iter().any(|m| m.source_text == "Iron Gear"));
+        assert!(!results.iter().any(|m| m.source_text == "Copper Sword"));
+    }
+
+    #[test]
+    fn memory_fuzzy_limits_prompt_references() {
+        let conn = test_conn();
+        for index in 0..10 {
+            insert(
+                &conn,
+                &DictionaryEntry {
+                    source_text: format!("Scorched Rifle Variant {index}"),
+                    target_text: format!("焦土步枪变体 {index}"),
+                    source_lang: "en_us".into(),
+                    target_lang: "zh_cn".into(),
+                    source_type: "cfpa".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let results = dict.reference_search("Scorched Rifle", "", "en_us", "zh_cn", 3);
+        assert!(results.len() <= 3);
+        assert!(results.iter().all(|m| m.similarity >= 0.58));
+    }
+
+    #[test]
+    fn memory_fuzzy_ignores_long_descriptions() {
+        let conn = test_conn();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Time".into(),
+                target_text: "时间".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "cfpa".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let results = dict.reference_search(
+            "A long description about the first successful firearm design using an old name at the time.",
+            "",
+            "en_us",
+            "zh_cn",
+            3,
+        );
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn reference_search_item_group_uses_exact_match_only() {
+        let conn = test_conn();
+        for (source, target) in [
+            ("MrCrayfish's Furniture Mod", "MrCrayfish的家具模组"),
+            ("MrCrayfish's Furniture Mod ", "MrCrayfish 的家具"),
+            (
+                "MrCrayfish's More Furniture Mod",
+                "MrCrayfish的更多家具模组",
+            ),
+            ("MrCrayfish's Gun Mod", "MrCrayfish的枪械模组"),
+        ] {
+            insert(
+                &conn,
+                &DictionaryEntry {
+                    source_text: source.into(),
+                    target_text: target.into(),
+                    source_lang: "en_us".into(),
+                    target_lang: "zh_cn".into(),
+                    source_type: "cfpa".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let results = dict.reference_search(
+            "MrCrayfish's Furniture Mod",
+            "itemGroup.refurbished_furniture",
+            "en_us",
+            "zh_cn",
+            3,
+        );
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].target_text, "MrCrayfish的家具模组");
+    }
+
+    #[test]
+    fn reference_search_avoids_substring_phrase_matches() {
+        let conn = test_conn();
+        for (source, target) in [
+            ("End Button", "末地木按钮"),
+            ("Button", "按钮"),
+            ("Mailbox", "信箱"),
+        ] {
+            insert(
+                &conn,
+                &DictionaryEntry {
+                    source_text: source.into(),
+                    target_text: target.into(),
+                    source_lang: "en_us".into(),
+                    target_lang: "zh_cn".into(),
+                    source_type: "cfpa".into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let results = dict.reference_search(
+            "Select a mailbox and then press the send button.",
+            "gui.post_box_info",
+            "en_us",
+            "zh_cn",
+            5,
+        );
+        assert!(!results.iter().any(|m| m.source_text == "End Button"));
+    }
+
+    #[test]
+    fn reference_search_filters_unstable_single_word_process_terms() {
+        let conn = test_conn();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Slicing".into(),
+                target_text: "头颅装配".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "cfpa".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let results = dict.reference_search(
+            "Slicing",
+            "jei_category.refurbished_furniture.slicing",
+            "en_us",
+            "zh_cn",
+            5,
+        );
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn cfpa_entries_are_reference_only_for_hash_reuse() {
+        let conn = test_conn();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Oak Table".into(),
+                target_text: "橡木桌".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "cfpa".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let local_hits = dict.search_by_hash(&hash_text("Oak Table"), "zh_cn");
+        assert!(local_hits.is_empty());
+        let references =
+            dict.reference_search("Oak Table", "block.test.oak_table", "en_us", "zh_cn", 3);
+        assert_eq!(references[0].target_text, "橡木桌");
+    }
+
+    #[test]
+    fn local_upsert_does_not_update_cfpa_rows() {
+        let conn = test_conn();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Oak Table".into(),
+                target_text: "橡木桌".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "cfpa".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        upsert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Oak Table".into(),
+                target_text: "橡木餐桌".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "llm".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let cfpa_count = count_by_source_type(&conn, "cfpa").unwrap();
+        let llm_count = count_by_source_type(&conn, "llm").unwrap();
+        assert_eq!(cfpa_count, 1);
+        assert_eq!(llm_count, 1);
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let local_hits = dict.search_by_hash(&hash_text("Oak Table"), "zh_cn");
+        assert_eq!(local_hits[0].target_text, "橡木餐桌");
+    }
+
+    #[test]
+    fn local_hash_queries_ignore_cfpa_references() {
+        let conn = test_conn();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Oak Chair".into(),
+                target_text: "橡木椅".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "cfpa".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let source_hash = hash_text("Oak Chair");
+        assert!(search_by_hash(&conn, &source_hash, "zh_cn")
+            .unwrap()
+            .is_empty());
+        assert!(!load_source_hashes_for_target(&conn, "zh_cn")
+            .unwrap()
+            .contains(&source_hash));
+        assert_eq!(
+            count_hits_batch(&conn, &["Oak Chair".to_string()], "zh_cn").unwrap(),
+            (0, 1)
+        );
+    }
+
+    #[test]
+    fn memory_hash_lookup_prefers_reviewed_over_llm() {
+        let conn = test_conn();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Copper Rifle".into(),
+                target_text: "铜步枪".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "llm".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Copper Rifle".into(),
+                target_text: "铜制步枪".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "reviewed".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let dict = MemoryDictionary::load(&conn).unwrap();
+        let local_hits = dict.search_by_hash(&hash_text("Copper Rifle"), "zh_cn");
+        assert_eq!(local_hits[0].target_text, "铜制步枪");
+        assert_eq!(local_hits[0].source_type, "reviewed");
+    }
+
+    #[test]
+    fn save_llm_results_preserves_source_language() {
+        let conn = test_conn();
+        let mut dict = MemoryDictionary::load(&conn).unwrap();
+        dict.save_llm_results(
+            &conn,
+            &[crate::core::jobs::TranslationResult {
+                key: "item.test.rifle".into(),
+                source_text: "Test Rifle".into(),
+                target_text: "测试步枪".into(),
+                mod_id: "test".into(),
+                mod_name: "test.jar".into(),
+                source_type: "llm".into(),
+            }],
+            "en_us",
+            "zh_cn",
+        )
+        .unwrap();
+
+        let hits = dict.search_by_hash(&hash_text("Test Rifle"), "zh_cn");
+        assert_eq!(hits[0].source_lang, "en_us");
+        assert_eq!(hits[0].target_text, "测试步枪");
+    }
+
+    #[test]
     fn updates_translation_sets_manual() {
         let conn = test_conn();
         let entry = DictionaryEntry {
@@ -1062,7 +1720,11 @@ mod tests {
         assert_eq!(lines.len(), 1);
 
         let import_conn = test_conn();
-        let result = import_jsonl(&import_conn, &lines.iter().map(|s| s.as_str()).collect::<Vec<_>>()).unwrap();
+        let result = import_jsonl(
+            &import_conn,
+            &lines.iter().map(|s| s.as_str()).collect::<Vec<_>>(),
+        )
+        .unwrap();
         assert_eq!(result.imported, 1);
 
         let count = count(&import_conn).unwrap();
@@ -1074,15 +1736,52 @@ mod tests {
         let conn = test_conn();
         assert_eq!(count(&conn).unwrap(), 0);
 
-        insert(&conn, &DictionaryEntry {
-            source_text: "a".into(),
-            target_text: "甲".into(),
-            source_lang: "en_us".into(),
-            target_lang: "zh_cn".into(),
-            source_type: "manual".into(),
-            ..Default::default()
-        }).unwrap();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "a".into(),
+                target_text: "甲".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "manual".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(count(&conn).unwrap(), 1);
+    }
+
+    #[test]
+    fn clear_all_removes_entries() {
+        let conn = test_conn();
+
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "a".into(),
+                target_text: "甲".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "manual".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "b".into(),
+                target_text: "乙".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "llm".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(clear_all(&conn).unwrap(), 2);
+        assert_eq!(count(&conn).unwrap(), 0);
     }
 }
 

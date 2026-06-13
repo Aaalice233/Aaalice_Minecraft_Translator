@@ -110,21 +110,44 @@ export function SplashScreen({
 
   const startTimeRef = useRef(Date.now());
   const transitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const phaseCompleteTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // ── Track warmup progress events ──
   useEffect(() => {
     if (!progress) return;
 
-    setCurPercent(progress.percent);
+    setCurPercent((prev) => Math.max(prev, progress.percent));
     setCurPhase(progress.phase);
 
     if (progress.phase !== "completed") {
-      setPhaseStatuses((prev) => ({
-        ...prev,
-        [progress.phase]: progress.status,
-      }));
+      if (progress.status === "completed") {
+        if (phaseCompleteTimersRef.current[progress.phase]) {
+          clearTimeout(phaseCompleteTimersRef.current[progress.phase]);
+        }
+        setPhaseStatuses((prev) => ({
+          ...prev,
+          [progress.phase]: prev[progress.phase] === "completed" ? "completed" : "running",
+        }));
+        phaseCompleteTimersRef.current[progress.phase] = setTimeout(() => {
+          setPhaseStatuses((prev) => ({
+            ...prev,
+            [progress.phase]: "completed",
+          }));
+          delete phaseCompleteTimersRef.current[progress.phase];
+        }, 260);
+      } else {
+        setPhaseStatuses((prev) => ({
+          ...prev,
+          [progress.phase]: progress.status,
+        }));
+      }
     }
   }, [progress]);
+
+  useEffect(() => () => {
+    Object.values(phaseCompleteTimersRef.current).forEach(clearTimeout);
+    phaseCompleteTimersRef.current = {};
+  }, []);
 
   // When warmup completes, handle the minimum display time and transition
   useEffect(() => {

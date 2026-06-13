@@ -17,7 +17,11 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::{logging, models::{ScanSummary, TokenUsage}, paths};
+use crate::core::{
+    logging,
+    models::{ScanSummary, TokenUsage},
+    paths,
+};
 
 // ── Re-export all job types ─────────────────────────────────────────
 
@@ -139,13 +143,16 @@ impl JobManager {
     /// generating a new one.  This allows `start_translation` to create the job
     /// metadata file before the pipeline runs, using the same `job_id` that
     /// was already assigned.
-    pub fn create_from_scan_with_job_id(&self, scan_job_id: &str, job_id: &str) -> Result<TranslationJobState, String> {
+    pub fn create_from_scan_with_job_id(
+        &self,
+        scan_job_id: &str,
+        job_id: &str,
+    ) -> Result<TranslationJobState, String> {
         let summary = self.load_scan_summary(scan_job_id)?;
 
         // Ensure jobs directory exists
         let jobs_dir = paths::jobs_dir(&self.root);
-        std::fs::create_dir_all(&jobs_dir)
-            .map_err(|e| format!("创建 jobs 目录失败: {e}"))?;
+        std::fs::create_dir_all(&jobs_dir).map_err(|e| format!("创建 jobs 目录失败: {e}"))?;
 
         let entries = crate::core::pipeline::extract_pending_entries(&summary)
             .into_iter()
@@ -204,14 +211,13 @@ impl JobManager {
                 .map_err(|e| format!("创建目录失败 ({}): {e}", parent.display()))?;
         }
 
-        let json = serde_json::to_string_pretty(job)
-            .map_err(|e| format!("序列化 job 状态失败: {e}"))?;
+        let json =
+            serde_json::to_string_pretty(job).map_err(|e| format!("序列化 job 状态失败: {e}"))?;
 
         std::fs::write(&tmp_path, &json)
             .map_err(|e| format!("写入 job 状态失败 ({}): {e}", tmp_path.display()))?;
 
-        std::fs::rename(&tmp_path, &path)
-            .map_err(|e| format!("重命名 job 状态文件失败: {e}"))?;
+        std::fs::rename(&tmp_path, &path).map_err(|e| format!("重命名 job 状态文件失败: {e}"))?;
 
         Ok(())
     }
@@ -226,7 +232,8 @@ impl JobManager {
         if !jobs_dir.exists() {
             return Ok(());
         }
-        for entry in std::fs::read_dir(&jobs_dir).map_err(|e| format!("读取 jobs 目录失败: {e}"))? {
+        for entry in std::fs::read_dir(&jobs_dir).map_err(|e| format!("读取 jobs 目录失败: {e}"))?
+        {
             let Ok(entry) = entry else { continue };
             let path = entry.path();
             if path.is_file() {
@@ -256,7 +263,10 @@ impl JobManager {
             return read_job_file(&path);
         }
         // Backward compatibility: try legacy double-prefix path
-        let legacy = self.root.join("data").join("jobs")
+        let legacy = self
+            .root
+            .join("data")
+            .join("jobs")
             .join(format!("translate_{job_id}.json"));
         if legacy.is_file() {
             return read_job_file(&legacy);
@@ -287,8 +297,7 @@ impl JobManager {
             .filter(|e| {
                 let fname = e.file_name();
                 let name = fname.to_string_lossy();
-                name.starts_with("translate_") && name.ends_with(".json")
-                    && !name.ends_with(".tmp")
+                name.starts_with("translate_") && name.ends_with(".json") && !name.ends_with(".tmp")
             })
             .collect();
 
@@ -312,8 +321,8 @@ impl JobManager {
                 .map_err(|e| format!("创建目录失败 ({}): {e}", parent.display()))?;
         }
 
-        let mut line = serde_json::to_string(result)
-            .map_err(|e| format!("序列化翻译结果失败: {e}"))?;
+        let mut line =
+            serde_json::to_string(result).map_err(|e| format!("序列化翻译结果失败: {e}"))?;
         line.push('\n');
 
         let mut file = std::fs::OpenOptions::new()
@@ -337,7 +346,10 @@ impl JobManager {
             return parse_results_file(&path);
         }
         // Backward compatibility: try legacy double-prefix path
-        let legacy = self.root.join("data").join("jobs")
+        let legacy = self
+            .root
+            .join("data")
+            .join("jobs")
             .join(format!("translate_{job_id}_results.jsonl"));
         if legacy.is_file() {
             return parse_results_file(&legacy);
@@ -345,9 +357,33 @@ impl JobManager {
         Ok(Vec::new())
     }
 
+    /// Refresh lightweight counters from the JSONL results file.
+    pub fn refresh_counts_from_results(&self, job_id: &str) -> Result<TranslationJobState, String> {
+        let mut job = self
+            .load(job_id)?
+            .ok_or_else(|| format!("翻译任务 {job_id} 未找到"))?;
+        let results = self.load_results(job_id)?;
+        let completed = results.iter().filter(|r| r.source_type != "failed").count();
+        let explicit_failed = results.iter().filter(|r| r.source_type == "failed").count();
+        let missing = job.entries.len().saturating_sub(results.len());
+        let failed = explicit_failed + missing;
+
+        if job.completed_entries != completed || job.failed_entries != failed {
+            job.completed_entries = completed;
+            job.failed_entries = failed;
+            self.save(&job)?;
+        }
+
+        Ok(job)
+    }
+
     /// Read results for a specific mod (filtered on the Rust side).
     /// Avoids transmitting full result set over IPC when only one mod is needed.
-    pub fn load_results_by_mod<'a>(&self, job_id: &str, mod_id: &'a str) -> Result<Vec<TranslationResult>, String> {
+    pub fn load_results_by_mod<'a>(
+        &self,
+        job_id: &str,
+        mod_id: &'a str,
+    ) -> Result<Vec<TranslationResult>, String> {
         let results = self.load_results(job_id)?;
         Ok(results.into_iter().filter(|r| r.mod_id == mod_id).collect())
     }
@@ -363,13 +399,19 @@ impl JobManager {
             .map_err(|e| format!("读取翻译结果失败 ({}): {e}", path.display()))?;
         let mut counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
         for line in content.lines() {
-            if line.trim().is_empty() { continue; }
+            if line.trim().is_empty() {
+                continue;
+            }
             if let Ok(result) = serde_json::from_str::<TranslationResult>(line) {
                 *counts.entry(result.mod_id).or_insert(0) += 1;
             }
         }
-        let mut result: Vec<_> = counts.into_iter()
-            .map(|(mod_id, entry_count)| ModTranslationSummary { mod_id, entry_count })
+        let mut result: Vec<_> = counts
+            .into_iter()
+            .map(|(mod_id, entry_count)| ModTranslationSummary {
+                mod_id,
+                entry_count,
+            })
             .collect();
         result.sort_by(|a, b| b.entry_count.cmp(&a.entry_count));
         Ok(result)
@@ -380,15 +422,11 @@ impl JobManager {
     pub fn load_scan_summary(&self, scan_job_id: &str) -> Result<ScanSummary, String> {
         let path = paths::job_state_path(&self.root, scan_job_id);
         if !path.is_file() {
-            return Err(format!(
-                "未找到扫描结果，请先扫描实例: {}",
-                path.display()
-            ));
+            return Err(format!("未找到扫描结果，请先扫描实例: {}", path.display()));
         }
         let content = std::fs::read_to_string(&path)
             .map_err(|e| format!("读取扫描结果失败 ({}): {e}", path.display()))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("解析扫描结果失败: {e}"))
+        serde_json::from_str(&content).map_err(|e| format!("解析扫描结果失败: {e}"))
     }
 }
 
@@ -446,10 +484,7 @@ pub fn batch_append_results(
 
     let mut lines = String::with_capacity(results.len() * 120);
     for r in results {
-        lines.push_str(
-            &serde_json::to_string(r)
-                .map_err(|e| format!("序列化翻译结果失败: {e}"))?,
-        );
+        lines.push_str(&serde_json::to_string(r).map_err(|e| format!("序列化翻译结果失败: {e}"))?);
         lines.push('\n');
     }
 
@@ -607,6 +642,81 @@ mod tests {
     }
 
     #[test]
+    fn refresh_counts_from_results_tracks_manual_review() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let manager = JobManager::new(temp.path().to_path_buf());
+        let job_state = TranslationJobState {
+            job_id: "refresh-counts".into(),
+            scan_job_id: "scan-123".into(),
+            status: TranslationStatus::Completed,
+            source_language: "en_us".into(),
+            target_language: "zh_cn".into(),
+            entries: vec![
+                PendingEntry {
+                    key: "item.good".into(),
+                    source_text: "Good".into(),
+                    mod_id: "testmod".into(),
+                    mod_name: "testmod.jar".into(),
+                },
+                PendingEntry {
+                    key: "item.bad".into(),
+                    source_text: "Bad".into(),
+                    mod_id: "testmod".into(),
+                    mod_name: "testmod.jar".into(),
+                },
+            ],
+            completed_entries: 1,
+            failed_entries: 1,
+            token_usage: crate::core::models::TokenUsage::default(),
+            created_at: "2026-01-01T00:00:00+08:00".into(),
+            completed_at: Some("2026-01-01T00:01:00+08:00".into()),
+            reviewed: Some(false),
+            reviewed_at: None,
+        };
+        manager.save(&job_state).unwrap();
+
+        let first_results = vec![
+            TranslationResult {
+                key: "item.good".into(),
+                source_text: "Good".into(),
+                target_text: "好".into(),
+                mod_id: "testmod".into(),
+                mod_name: "testmod.jar".into(),
+                source_type: "llm".into(),
+            },
+            TranslationResult {
+                key: "item.bad".into(),
+                source_text: "Bad".into(),
+                target_text: "Bad".into(),
+                mod_id: "testmod".into(),
+                mod_name: "testmod.jar".into(),
+                source_type: "failed".into(),
+            },
+        ];
+        write_test_results(temp.path(), "refresh-counts", &first_results);
+        let refreshed = manager
+            .refresh_counts_from_results("refresh-counts")
+            .unwrap();
+        assert_eq!(refreshed.completed_entries, 1);
+        assert_eq!(refreshed.failed_entries, 1);
+
+        let reviewed_results = vec![
+            first_results[0].clone(),
+            TranslationResult {
+                source_type: "reviewed".into(),
+                target_text: "坏".into(),
+                ..first_results[1].clone()
+            },
+        ];
+        write_test_results(temp.path(), "refresh-counts", &reviewed_results);
+        let refreshed = manager
+            .refresh_counts_from_results("refresh-counts")
+            .unwrap();
+        assert_eq!(refreshed.completed_entries, 2);
+        assert_eq!(refreshed.failed_entries, 0);
+    }
+
+    #[test]
     fn civil_date_roundtrip() {
         let (y, m, d) = civil_from_days(0);
         assert_eq!((y, m, d), (1970, 1, 1));
@@ -618,5 +728,18 @@ mod tests {
             / 86400;
         let (y, _, _) = civil_from_days(today_days as i64);
         assert!(y >= 2024 && y <= 2030);
+    }
+
+    fn write_test_results(root: &std::path::Path, job_id: &str, results: &[TranslationResult]) {
+        let path = paths::translate_job_results_path(root, job_id);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        let mut content = String::new();
+        for result in results {
+            content.push_str(&serde_json::to_string(result).unwrap());
+            content.push('\n');
+        }
+        std::fs::write(path, content).unwrap();
     }
 }

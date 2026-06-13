@@ -5,9 +5,9 @@ use serde::Serialize;
 use tauri::Emitter;
 
 use crate::core::{
-    logging,
+    dictionary, jobs, logging,
     models::{EntryProgress, LlmConfig, PipelineConfig, PipelineProgress, TranslateLogEntry},
-    jobs, paths, pipeline, settings,
+    paths, pipeline, settings,
 };
 
 fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
@@ -52,10 +52,7 @@ fn spawn_batched_reader<T: Serialize + Clone + Send + 'static>(
     });
 }
 
-fn spawn_progress_reader(
-    progress_rx: mpsc::Receiver<PipelineProgress>,
-    app: tauri::AppHandle,
-) {
+fn spawn_progress_reader(progress_rx: mpsc::Receiver<PipelineProgress>, app: tauri::AppHandle) {
     let handle = tauri::async_runtime::spawn_blocking(move || {
         let mut last_progress: Option<PipelineProgress> = None;
         loop {
@@ -115,6 +112,9 @@ pub async fn start_translation(
         // 清理旧的翻译任务文件，仅保留词典
         let mgr = jobs::JobManager::new(root.clone());
         let _ = mgr.cleanup_old_translation_jobs(&job_id);
+        let mut effective_path = path;
+        let mut effective_source_language = source_language;
+        let mut effective_target_language = target_language;
 
         if let Some(ref scan_id) = scan_job_id {
             let mgr = jobs::JobManager::new(root.clone());
@@ -124,6 +124,10 @@ pub async fn start_translation(
                         "翻译 Job 状态文件已创建: scan_job_id={scan_id}, 条目={}",
                         job.entries.len()
                     )).ok();
+                    let scan_summary = mgr.load_scan_summary(scan_id)?;
+                    effective_path = scan_summary.instance_path;
+                    effective_source_language = scan_summary.source_language;
+                    effective_target_language = scan_summary.target_language;
                 }
                 Err(err) => {
                     logging::append_main(format!("创建翻译 Job 状态文件失败: {err}")).ok();
@@ -137,7 +141,7 @@ pub async fn start_translation(
             Ok(s) => {
                 let has_placeholder = s.resource_pack_names.iter()
                     .any(|n| n.contains("{{mc_version}}"));
-                match settings::detect_mc_version(&s.instance_path) {
+                match settings::detect_mc_version(&effective_path) {
                     Ok(ver) => {
                         let replaced = settings::apply_placeholders(s, &ver);
                         replaced.resource_pack_names
@@ -177,9 +181,9 @@ pub async fn start_translation(
 
         let config = PipelineConfig {
             root: root.clone(),
-            instance_path: path,
-            source_language,
-            target_language,
+            instance_path: effective_path,
+            source_language: effective_source_language,
+            target_language: effective_target_language,
             scan_job_id,
             resource_pack_names,
             llm,
@@ -190,9 +194,7 @@ pub async fn start_translation(
     .await
     .map_err(|err| err.to_string())??;
 
-    logging::append_main(
-        format!("翻译任务完成: {} 条目", result.completed),
-    ).ok();
+    logging::append_main(format!("翻译任务完成: {} 条目", result.completed)).ok();
 
     Ok(result.completed)
 }
@@ -227,15 +229,18 @@ pub async fn retry_failed_entries(
     let retried_success = tauri::async_runtime::spawn_blocking(move || {
         let manager = jobs::JobManager::new(root.clone());
         let all_results = manager.load_results(&job_id)?;
-        let failed_count = all_results.iter().filter(|r| r.source_type == "failed").count();
+        let failed_count = all_results
+            .iter()
+            .filter(|r| r.source_type == "failed")
+            .count();
 
         if failed_count == 0 {
             logging::append_main("重试失败条目: 没有需要重试的条目").ok();
             return Ok::<usize, String>(0);
         }
 
-        let settings = settings::load_settings(&root)
-            .map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
+        let settings =
+            settings::load_settings(&root).map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
 
         let llm = LlmConfig {
             base_url: settings.base_url,
@@ -257,19 +262,29 @@ pub async fn retry_failed_entries(
         };
 
         let retried = pipeline::retry_failed_entries(
-            &root, &job_id, &source_language, &target_language, &llm,
-            &*pipeline::GLOBAL_CANCEL, &progress_tx, &entry_progress_tx,
+            &root,
+            &job_id,
+            &source_language,
+            &target_language,
+            &llm,
+            &*pipeline::GLOBAL_CANCEL,
+            &progress_tx,
+            &entry_progress_tx,
         )?;
 
         let succ = retried.iter().filter(|r| r.source_type == "llm").count();
         let failed = retried.iter().filter(|r| r.source_type == "failed").count();
 
         // Merge retried results back into JSONL so validation picks up the changes
-        let merged: Vec<jobs::TranslationResult> = all_results.into_iter()
+        let merged: Vec<jobs::TranslationResult> = all_results
+            .into_iter()
             .map(|r| {
                 if r.source_type == "failed" {
-                    retried.iter()
-                        .find(|nr| nr.key == r.key && nr.mod_name == r.mod_name)
+                    retried
+                        .iter()
+                        .find(|nr| {
+                            nr.key == r.key && nr.mod_id == r.mod_id && nr.mod_name == r.mod_name
+                        })
                         .cloned()
                         .unwrap_or(r)
                 } else {
@@ -280,30 +295,42 @@ pub async fn retry_failed_entries(
 
         let out_path = paths::translate_job_results_path(&root, &job_id);
         if let Some(parent) = out_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建结果目录失败: {e}"))?;
         }
         let mut content = String::with_capacity(merged.len() * 150);
         for r in &merged {
-            if let Ok(line) = serde_json::to_string(r) {
-                content.push_str(&line);
-                content.push('\n');
-            }
+            let line = serde_json::to_string(r).map_err(|e| format!("序列化重试结果失败: {e}"))?;
+            content.push_str(&line);
+            content.push('\n');
         }
         let tmp_path = out_path.with_extension("jsonl.tmp");
-        if std::fs::write(&tmp_path, &content).is_ok() {
-            let _ = std::fs::rename(&tmp_path, &out_path);
+        std::fs::write(&tmp_path, &content).map_err(|e| format!("写入重试结果失败: {e}"))?;
+        std::fs::rename(&tmp_path, &out_path).map_err(|e| format!("替换重试结果失败: {e}"))?;
+
+        let successful_retried: Vec<jobs::TranslationResult> = retried
+            .iter()
+            .filter(|r| r.source_type == "llm" || r.source_type == "reviewed")
+            .cloned()
+            .collect();
+        if !successful_retried.is_empty() {
+            let dict_conn = dictionary::open(&paths::dictionary_db_path(&root))
+                .map_err(|e| format!("重试结果已写入任务文件，但打开词典失败: {e}"))?;
+            let mut dict = dictionary::MemoryDictionary::load(&dict_conn)
+                .map_err(|e| format!("重试结果已写入任务文件，但加载词典失败: {e}"))?;
+            dict.save_llm_results(
+                &dict_conn,
+                &successful_retried,
+                &source_language,
+                &target_language,
+            )
+            .map_err(|e| format!("重试结果已写入任务文件，但同步到词典失败: {e}"))?;
         }
 
-        if let Ok(Some(mut job)) = manager.load(&job_id) {
-            let new_completed = merged.iter().filter(|r| r.source_type != "failed").count();
-            let new_failed = merged.len() - new_completed;
-            job.completed_entries = new_completed;
-            job.failed_entries = new_failed;
-            let _ = manager.save(&job);
-        }
+        manager.refresh_counts_from_results(&job_id)?;
 
         let _ = progress_tx.send(PipelineProgress {
-            current: 1, total: 1,
+            current: 1,
+            total: 1,
             phase: crate::core::models::PipelinePhase::Completed,
             mod_name: String::new(),
             sub_step: None,
@@ -312,9 +339,7 @@ pub async fn retry_failed_entries(
         drop(progress_tx);
         drop(entry_progress_tx);
 
-        logging::append_main(
-            format!("重试失败条目完成: 成功 {succ}, 仍然失败 {failed}"),
-        ).ok();
+        logging::append_main(format!("重试失败条目完成: 成功 {succ}, 仍然失败 {failed}")).ok();
 
         Ok::<usize, String>(succ)
     })
@@ -341,8 +366,7 @@ pub async fn translate_single_entry(
     logging::append_main(format!("单条目翻译开始: key={log_key}, mod={mod_name}"))
         .map_err(|err| err.to_string())?;
 
-    let settings = settings::load_settings(&root)
-        .map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
+    let settings = settings::load_settings(&root).map_err(|e| format!("加载 LLM 设置失败: {e}"))?;
 
     let llm = LlmConfig {
         base_url: settings.base_url,
@@ -380,7 +404,11 @@ pub async fn translate_single_entry(
     .await
     .map_err(|err| format!("翻译线程崩溃: {err}"))??;
 
-    logging::append_main(format!("单条目翻译完成: key={log_key}, 长度={}", result.len())).ok();
+    logging::append_main(format!(
+        "单条目翻译完成: key={log_key}, 长度={}",
+        result.len()
+    ))
+    .ok();
 
     Ok(result)
 }
