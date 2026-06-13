@@ -1,7 +1,7 @@
 import { AlertTriangle, BookOpen, Bot, CheckCircle, FileText, Play, RefreshCw, Square, XCircle, Zap } from "lucide-react";
 import { SearchInput } from "../components/SearchInput";
 import { DataTable } from "../components/DataTable";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { cancelTranslation, loadLatestTranslationJobMeta, loadTranslationResults, retryFailedEntries, scanInstance, startTranslation } from "../api/tauri";
 import { MOCK_TRANSLATION_ENTRIES } from "../mocks/browser-translation-log";
@@ -173,11 +173,20 @@ interface Props {
   settings: { instancePath: string; sourceLanguage: string; targetLanguage: string };
   onBusyChange?: (busy: boolean) => void;
   onCompleteChange?: (completed: boolean) => void;
+  autoLocked?: boolean;
 }
 
 type TranslationStatus = "idle" | "running" | "completed" | "canceled" | "failed";
 
-export const JobsPage = React.memo(function JobsPage({ language, isActive = true, scanSummary, onScanSummaryChange, settings, onBusyChange, onCompleteChange }: Props) {
+export interface JobsPageHandle {
+  runAutoTranslation: (
+    retryRounds: number,
+    onRetry: (attempt: number, total: number) => void,
+  ) => Promise<TranslationJobListItem>;
+  cancelActiveTask: () => Promise<void>;
+}
+
+export const JobsPage = React.memo(forwardRef<JobsPageHandle, Props>(function JobsPage({ language, isActive = true, scanSummary, onScanSummaryChange, settings, onBusyChange, onCompleteChange, autoLocked = false }: Props, ref) {
   const { state, dispatch } = useAppState();
 
   const [translateProgress, setTranslateProgress] = useState<TranslateProgress | null>(null);
@@ -336,8 +345,8 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     setEntryProgressVersion((v) => v + 1);
   });
 
-  async function handleStart() {
-    if (!scanSummary) return;
+  async function startTranslationWorkflow(options: { throwOnError?: boolean } = {}): Promise<TranslationJobListItem | null> {
+    if (!scanSummary) return null;
     cancelledRef.current = false;
     const instPath = scanSummary.instancePath || settings.instancePath;
     const srcLang = scanSummary.sourceLanguage || settings.sourceLanguage;
@@ -361,11 +370,12 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     setEntryProgressVersion((v) => v + 1);
 
     try {
+      let completedJob: TranslationJobListItem | null = null;
       const result = await startTranslation(
         instPath, srcLang, tgtLang,
         scanSummary.jobId,
       );
-      if (cancelledRef.current) return;
+      if (cancelledRef.current) return null;
       setTranslationResult(result);
       setStatus("completed");
       onCompleteChange?.(true);
@@ -389,6 +399,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
             }
           })(),
         ]);
+        completedJob = job;
         // Load the full results into logRef for accurate source-type breakdown
         if (job) {
           try {
@@ -401,10 +412,59 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
           }
         }
       }
+      return completedJob;
     } catch (err) {
+      if (cancelledRef.current) {
+        const cancelledError = new Error(t(language, "auto.status.cancelled"));
+        if (options.throwOnError) throw cancelledError;
+        return null;
+      }
       setTranslationError(toErrorMessage(err));
       setStatus("failed");
+      if (options.throwOnError) throw err;
+      return null;
     }
+  }
+
+  async function retryFailedWorkflow(
+    retryJobId: string,
+    sourceLanguage: string,
+    targetLanguage: string,
+    options: { throwOnError?: boolean } = {},
+  ): Promise<void> {
+    startTimeRef.current = performance.now();
+    retryingRef.current = true;
+    setTranslateElapsedMs(null);
+    setIsRetrying(true);
+    setTranslateProgress(null);
+    setStatus("running");
+    try {
+      await retryFailedEntries(retryJobId, sourceLanguage, targetLanguage);
+      if (cancelledRef.current) {
+        throw new Error(t(language, "auto.status.cancelled"));
+      }
+      setStatus("completed");
+      onCompleteChange?.(true);
+      const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
+      setTranslateElapsedMs(elapsed);
+    } catch (err) {
+      if (cancelledRef.current) {
+        setStatus("canceled");
+        if (options.throwOnError) throw err;
+        return;
+      }
+      setTranslateElapsedMs(null);
+      setTranslationError(toErrorMessage(err));
+      setStatus("failed");
+      if (options.throwOnError) throw err;
+    } finally {
+      retryingRef.current = false;
+      setIsRetrying(false);
+    }
+  }
+
+  async function handleStart() {
+    await startTranslationWorkflow();
   }
 
   async function handleRetry() {
@@ -427,28 +487,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
     const srcLang = retryJob?.sourceLanguage || scanSummary?.sourceLanguage || settings.sourceLanguage || "auto";
     const tgtLang = retryJob?.targetLanguage || scanSummary?.targetLanguage || settings.targetLanguage || "zh_cn";
 
-    startTimeRef.current = performance.now();
-    retryingRef.current = true;
-    setTranslateElapsedMs(null);
-    setIsRetrying(true);
-    setTranslateProgress(null);
-    setStatus("running");
-    try {
-      await retryFailedEntries(retryJobId, srcLang, tgtLang);
-      if (cancelledRef.current) return;
-      setStatus("completed");
-      onCompleteChange?.(true);
-      const elapsed = performance.now() - (startTimeRef.current ?? performance.now());
-      setTranslateElapsedMs(elapsed);
-    } catch (err) {
-      if (cancelledRef.current) return;
-      setTranslateElapsedMs(null);
-      setTranslationError(toErrorMessage(err));
-      setStatus("failed");
-    } finally {
-      retryingRef.current = false;
-      setIsRetrying(false);
-    }
+    await retryFailedWorkflow(retryJobId, srcLang, tgtLang);
   }
 
   function handleResetToIdle() {
@@ -476,6 +515,32 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       setTranslationError(t(language, "jobs.cancelFailed", { error: toErrorMessage(err) }));
     }
   }
+
+  useImperativeHandle(ref, () => ({
+    runAutoTranslation: async (retryRounds, onRetry) => {
+      let job = await startTranslationWorkflow({ throwOnError: true });
+      if (!job) {
+        throw new Error(t(language, "auto.error.noJob"));
+      }
+
+      const total = Math.max(0, retryRounds);
+      for (let round = 0; round < total; round += 1) {
+        job = await loadLatestTranslationJobMeta();
+        if (!job) throw new Error(t(language, "auto.error.noJob"));
+        if (job.failedEntries <= 0) break;
+        onRetry(round + 1, total);
+        await retryFailedWorkflow(job.jobId, job.sourceLanguage, job.targetLanguage, { throwOnError: true });
+      }
+
+      job = await loadLatestTranslationJobMeta();
+      if (!job) throw new Error(t(language, "auto.error.noJob"));
+      if (job.failedEntries > 0) {
+        throw new Error(t(language, "auto.error.failedEntries", { count: job.failedEntries }));
+      }
+      return job;
+    },
+    cancelActiveTask: handleCancel,
+  }), [handleCancel, language, startTranslationWorkflow, retryFailedWorkflow]);
 
   const entryCounts = useMemo(() => {
     const c: EntryStatusCounts = {
@@ -661,14 +726,14 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
         subtitle={t(language, "jobs.subtitle")}
         actions={
           isRunning ? (
-            <button className="primary-button danger" onClick={handleCancel} type="button" data-tooltip={t(language, "tooltip.stopTranslation")}>
+            <button className="primary-button danger" onClick={handleCancel} disabled={autoLocked} type="button" data-tooltip={t(language, "tooltip.stopTranslation")}>
               <Square size={17} />
               {t(language, "jobs.stop")}
             </button>
           ) : (
             <button
               className="primary-button"
-              disabled={!canTranslate}
+              disabled={!canTranslate || autoLocked}
               onClick={handleStart}
               type="button"
               data-tooltip={t(language, "tooltip.startTranslation")}
@@ -702,6 +767,7 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
                 <button
                   className="alert-action-button"
                   onClick={handleRetry}
+                  disabled={autoLocked}
                   type="button"
                 >
                   <RefreshCw size={15} />
@@ -925,4 +991,4 @@ export const JobsPage = React.memo(function JobsPage({ language, isActive = true
       </div>
     </section>
   );
-});
+}));

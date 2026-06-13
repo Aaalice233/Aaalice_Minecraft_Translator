@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeSet, HashSet},
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
@@ -591,7 +591,7 @@ fn scan_mod_jar(
                     failed_language_files += 1;
                     continue;
                 }
-                let content = String::from_utf8_lossy(&bytes);
+                let content = decode_language_content(&bytes);
 
                 let format = if name.ends_with(".json") {
                     "json"
@@ -749,7 +749,7 @@ fn scan_resourcepack_zip(path: &Path, target_language: &str) -> ResourcePackScan
                 };
                 let mut bytes = Vec::new();
                 if file.read_to_end(&mut bytes).is_ok() {
-                    let content = String::from_utf8_lossy(&bytes);
+                    let content = decode_language_content(&bytes);
                     lang_file_count += 1;
                     let name = file.name().replace('\\', "/");
                     let file_entries = parse_resourcepack_lang_file(&name, &content, &mut warnings);
@@ -806,7 +806,8 @@ fn collect_resourcepack_lang_dir(
         if !is_target_lang_file(&path_str, target_language) {
             continue;
         }
-        let content = fs::read_to_string(&child)?;
+        let bytes = fs::read(&child)?;
+        let content = decode_language_content(&bytes);
         *lang_file_count += 1;
 
         // Compute assets-relative path for parse_lang_path compatibility.
@@ -860,13 +861,30 @@ fn parse_json_entries(
     jar_path: &Path,
     warnings: &mut Vec<ScanWarning>,
 ) -> ParseOutcome {
-    match serde_json::from_str::<HashMap<String, String>>(content) {
-        Ok(map) => {
+    let content = content.trim_start_matches('\u{feff}');
+    if content.trim().is_empty() {
+        return ParseOutcome::Strict(Vec::new());
+    }
+
+    match serde_json::from_str::<serde_json::Value>(content) {
+        Ok(serde_json::Value::Object(map)) => {
             let entries = map
                 .into_iter()
-                .map(|(key, text)| language_entry(mod_id, language, "json", source_file, key, text))
+                .filter_map(|(key, value)| {
+                    json_lang_value_to_text(value).map(|text| {
+                        language_entry(mod_id, language, "json", source_file, key, text)
+                    })
+                })
                 .collect();
             ParseOutcome::Strict(entries)
+        }
+        Ok(_) => {
+            warnings.push(warning(
+                "json_parse_failed",
+                &format!("跳过非对象 JSON 语言文件 {source_file}"),
+                jar_path,
+            ));
+            ParseOutcome::Failed
         }
         Err(err) => {
             let lenient_entries =
@@ -882,6 +900,43 @@ fn parse_json_entries(
             ParseOutcome::Failed
         }
     }
+}
+
+fn json_lang_value_to_text(value: serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(text) => Some(text),
+        serde_json::Value::Number(number) => Some(number.to_string()),
+        serde_json::Value::Bool(value) => Some(value.to_string()),
+        serde_json::Value::Null | serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+            None
+        }
+    }
+}
+
+fn decode_language_content(bytes: &[u8]) -> String {
+    if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        return String::from_utf8_lossy(&bytes[3..]).into_owned();
+    }
+    if bytes.starts_with(&[0xFF, 0xFE]) {
+        return decode_utf16_bytes(&bytes[2..], false);
+    }
+    if bytes.starts_with(&[0xFE, 0xFF]) {
+        return decode_utf16_bytes(&bytes[2..], true);
+    }
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+fn decode_utf16_bytes(bytes: &[u8], big_endian: bool) -> String {
+    let units = bytes.chunks_exact(2).map(|chunk| {
+        if big_endian {
+            u16::from_be_bytes([chunk[0], chunk[1]])
+        } else {
+            u16::from_le_bytes([chunk[0], chunk[1]])
+        }
+    });
+    std::char::decode_utf16(units)
+        .map(|item| item.unwrap_or(char::REPLACEMENT_CHARACTER))
+        .collect()
 }
 
 fn parse_lenient_json_lang_entries(
@@ -1390,6 +1445,54 @@ Second line",
         assert_eq!(entries[1].text, "First line\n\nSecond line");
         assert_eq!(entries[2].key, "mod.example.missing_comma");
         assert_eq!(entries[3].text, "Next value");
+    }
+
+    #[test]
+    fn empty_json_language_file_is_valid_empty_table() {
+        let mut warnings = Vec::new();
+        let parsed = parse_json_entries(
+            "example",
+            "sk_sk",
+            "assets/example/lang/sk_sk.json",
+            "",
+            Path::new("example.jar"),
+            &mut warnings,
+        );
+
+        match parsed {
+            ParseOutcome::Strict(entries) => assert!(entries.is_empty()),
+            _ => panic!("empty json language file should parse as an empty table"),
+        }
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn parses_utf16le_json_language_file() {
+        let source = "{\r\n  \"item.eoas.emerald_on_a_stick\": \"绿宝石棒\"\r\n}";
+        let mut bytes = vec![0xff, 0xfe];
+        for unit in source.encode_utf16() {
+            bytes.extend_from_slice(&unit.to_le_bytes());
+        }
+        let content = decode_language_content(&bytes);
+        let mut warnings = Vec::new();
+        let parsed = parse_json_entries(
+            "eoas",
+            "zh_cn",
+            "assets/eoas/lang/zh_cn.json",
+            &content,
+            Path::new("eoas.jar"),
+            &mut warnings,
+        );
+
+        match parsed {
+            ParseOutcome::Strict(entries) => {
+                assert_eq!(entries.len(), 1);
+                assert_eq!(entries[0].key, "item.eoas.emerald_on_a_stick");
+                assert_eq!(entries[0].text, "绿宝石棒");
+            }
+            _ => panic!("utf-16le json language file should parse"),
+        }
+        assert!(warnings.is_empty());
     }
 
     #[test]

@@ -87,6 +87,8 @@ export function DictionaryPage({ language }: Props) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const debouncedSearch = useDebouncedValue(globalSearch, 300);
 
   // Edit panel state
@@ -231,21 +233,28 @@ export function DictionaryPage({ language }: Props) {
     [language, fetchEntries],
   );
 
+  const openClearConfirm = useCallback(() => {
+    setError("");
+    setMessage("");
+    setClearConfirmOpen(true);
+  }, []);
+
   const handleClearDictionary = useCallback(async () => {
     setError("");
     setMessage("");
-    if (!window.confirm(t(language, "dictionary.clearConfirm"))) {
-      return;
-    }
+    setClearing(true);
     try {
       const removed = await clearDictionary();
       setEntries([]);
       setStats({ total: 0, modIds: [] });
       setMessage(t(language, "dictionary.cleared", { count: removed }));
+      setClearConfirmOpen(false);
       fetchEntriesSilent();
       fetchStats();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setClearing(false);
     }
   }, [language, fetchEntriesSilent, fetchStats]);
 
@@ -370,7 +379,7 @@ export function DictionaryPage({ language }: Props) {
               className="ghost-button danger"
               type="button"
               disabled={!isTauriRuntime() || (stats?.total ?? 0) === 0}
-              onClick={handleClearDictionary}
+              onClick={openClearConfirm}
               data-tooltip={t(language, "dictionary.clearTooltip")}
             >
               <Trash2 size={17} />
@@ -390,6 +399,35 @@ export function DictionaryPage({ language }: Props) {
 
       {message && <div className="alert success">{message}</div>}
       {error && <div className="alert error">{error}</div>}
+
+      {clearConfirmOpen && createPortal(
+        <div className="confirm-overlay" role="presentation" onClick={() => !clearing && setClearConfirmOpen(false)}>
+          <div
+            className="confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dictionary-clear-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-modal-icon danger">
+              <Trash2 size={22} />
+            </div>
+            <div className="confirm-modal-body">
+              <h2 id="dictionary-clear-confirm-title">{t(language, "dictionary.clearConfirmTitle")}</h2>
+              <p>{t(language, "dictionary.clearConfirm")}</p>
+            </div>
+            <div className="confirm-modal-actions">
+              <button className="ghost-button" type="button" disabled={clearing} onClick={() => setClearConfirmOpen(false)}>
+                {t(language, "common.cancel")}
+              </button>
+              <button className="primary-button danger" type="button" disabled={clearing} onClick={handleClearDictionary}>
+                {clearing ? t(language, "common.loading") : t(language, "dictionary.clearConfirmAction")}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
 
       <div style={{ marginBottom: 16 }}>
         <SearchInput

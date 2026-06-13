@@ -11,18 +11,19 @@ import {
   Moon,
   ScanLine,
   Settings as SettingsIcon,
+  Square,
   Sun,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { DashboardPage } from "../pages/DashboardPage";
+import { DashboardPage, type DashboardPageHandle } from "../pages/DashboardPage";
 import { DictionaryPage } from "../pages/DictionaryPage";
-import { JobsPage } from "../pages/JobsPage";
+import { JobsPage, type JobsPageHandle } from "../pages/JobsPage";
 import { LogsPage } from "../pages/LogsPage";
-import { PackagesPage } from "../pages/PackagesPage";
+import { PackagesPage, type PackagesPageHandle } from "../pages/PackagesPage";
 import { SplashScreen } from "../components/SplashScreen";
 import { applyFont, SettingsPage } from "../pages/SettingsPage";
-import { ValidatePage } from "../pages/ValidatePage";
+import { ValidatePage, type ValidatePageHandle } from "../pages/ValidatePage";
 import { getAppVersion, getSettings, runWarmup, saveSettings } from "../api/tauri";
 import { AppProvider, useAppState } from "./AppContext";
 import { localeByAppLanguage, normalizeAppLanguage, t } from "../i18n/translations";
@@ -58,6 +59,28 @@ const ALL_PAGE_KEYS: PageKey[] = [
   "jobs", "validate", "packages",
 ];
 
+type AutoFlowPhase =
+  | "idle"
+  | "scanning"
+  | "translating"
+  | "retrying"
+  | "reviewing"
+  | "packing"
+  | "done"
+  | "failed"
+  | "cancelled";
+
+interface AutoFlowState {
+  active: boolean;
+  phase: AutoFlowPhase;
+  status: string;
+  stopping: boolean;
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 export function App() {
   return (
     <AppProvider>
@@ -71,6 +94,27 @@ function AppShell() {
   const { state, dispatch } = useAppState();
   const { settings, scanSummary, navStates } = state;
   const language = normalizeAppLanguage(settings?.appLanguage);
+  const dashboardRef = useRef<DashboardPageHandle>(null);
+  const jobsRef = useRef<JobsPageHandle>(null);
+  const validateRef = useRef<ValidatePageHandle>(null);
+  const packagesRef = useRef<PackagesPageHandle>(null);
+  const autoCancelRequestedRef = useRef(false);
+  const autoClearTimerRef = useRef<number | null>(null);
+  const [autoMode, setAutoMode] = useState(() => {
+    try {
+      return localStorage.getItem("aaalice_auto_mode") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [autoFlow, setAutoFlow] = useState<AutoFlowState>({
+    active: false,
+    phase: "idle",
+    status: "",
+    stopping: false,
+  });
+  const isAutoFlowVisible = autoFlow.phase !== "idle";
+  const isAutoLocked = autoFlow.active;
 
   // ── Splash / Warmup state ──
   const [splashDone, setSplashDone] = useState(false);
@@ -142,6 +186,12 @@ function AppShell() {
       .then((s) => dispatch({ type: "SET_SETTINGS", payload: s }))
       .catch((error) => console.warn("getSettings failed:", error));
   }, [dispatch]);
+
+  useEffect(() => () => {
+    if (autoClearTimerRef.current !== null) {
+      window.clearTimeout(autoClearTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -277,10 +327,146 @@ function AppShell() {
     [dispatch],
   );
 
+  const updateAutoMode = useCallback((enabled: boolean) => {
+    setAutoMode(enabled);
+    try {
+      localStorage.setItem("aaalice_auto_mode", enabled ? "1" : "0");
+    } catch {
+      // localStorage 只影响开关记忆，不影响当前会话。
+    }
+  }, []);
+
+  const clearAutoTimer = useCallback(() => {
+    if (autoClearTimerRef.current !== null) {
+      window.clearTimeout(autoClearTimerRef.current);
+      autoClearTimerRef.current = null;
+    }
+  }, []);
+
+  const showAutoStage = useCallback((phase: AutoFlowPhase, status: string) => {
+    clearAutoTimer();
+    setAutoFlow({ active: true, phase, status, stopping: false });
+  }, [clearAutoTimer]);
+
+  const finishAutoFlow = useCallback((phase: "done" | "failed" | "cancelled", status: string) => {
+    clearAutoTimer();
+    setAutoFlow({ active: false, phase, status, stopping: false });
+    autoClearTimerRef.current = window.setTimeout(() => {
+      setAutoFlow((current) => current.phase === phase
+        ? { active: false, phase: "idle", status: "", stopping: false }
+        : current);
+      autoClearTimerRef.current = null;
+    }, phase === "done" ? 5000 : 7000);
+  }, [clearAutoTimer]);
+
+  const ensureAutoNotCancelled = useCallback(() => {
+    if (autoCancelRequestedRef.current) {
+      throw new Error(t(language, "auto.status.cancelled"));
+    }
+  }, [language]);
+
+  const handleAutoScanStart = useCallback(() => {
+    autoCancelRequestedRef.current = false;
+    showAutoStage("scanning", t(language, "auto.status.scanning"));
+    setActivePage("dashboard");
+  }, [language, showAutoStage]);
+
+  const handleAutoScanCancelled = useCallback(() => {
+    autoCancelRequestedRef.current = false;
+    finishAutoFlow("cancelled", t(language, "auto.status.cancelled"));
+  }, [finishAutoFlow, language]);
+
+  const handleAutoScanFailed = useCallback((message: string) => {
+    autoCancelRequestedRef.current = false;
+    finishAutoFlow("failed", `${t(language, "auto.status.failed")}：${message}`);
+  }, [finishAutoFlow, language]);
+
+  const runAutoFlowAfterScan = useCallback(async (summary: ScanSummary, currentSettings: Settings) => {
+    if (!autoMode || summary.cancelled) return;
+    if (!currentSettings.apiKey.trim()) {
+      finishAutoFlow("failed", t(language, "app.apiKeyMissing"));
+      return;
+    }
+
+    try {
+      ensureAutoNotCancelled();
+      setActivePage("jobs");
+      showAutoStage("translating", t(language, "auto.status.translating"));
+      await delay(250);
+      const job = await jobsRef.current?.runAutoTranslation(
+        Math.max(0, currentSettings.autoRetryCount ?? 0),
+        (attempt, total) => {
+          showAutoStage("retrying", t(language, "auto.status.retrying", { attempt, total }));
+        },
+      );
+      if (!job) throw new Error(t(language, "auto.error.noJob"));
+
+      ensureAutoNotCancelled();
+      setActivePage("validate");
+      showAutoStage("reviewing", t(language, "auto.status.reviewing"));
+      await delay(450);
+      await validateRef.current?.runAutoReview();
+
+      ensureAutoNotCancelled();
+      setActivePage("packages");
+      showAutoStage("packing", t(language, "auto.status.packing"));
+      await delay(450);
+      await packagesRef.current?.runAutoPack();
+
+      ensureAutoNotCancelled();
+      autoCancelRequestedRef.current = false;
+      finishAutoFlow("done", t(language, "auto.status.done"));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const wasCancelled = autoCancelRequestedRef.current || message === t(language, "auto.status.cancelled");
+      autoCancelRequestedRef.current = false;
+      finishAutoFlow(
+        wasCancelled ? "cancelled" : "failed",
+        wasCancelled ? t(language, "auto.status.cancelled") : `${t(language, "auto.status.failed")}：${message}`,
+      );
+    }
+  }, [autoMode, ensureAutoNotCancelled, finishAutoFlow, language, showAutoStage]);
+
+  const requestStopAutoFlow = useCallback(async () => {
+    if (!autoFlow.active || autoFlow.stopping) return;
+    autoCancelRequestedRef.current = true;
+    setAutoFlow((current) => current.active
+      ? { ...current, stopping: true, status: t(language, "auto.action.stopping") }
+      : current);
+
+    try {
+      if (autoFlow.phase === "scanning") {
+        await dashboardRef.current?.cancelScan();
+      } else if (autoFlow.phase === "translating" || autoFlow.phase === "retrying") {
+        await jobsRef.current?.cancelActiveTask();
+      }
+    } catch (err) {
+      console.warn("auto flow stop failed:", err);
+    }
+  }, [autoFlow.active, autoFlow.phase, autoFlow.stopping, language]);
+
   function renderPage(page: PageKey) {
     switch (page) {
       case "dashboard":
-        return <DashboardPage settings={settings!} onSettingsChange={handleSettingsChange} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} language={language} onBusyChange={dbBusy} onCompleteChange={dbCompleted} />;
+        return (
+          <DashboardPage
+            ref={dashboardRef}
+            settings={settings!}
+            onSettingsChange={handleSettingsChange}
+            scanSummary={scanSummary}
+            onScanSummaryChange={handleScanSummaryChange}
+            language={language}
+            onBusyChange={dbBusy}
+            onCompleteChange={dbCompleted}
+            autoMode={autoMode}
+            autoLocked={isAutoLocked}
+            onAutoModeChange={updateAutoMode}
+            onAutoScanStart={handleAutoScanStart}
+            onAutoScanComplete={runAutoFlowAfterScan}
+            onAutoScanCancelled={handleAutoScanCancelled}
+            onAutoScanFailed={handleAutoScanFailed}
+          />
+        );
       case "settings":
         return <SettingsPage settings={settings!} onSettingsChange={handleSettingsChange} />;
       case "logs":
@@ -288,11 +474,11 @@ function AppShell() {
       case "dictionary":
         return <DictionaryPage language={language} />;
       case "jobs":
-        return <JobsPage isActive={activePage === page} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} />;
+        return <JobsPage ref={jobsRef} isActive={activePage === page} language={language} scanSummary={scanSummary} onScanSummaryChange={handleScanSummaryChange} settings={settings!} onBusyChange={jobsBusy} onCompleteChange={jobsCompleted} autoLocked={isAutoLocked} />;
       case "validate":
-        return <ValidatePage language={language} onReviewComplete={() => { setActivePage("packages"); validateCompleted(true); useAppStore.getState().setReviewCount(useAppStore.getState().reviewCount + 1); }} />;
+        return <ValidatePage ref={validateRef} language={language} autoLocked={isAutoLocked} onReviewComplete={() => { setActivePage("packages"); validateCompleted(true); useAppStore.getState().setReviewCount(useAppStore.getState().reviewCount + 1); }} />;
       case "packages":
-        return <PackagesPage language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} onPackComplete={packsCompleted} />;
+        return <PackagesPage ref={packagesRef} language={language} scanSummary={scanSummary} settings={settings!} onBusyChange={packsBusy} onPackComplete={packsCompleted} autoLocked={isAutoLocked} />;
       default:
         const _exhaustive: never = page;
         return _exhaustive;
@@ -321,7 +507,7 @@ function AppShell() {
         />
       )}
       <div
-       className="app-shell"
+       className={`app-shell${isAutoLocked ? " auto-flow-running" : ""}`}
        lang={localeByAppLanguage[language]}
        style={{
          '--sidebar-width': sidebarWidth + 'px',
@@ -371,7 +557,7 @@ function AppShell() {
               <button
                 className={className}
                 key={item.key}
-                disabled={item.disabled}
+                disabled={item.disabled || isAutoLocked}
                 onClick={() => {
                   setActivePage(item.key);
                 }}
@@ -407,10 +593,31 @@ function AppShell() {
       </aside>
 
       <main className="main">
+        {isAutoFlowVisible && (
+          <div className={`auto-flow-banner auto-flow-banner-${autoFlow.phase}`}>
+            <div className="auto-flow-banner-main">
+              {autoFlow.active ? <Loader2 size={16} className="spin" /> : <CheckCircle size={16} />}
+              <span>{autoFlow.status}</span>
+            </div>
+            {autoFlow.active && (
+              <button
+                type="button"
+                className="auto-flow-stop-button"
+                onClick={requestStopAutoFlow}
+                disabled={autoFlow.stopping}
+              >
+                <span className="auto-flow-stop-icon" aria-hidden="true">
+                  {autoFlow.stopping ? <Loader2 size={14} className="spin" /> : <Square size={13} />}
+                </span>
+                <span>{t(language, autoFlow.stopping ? "auto.action.stopping" : "auto.action.stop")}</span>
+              </button>
+            )}
+          </div>
+        )}
         {settings && !settings.apiKey.trim() && (
           <div className="api-key-banner">
             <span>{t(language, "app.apiKeyMissing")}</span>
-            <button type="button" className="text-button" onClick={() => setActivePage("settings")}>
+            <button type="button" className="text-button" onClick={() => setActivePage("settings")} disabled={isAutoLocked}>
               {t(language, "app.openApiSettings")}
             </button>
           </div>

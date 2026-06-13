@@ -9,7 +9,7 @@ import {
   Package,
   XCircle,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import {
   generatePackFromJob,
   loadLatestTranslationJobMeta,
@@ -33,10 +33,23 @@ interface Props {
   settings?: { instancePath: string };
   onBusyChange?: (busy: boolean) => void;
   onPackComplete?: (done: boolean) => void;
+  autoLocked?: boolean;
+}
+
+export interface PackagesPageHandle {
+  runAutoPack: () => Promise<PackResult>;
+}
+
+function normalizeWindowsDisplayPath(path: string): string {
+  if (path.startsWith("//?/UNC/")) return `//${path.slice("//?/UNC/".length)}`;
+  if (path.startsWith("//?/")) return path.slice("//?/".length);
+  if (path.startsWith("\\\\?\\UNC\\")) return `//${path.slice("\\\\?\\UNC\\".length).replace(/\\/g, "/")}`;
+  if (path.startsWith("\\\\?\\")) return path.slice("\\\\?\\".length).replace(/\\/g, "/");
+  return path.replace(/\\/g, "/");
 }
 
 function defaultOutputDir(instancePath?: string | null): string | null {
-  return instancePath ? `${instancePath.replace(/\\/g, "/")}/resourcepacks` : null;
+  return instancePath ? `${normalizeWindowsDisplayPath(instancePath)}/resourcepacks` : null;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -93,13 +106,14 @@ const ModRow = React.memo(function ModRow({
 // Component
 // ═══════════════════════════════════════════════════════════════
 
-export const PackagesPage = React.memo(function PackagesPage({
+export const PackagesPage = React.memo(forwardRef<PackagesPageHandle, Props>(function PackagesPage({
   language,
   scanSummary,
   settings: _settings,
   onBusyChange,
   onPackComplete,
-}: Props) {
+  autoLocked = false,
+}: Props, ref) {
   const settings = _settings!;
 
   // ── State ──────────────────────────────────────────────────
@@ -142,8 +156,12 @@ export const PackagesPage = React.memo(function PackagesPage({
   // ═══════════════════════════════════════════════════════════
 
   const generateFromJob = useCallback(
-    async (dryRun: boolean) => {
-      if (!translationJob) return;
+    async (
+      dryRun: boolean,
+      options: { jobOverride?: TranslationJobListItem; throwOnError?: boolean } = {},
+    ): Promise<PackResult | null> => {
+      const activeJob = options.jobOverride ?? translationJob;
+      if (!activeJob) return null;
       const progressStart = Date.now();
       setLoading(true);
       setPackProgress(0);
@@ -151,9 +169,9 @@ export const PackagesPage = React.memo(function PackagesPage({
       setPackResult(null);
       try {
         const targetLang =
-          scanSummary?.targetLanguage || translationJob.targetLanguage;
+          scanSummary?.targetLanguage || activeJob.targetLanguage;
         const result = await generatePackFromJob(
-          translationJob.jobId,
+          activeJob.jobId,
           targetLang,
           dryRun,
           outputDir ?? undefined,
@@ -165,9 +183,13 @@ export const PackagesPage = React.memo(function PackagesPage({
           await new Promise((r) => setTimeout(r, minProgressMs - elapsed));
         }
         setPackResult(result);
+        return result;
       } catch (err) {
-        setError(toErrorMessage(err));
+        const message = toErrorMessage(err);
+        setError(message);
         setPackResult(null);
+        if (options.throwOnError) throw err;
+        return null;
       } finally {
         setLoading(false);
       }
@@ -193,6 +215,25 @@ export const PackagesPage = React.memo(function PackagesPage({
       generateFromJob(false);
     }
   }, [translationJob, generateFromJob]);
+
+  useImperativeHandle(ref, () => ({
+    runAutoPack: async () => {
+      const job = await loadLatestTranslationJobMeta();
+      if (!job) {
+        throw new Error(t(language, "auto.error.noJob"));
+      }
+      if (job.failedEntries > 0) {
+        throw new Error(t(language, "auto.error.failedEntries", { count: job.failedEntries }));
+      }
+      setTranslationJob(job);
+      setReviewRequired(false);
+      const result = await generateFromJob(false, { jobOverride: job, throwOnError: true });
+      if (!result) {
+        throw new Error(t(language, "packages.noTranslation"));
+      }
+      return result;
+    },
+  }), [generateFromJob, language]);
 
   const translationJobId = useAppStore((s) => s.translationJobId);
   const reviewCount = useAppStore((s) => s.reviewCount);
@@ -322,7 +363,7 @@ export const PackagesPage = React.memo(function PackagesPage({
           actions={
             <button
               className="primary-button"
-              disabled={!canRegenerate}
+              disabled={!canRegenerate || autoLocked}
               onClick={handleRegenerate}
               type="button"
               data-tooltip={packResult ? t(language, "packages.regenerateTooltip") : t(language, "packages.subtitle")}
@@ -467,5 +508,5 @@ export const PackagesPage = React.memo(function PackagesPage({
       {/* 底部部署按钮已移除 — 打包完成后自动在资源管理器中打开输出目录 */}
     </section>
   );
-});
+}));
 

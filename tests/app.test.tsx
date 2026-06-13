@@ -92,7 +92,7 @@ describe("app shell", () => {
     expect(screen.getByText("API 设置")).toBeTruthy();
   });
 
-  it("stops auto mode before review and packaging when failed entries remain", async () => {
+  it("hands auto mode to the app shell after scanning", async () => {
     const scanSummary = {
       jobId: "scan_auto",
       instancePath: "E:/Instance",
@@ -118,47 +118,30 @@ describe("app shell", () => {
       warnings: [],
       cancelled: false,
     };
-    const jobMeta = {
-      jobId: "translate_auto",
-      scanJobId: "scan_auto",
-      status: "completed" as const,
-      sourceLanguage: "auto",
-      targetLanguage: "zh_cn",
-      completedEntries: 0,
-      failedEntries: 1,
-      createdAt: "2026-06-12T00:00:00Z",
-      completedAt: "2026-06-12T00:00:01Z",
-      reviewed: false,
-      reviewedAt: null,
-    };
+    const onAutoScanComplete = vi.fn();
 
     apiMocks.saveSettings.mockResolvedValue(undefined);
     apiMocks.scanInstance.mockResolvedValue(scanSummary);
-    apiMocks.startTranslation.mockResolvedValue(0);
-    apiMocks.retryFailedEntries.mockResolvedValue(0);
-    apiMocks.loadLatestTranslationJobMeta.mockResolvedValue(jobMeta);
-    apiMocks.markJobReviewed.mockResolvedValue(undefined);
-    apiMocks.generatePackFromJob.mockResolvedValue({
-      outputDir: "",
-      zipPath: "",
-      modCount: 0,
-      entryCount: 0,
-      conflicts: [],
-    });
 
     render(
       <DashboardPage
         settings={{ ...settings, apiKey: "sk-test", instancePath: "E:/Instance" }}
         language="zh_cn"
+        autoMode
+        onAutoModeChange={() => {}}
+        onAutoScanComplete={onAutoScanComplete}
       />,
     );
 
-    fireEvent.click(screen.getByLabelText("全自动模式"));
     fireEvent.click(screen.getByText("开始扫描"));
 
     await waitFor(() => {
-      expect(screen.getByText(/仍有 1 条翻译失败/)).toBeTruthy();
+      expect(onAutoScanComplete).toHaveBeenCalledWith(
+        scanSummary,
+        expect.objectContaining({ instancePath: "E:/Instance" }),
+      );
     });
+    expect(apiMocks.startTranslation).not.toHaveBeenCalled();
     expect(apiMocks.markJobReviewed).not.toHaveBeenCalled();
     expect(apiMocks.generatePackFromJob).not.toHaveBeenCalled();
   });

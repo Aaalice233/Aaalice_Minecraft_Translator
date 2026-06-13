@@ -12,12 +12,16 @@ export type TranslationKey =
   | "auto.label"
   | "auto.tooltip"
   | "auto.hint"
+  | "auto.status.scanning"
   | "auto.status.translating"
   | "auto.status.retrying"
   | "auto.status.reviewing"
   | "auto.status.packing"
   | "auto.status.done"
   | "auto.status.failed"
+  | "auto.status.cancelled"
+  | "auto.action.stop"
+  | "auto.action.stopping"
   | "auto.error.noJob"
   | "auto.error.failedEntries"
   | "nav.dashboard"
@@ -103,7 +107,9 @@ export type TranslationKey =
   | "dictionary.import"
   | "dictionary.clear"
   | "dictionary.clearTooltip"
+  | "dictionary.clearConfirmTitle"
   | "dictionary.clearConfirm"
+  | "dictionary.clearConfirmAction"
   | "dictionary.cleared"
   | "dictionary.empty"
   | "dictionary.col.source"
@@ -471,14 +477,18 @@ const zhCn: TranslationMap = {
   "app.apiKeyMissing": "还没有配置 API Key，请先到设置里填写后再开始翻译。",
   "app.openApiSettings": "打开 API 设置",
   "auto.label": "全自动模式",
-  "auto.tooltip": "扫描完成后自动翻译、重试失败项、确认校对并生成资源包",
-  "auto.hint": "开启后，点击扫描会一路自动推进到打包；失败条目会按设置中的次数自动重试。",
+  "auto.tooltip": "扫描后自动切换页面并依次执行翻译、重试、校对和打包",
+  "auto.hint": "开启后，点击扫描会自动切换到每个阶段页面执行流程；运行期间会锁定操作，可随时中断。",
+  "auto.status.scanning": "全自动模式：正在扫描实例...",
   "auto.status.translating": "全自动模式：正在开始翻译...",
   "auto.status.retrying": "全自动模式：正在重试失败条目（第 {attempt}/{total} 次）...",
   "auto.status.reviewing": "全自动模式：正在确认校对...",
   "auto.status.packing": "全自动模式：正在生成资源包...",
   "auto.status.done": "全自动模式已完成：翻译、校对和打包都已处理。",
   "auto.status.failed": "全自动模式执行失败",
+  "auto.status.cancelled": "全自动模式已中断，当前流程已停止。",
+  "auto.action.stop": "中断流程",
+  "auto.action.stopping": "正在中断...",
   "auto.error.noJob": "未找到可用于自动推进的翻译任务",
   "auto.error.failedEntries": "仍有 {count} 条翻译失败，已停止自动校对和打包。请重试或手动检查失败条目。",
   "nav.dashboard": "扫描",
@@ -575,7 +585,9 @@ const zhCn: TranslationMap = {
   "dictionary.import": "导入",
   "dictionary.clear": "清空词库",
   "dictionary.clearTooltip": "删除词库中的全部条目",
+  "dictionary.clearConfirmTitle": "确认清空词库",
   "dictionary.clearConfirm": "确定要清空整个词库吗？此操作不可撤销。",
+  "dictionary.clearConfirmAction": "确认清空",
   "dictionary.cleared": "已清空词库，删除 {count} 条条目",
   "dictionary.empty": "词典为空，请先扫描并翻译模组",
   "dictionary.col.source": "原文",
@@ -901,14 +913,18 @@ const enUs: TranslationMap = {
   "app.apiKeyMissing": "No API Key is configured yet. Please add one in Settings before translating.",
   "app.openApiSettings": "Open API settings",
   "auto.label": "Auto mode",
-  "auto.tooltip": "After scanning, automatically translate, retry failures, mark reviewed, and generate a pack",
-  "auto.hint": "When enabled, Start Scan will continue through translation, review, and packaging automatically.",
+  "auto.tooltip": "After scanning, switch pages and run translation, retries, review, and packaging",
+  "auto.hint": "When enabled, Start Scan automatically visits each stage page. Controls are locked while it runs, and you can stop it at any time.",
+  "auto.status.scanning": "Auto mode: scanning instance...",
   "auto.status.translating": "Auto mode: starting translation...",
   "auto.status.retrying": "Auto mode: retrying failed entries ({attempt}/{total})...",
   "auto.status.reviewing": "Auto mode: marking review complete...",
   "auto.status.packing": "Auto mode: generating resource pack...",
   "auto.status.done": "Auto mode complete: translation, review, and packaging finished.",
   "auto.status.failed": "Auto mode failed",
+  "auto.status.cancelled": "Auto mode was stopped. The current workflow is no longer running.",
+  "auto.action.stop": "Stop workflow",
+  "auto.action.stopping": "Stopping...",
   "auto.error.noJob": "No translation job was found for auto mode",
   "auto.error.failedEntries": "{count} entries still failed. Auto review and packaging were stopped.",
   "nav.dashboard": "Scan",
@@ -1165,7 +1181,9 @@ const enUs: TranslationMap = {
   "dashboard.resourceFilesEntries": "{files} files / {entries} entries",
   "dictionary.clear": "Clear dictionary",
   "dictionary.clearTooltip": "Delete all dictionary entries",
+  "dictionary.clearConfirmTitle": "Clear dictionary?",
   "dictionary.clearConfirm": "Clear the entire dictionary? This cannot be undone.",
+  "dictionary.clearConfirmAction": "Clear dictionary",
   "dictionary.cleared": "Dictionary cleared, removed {count} entries",
   "dictionary.doubleClickEdit": "Double-click to edit",
   "dictionary.readOnly": "Read-only",

@@ -37,7 +37,24 @@ pub fn runtime_root() -> io::Result<PathBuf> {
 }
 
 pub fn display_path(path: impl AsRef<std::path::Path>) -> String {
-    path.as_ref().to_string_lossy().replace('\\', "/")
+    let raw = path.as_ref().to_string_lossy();
+    normalize_windows_extended_prefix(&raw).replace('\\', "/")
+}
+
+fn normalize_windows_extended_prefix(path: &str) -> String {
+    if let Some(rest) = path.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    if let Some(rest) = path.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    if let Some(rest) = path.strip_prefix("//?/UNC/") {
+        return format!("//{rest}");
+    }
+    if let Some(rest) = path.strip_prefix("//?/") {
+        return rest.to_string();
+    }
+    path.to_string()
 }
 
 /// Path to the SQLite dictionary database

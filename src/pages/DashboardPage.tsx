@@ -1,18 +1,13 @@
 import { AlertTriangle, ChevronDown, FolderOpen, Loader2, Package, ScanLine, Square, Zap } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
 import { useSortFilter } from "../hooks/useSortFilter";
 import {
   cancelScan,
-  generatePackFromJob,
-  loadLatestTranslationJobMeta,
-  markJobReviewed,
   pickInstanceFolder,
-  retryFailedEntries,
   saveSettings,
   scanAndDiff,
   scanInstance,
-  startTranslation,
 } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
 import { useAppStore } from "../stores/appStore";
@@ -31,6 +26,13 @@ interface Props {
   language: AppLanguage;
   onBusyChange?: (busy: boolean) => void;
   onCompleteChange?: (completed: boolean) => void;
+  autoMode?: boolean;
+  autoLocked?: boolean;
+  onAutoModeChange?: (enabled: boolean) => void;
+  onAutoScanStart?: () => void;
+  onAutoScanComplete?: (summary: ScanSummary, settings: Settings) => void;
+  onAutoScanCancelled?: () => void;
+  onAutoScanFailed?: (error: string) => void;
 }
 
 const ModRow = React.memo(({ mod, copiedKey, copyFlash, getPending, language }: {
@@ -101,11 +103,11 @@ function CollapsibleWarnings({ warnings, language }: { warnings: ScanWarning[]; 
   );
 }
 
-function toAutoError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
+export interface DashboardPageHandle {
+  cancelScan: () => Promise<void>;
 }
 
-export const DashboardPage = React.memo(function DashboardPage({
+export const DashboardPage = React.memo(forwardRef<DashboardPageHandle, Props>(function DashboardPage({
   settings: _settings,
   scanSummary: _scanSummary,
   language,
@@ -113,7 +115,14 @@ export const DashboardPage = React.memo(function DashboardPage({
   onCompleteChange,
   onSettingsChange,
   onScanSummaryChange,
-}: Props) {
+  autoMode = false,
+  autoLocked = false,
+  onAutoModeChange,
+  onAutoScanStart,
+  onAutoScanComplete,
+  onAutoScanCancelled,
+  onAutoScanFailed,
+}: Props, ref) {
   const settings = _settings!;
   const scanSummary = _scanSummary;
   const [instancePath, setInstancePath] = useState(settings.instancePath);
@@ -124,15 +133,6 @@ export const DashboardPage = React.memo(function DashboardPage({
   const [error, setError] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [diffResult, setDiffResult] = useState<{ newModCount: number; newMods: string[]; pendingEntries: number } | null>(null);
-  const [autoMode, setAutoMode] = useState(() => {
-    try {
-      return localStorage.getItem("aaalice_auto_mode") === "1";
-    } catch {
-      return false;
-    }
-  });
-  const [autoStatus, setAutoStatus] = useState("");
-  const [isAutoRunning, setIsAutoRunning] = useState(false);
   const startTimeRef = useRef<number | null>(null);
   const setScanElapsedMs = useAppStore((s) => s.setScanElapsedMs);
   const scanElapsedMs = useAppStore((s) => s.scanElapsedMs);
@@ -140,8 +140,8 @@ export const DashboardPage = React.memo(function DashboardPage({
   useEffect(() => { isScanningRef.current = isScanning; }, [isScanning]);
 
   useEffect(() => {
-    onBusyChange?.(isScanning || isAutoRunning);
-  }, [isScanning, isAutoRunning, onBusyChange]);
+    onBusyChange?.(isScanning);
+  }, [isScanning, onBusyChange]);
 
   const prevIsScanning = useRef(isScanning);
   useEffect(() => {
@@ -174,62 +174,8 @@ export const DashboardPage = React.memo(function DashboardPage({
   }, []);
 
   const updateAutoMode = useCallback((enabled: boolean) => {
-    setAutoMode(enabled);
-    if (!enabled) {
-      setAutoStatus("");
-    }
-    try {
-      localStorage.setItem("aaalice_auto_mode", enabled ? "1" : "0");
-    } catch {
-      // 浏览器存储不可用时只影响开关记忆，不影响当前流程。
-    }
-  }, []);
-
-  const runAutoPipeline = useCallback(async (summary: ScanSummary, currentSettings: Settings) => {
-    if (!autoMode || summary.cancelled) return;
-    if (!currentSettings.apiKey.trim()) {
-      setError(t(language, "app.apiKeyMissing"));
-      setAutoStatus(t(language, "auto.status.failed"));
-      return;
-    }
-    setIsAutoRunning(true);
-    try {
-      setAutoStatus(t(language, "auto.status.translating"));
-      await startTranslation(
-        currentSettings.instancePath,
-        currentSettings.sourceLanguage,
-        currentSettings.targetLanguage,
-        summary.jobId,
-      );
-      let job = await loadLatestTranslationJobMeta();
-      if (!job) throw new Error(t(language, "auto.error.noJob"));
-
-      const retryRounds = Math.max(0, currentSettings.autoRetryCount ?? 0);
-      for (let round = 0; round < retryRounds; round += 1) {
-        job = await loadLatestTranslationJobMeta();
-        if (!job || job.failedEntries <= 0) break;
-        setAutoStatus(t(language, "auto.status.retrying", { attempt: round + 1, total: retryRounds }));
-        await retryFailedEntries(job.jobId, job.sourceLanguage, job.targetLanguage);
-      }
-
-      job = await loadLatestTranslationJobMeta();
-      if (!job) throw new Error(t(language, "auto.error.noJob"));
-      if (job.failedEntries > 0) {
-        throw new Error(t(language, "auto.error.failedEntries", { count: job.failedEntries }));
-      }
-      setAutoStatus(t(language, "auto.status.reviewing"));
-      await markJobReviewed(job.jobId);
-
-      setAutoStatus(t(language, "auto.status.packing"));
-      await generatePackFromJob(job.jobId, job.targetLanguage, false);
-      setAutoStatus(t(language, "auto.status.done"));
-    } catch (err) {
-      setError(toAutoError(err));
-      setAutoStatus(t(language, "auto.status.failed"));
-    } finally {
-      setIsAutoRunning(false);
-    }
-  }, [autoMode, language]);
+    onAutoModeChange?.(enabled);
+  }, [onAutoModeChange]);
 
   const stageLabel = (phase: string): string => {
     const key = `dashboard.stage.${phase}` as TranslationKey;
@@ -368,7 +314,7 @@ export const DashboardPage = React.memo(function DashboardPage({
     };
   }, []);
 
-  async function handleCancel() {
+  const handleCancel = useCallback(async () => {
     setIsCancelling(true);
     try {
       await cancelScan();
@@ -387,7 +333,11 @@ export const DashboardPage = React.memo(function DashboardPage({
       setScanElapsedMs(null);
       setIsCancelling(false);
     }
-  }
+  }, [language, setScanElapsedMs]);
+
+  useImperativeHandle(ref, () => ({
+    cancelScan: handleCancel,
+  }), [handleCancel]);
 
   async function handleScan() {
     const scanPath = instancePath.trim();
@@ -403,9 +353,11 @@ export const DashboardPage = React.memo(function DashboardPage({
     onScanSummaryChange?.(null);
     setScanProgress(null);
     setError("");
-    setAutoStatus("");
     setSearchText("");
     sf.resetFilters();
+    if (autoMode) {
+      onAutoScanStart?.();
+    }
     try {
       const nextSettings = { ...settings, instancePath: scanPath };
       onSettingsChange?.(nextSettings);
@@ -422,13 +374,22 @@ export const DashboardPage = React.memo(function DashboardPage({
         setIsScanning(false);
         setIsCancelling(false);
         startTimeRef.current = null;
-        await runAutoPipeline(summary, nextSettings);
+        if (autoMode) {
+          onAutoScanComplete?.(summary, nextSettings);
+        }
       } else {
         setScanElapsedMs(null);
+        if (autoMode) {
+          onAutoScanCancelled?.();
+        }
       }
     } catch (scanError) {
+      const message = scanError instanceof Error ? scanError.message : String(scanError);
       setScanElapsedMs(null);
-      setError(scanError instanceof Error ? scanError.message : String(scanError));
+      setError(message);
+      if (autoMode) {
+        onAutoScanFailed?.(message);
+      }
     } finally {
       setIsScanning(false);
       setIsCancelling(false);
@@ -452,8 +413,10 @@ export const DashboardPage = React.memo(function DashboardPage({
     setScanElapsedMs(null);
     setIsScanning(true);
     setError("");
-    setAutoStatus("");
     setDiffResult(null);
+    if (autoMode) {
+      onAutoScanStart?.();
+    }
     try {
       const nextSettings = { ...settings, instancePath: scanPath };
       onSettingsChange?.(nextSettings);
@@ -469,7 +432,9 @@ export const DashboardPage = React.memo(function DashboardPage({
         setScanElapsedMs(elapsed);
         setIsScanning(false);
         startTimeRef.current = null;
-        await runAutoPipeline(result.newSummary, nextSettings);
+        if (autoMode) {
+          onAutoScanComplete?.(result.newSummary, nextSettings);
+        }
         if (result.newModCount > 0 && !autoMode) {
           // 使用后端计算的 actualPendingEntries 作为待翻译条目数
           const pendingEntries = result.newSummary.actualPendingEntries;
@@ -481,10 +446,17 @@ export const DashboardPage = React.memo(function DashboardPage({
         }
       } else {
         setScanElapsedMs(null);
+        if (autoMode) {
+          onAutoScanCancelled?.();
+        }
       }
     } catch (scanError) {
+      const message = scanError instanceof Error ? scanError.message : String(scanError);
       setScanElapsedMs(null);
-      setError(scanError instanceof Error ? scanError.message : String(scanError));
+      setError(message);
+      if (autoMode) {
+        onAutoScanFailed?.(message);
+      }
     } finally {
       setIsScanning(false);
       startTimeRef.current = null;
@@ -593,16 +565,23 @@ export const DashboardPage = React.memo(function DashboardPage({
           <div className="dashboard-actions">
             <label className="auto-mode-toggle" data-tooltip={t(language, "auto.tooltip")}>
               <input
+                className="auto-mode-input"
                 type="checkbox"
+                role="switch"
                 checked={autoMode}
-                disabled={isScanning || isAutoRunning}
+                disabled={isScanning || autoLocked}
                 onChange={(event) => updateAutoMode(event.target.checked)}
               />
-              <span>{t(language, "auto.label")}</span>
+              <span className="auto-mode-switch" aria-hidden="true">
+                <span className="auto-mode-switch-thumb">
+                  <Zap size={11} strokeWidth={2.6} />
+                </span>
+              </span>
+              <span className="auto-mode-label">{t(language, "auto.label")}</span>
             </label>
             <button
               className={scanBtn.className}
-              disabled={scanBtn.disabled || isAutoRunning}
+              disabled={scanBtn.disabled || autoLocked}
               onClick={isScanning ? handleCancel : (scanSummary ? handleRescan : handleScan)}
               type="button"
               data-tooltip={t(language, scanBtn.tooltipKey)}
@@ -615,12 +594,6 @@ export const DashboardPage = React.memo(function DashboardPage({
       />
 
       <p className="auto-mode-hint">{t(language, "auto.hint")}</p>
-      {(isAutoRunning || autoStatus) && (
-        <div className={`alert ${autoStatus === t(language, "auto.status.failed") ? "error" : "success"} compact auto-mode-status`}>
-          {isAutoRunning && <Loader2 size={16} className="spin" />}
-          <span>{autoStatus}</span>
-        </div>
-      )}
 
       <div className="instance-row">
         <label>
@@ -859,4 +832,4 @@ export const DashboardPage = React.memo(function DashboardPage({
       </div>
     </section>
   );
-});
+}));

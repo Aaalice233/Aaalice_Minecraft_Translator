@@ -4,7 +4,7 @@ import {
   Loader2,
   Search,
 } from "lucide-react";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { loadLatestTranslationJobMeta, loadTranslationResults, markJobReviewed, saveTranslationEntry, translateSingleEntry } from "../api/tauri";
 import { localeByAppLanguage, t } from "../i18n/translations";
@@ -21,11 +21,16 @@ import type { AppLanguage, TranslationJobListItem, TranslationResult } from "../
 interface Props {
   language: AppLanguage;
   onReviewComplete: () => void;
+  autoLocked?: boolean;
+}
+
+export interface ValidatePageHandle {
+  runAutoReview: () => Promise<void>;
 }
 
 // ── Component ────────────────────────────────────────────────────
 
-export function ValidatePage({ language, onReviewComplete }: Props) {
+export const ValidatePage = React.memo(forwardRef<ValidatePageHandle, Props>(function ValidatePage({ language, onReviewComplete, autoLocked = false }: Props, ref) {
   const translationJobId = useAppStore((s) => s.translationJobId);
   const translationStatus = useAppStore((s) => s.translationStatus);
 
@@ -255,19 +260,53 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
   // ── Render helpers ──
 
   // ── 校对完成处理 ──
-  async function handleReviewComplete() {
-    if (!job || submitting) return;
+  async function reviewCurrentJob(options: { navigateOnComplete: boolean; throwOnError?: boolean }) {
+    if (submitting) return;
+    let activeJob = job;
+    if (!activeJob) {
+      activeJob = await loadLatestTranslationJobMeta();
+      if (activeJob) setJob(activeJob);
+    }
+    if (!activeJob) {
+      const err = new Error(t(language, "validate.noJob"));
+      if (options.throwOnError) throw err;
+      setError(err.message);
+      return;
+    }
+    if (activeJob.failedEntries > 0) {
+      const err = new Error(t(language, "validate.failedEntriesWarning", { count: activeJob.failedEntries }));
+      if (options.throwOnError) throw err;
+      setError(err.message);
+      return;
+    }
     setSubmitting(true);
     setError("");
     try {
-      await markJobReviewed(job.jobId);
-      onReviewComplete();
+      if (!(activeJob.reviewed === true || activeJob.status === "reviewed")) {
+        await markJobReviewed(activeJob.jobId);
+      }
+      setJob((prev) => prev ? { ...prev, reviewed: true, status: "reviewed" } : prev);
+      if (options.navigateOnComplete) {
+        onReviewComplete();
+      } else {
+        useAppStore.getState().setReviewCount(useAppStore.getState().reviewCount + 1);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      if (options.throwOnError) throw err;
     } finally {
       setSubmitting(false);
     }
   }
+
+  async function handleReviewComplete() {
+    await reviewCurrentJob({ navigateOnComplete: true });
+  }
+
+  useImperativeHandle(ref, () => ({
+    runAutoReview: () => reviewCurrentJob({ navigateOnComplete: false, throwOnError: true }),
+  }), [reviewCurrentJob]);
 
   const hasBlockingFailures = (job?.failedEntries ?? 0) > 0;
   // reviewed=true → 已校对; reviewed=null/undefined → 旧数据向后兼容视为已校对; 有失败条目时优先要求处理
@@ -332,7 +371,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
                 </span>
               )}
               {!isReviewed && allEntries.length > 0 && (
-                <button className="primary-button" onClick={handleReviewComplete} disabled={submitting} type="button">
+                <button className="primary-button" onClick={handleReviewComplete} disabled={submitting || autoLocked} type="button">
                   {submitting ? <Loader2 size={18} className="spin" /> : <ClipboardCheck size={18} />}
                   {t(language, "validate.markDone")}
                 </button>
@@ -433,7 +472,7 @@ export function ValidatePage({ language, onReviewComplete }: Props) {
       {renderContent()}
     </section>
   );
-}
+}));
 
 // ── Shared styles ──
 
