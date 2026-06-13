@@ -12,6 +12,31 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Verify bundled i18n dictionary
+        shell: pwsh
+        run: |
+          $dict = "src-tauri/resources/i18n-dict/Dict-Sqlite.db"
+          if (-not (Test-Path $dict)) {
+            throw "Bundled i18n dictionary not found: $dict"
+          }
+          $file = Get-Item $dict
+          if ($file.Length -lt 100MB) {
+            throw "Bundled i18n dictionary is too small, Git LFS content was not checked out: $($file.Length) bytes"
+          }
+          $buffer = New-Object byte[] 15
+          $stream = [System.IO.File]::OpenRead($dict)
+          try {
+            $read = $stream.Read($buffer, 0, $buffer.Length)
+          } finally {
+            $stream.Dispose()
+          }
+          $header = [System.Text.Encoding]::ASCII.GetString($buffer, 0, $read)
+          if ($header -ne "SQLite format 3") {
+            throw "Bundled i18n dictionary is not a SQLite database. Header: $header"
+          }
 
       - uses: actions/setup-node@v4
         with:

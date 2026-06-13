@@ -5,7 +5,7 @@ use reqwest::blocking::Client;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 use tauri::{path::BaseDirectory, Manager};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::core::{dictionary, paths};
 
@@ -104,8 +104,15 @@ fn check_i18n_dict_update_blocking(app: &tauri::AppHandle) -> Result<I18nDictUpd
         }
         None => None,
     };
-    let reference_entries = reference_entries_for_check(&conn, app, bundled.as_ref())?;
-    let update_available = current_tag.as_deref() != Some(available.tag.as_str());
+    let reference_entries = match reference_entries_for_check(&conn, app, bundled.as_ref()) {
+        Ok(count) => count,
+        Err(error) => {
+            warn!(%error, "本地 i18n 模组词典不可用，将检查结果标记为需要更新");
+            0
+        }
+    };
+    let update_available =
+        reference_entries == 0 || current_tag.as_deref() != Some(available.tag.as_str());
 
     Ok(I18nDictUpdateInfo {
         current_tag,
@@ -131,36 +138,19 @@ fn update_i18n_dict_blocking(app: &tauri::AppHandle) -> Result<I18nDictUpdateRes
     let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(|e| e.to_string())?;
     let bundled = bundled_i18n_dict(app).ok();
     let latest = fetch_latest_i18n_dict();
-    let (source_path, available, cleanup_path) = match latest {
-        Ok(latest) => {
-            if let Some(bundled) = bundled {
-                if bundled.metadata.tag_name == latest.tag {
-                    (bundled.db_path, AvailableI18nDict::from(latest), None)
-                } else {
-                    let download_path = download_i18n_dict_sqlite(&root, &latest)?;
-                    (
-                        download_path.clone(),
-                        AvailableI18nDict::from(latest),
-                        Some(download_path),
-                    )
-                }
-            } else {
-                let download_path = download_i18n_dict_sqlite(&root, &latest)?;
-                (
-                    download_path.clone(),
-                    AvailableI18nDict::from(latest),
-                    Some(download_path),
-                )
-            }
-        }
+    let (source_path, available, cleanup_path, precomputed_entries) = match latest {
+        Ok(latest) => select_i18n_dict_source(&root, latest, bundled.as_ref())?,
         Err(fetch_error) => {
             let bundled = bundled.ok_or(fetch_error)?;
             let available = AvailableI18nDict::from(&bundled.metadata);
-            (bundled.db_path, available, None)
+            (bundled.db_path, available, None, None)
         }
     };
 
-    let reference_entries = count_i18n_dict_entries(&source_path)?;
+    let reference_entries = match precomputed_entries {
+        Some(count) => count,
+        None => count_i18n_dict_entries(&source_path)?,
+    };
     if let Some(path) = cleanup_path.as_ref() {
         let active_path = active_i18n_dict_db_path(&root);
         if let Some(parent) = active_path.parent() {
@@ -186,6 +176,42 @@ fn update_i18n_dict_blocking(app: &tauri::AppHandle) -> Result<I18nDictUpdateRes
         published_at: available.published_at,
         reference_entries,
     })
+}
+
+fn select_i18n_dict_source(
+    root: &Path,
+    latest: LatestI18nDict,
+    bundled: Option<&BundledI18nDict>,
+) -> Result<(PathBuf, AvailableI18nDict, Option<PathBuf>, Option<usize>), String> {
+    if let Some(bundled) = bundled {
+        if bundled.metadata.tag_name == latest.tag {
+            match count_i18n_dict_entries(&bundled.db_path) {
+                Ok(count) => {
+                    return Ok((
+                        bundled.db_path.clone(),
+                        AvailableI18nDict::from(latest),
+                        None,
+                        Some(count),
+                    ));
+                }
+                Err(error) => {
+                    warn!(
+                        %error,
+                        path = %bundled.db_path.display(),
+                        "内置 i18n 模组词典不可用，改为下载最新词典"
+                    );
+                }
+            }
+        }
+    }
+
+    let download_path = download_i18n_dict_sqlite(root, &latest)?;
+    Ok((
+        download_path.clone(),
+        AvailableI18nDict::from(latest),
+        Some(download_path),
+        None,
+    ))
 }
 
 pub(crate) fn active_i18n_dict_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -404,5 +430,21 @@ mod tests {
             .join("Dict-Sqlite.db");
 
         assert!(count_i18n_dict_entries(&db_path).unwrap() > 800_000);
+    }
+
+    #[test]
+    fn lfs_pointer_file_is_not_accepted_as_i18n_dict() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("Dict-Sqlite.db");
+        std::fs::write(
+            &db_path,
+            "version https://git-lfs.github.com/spec/v1\n\
+             oid sha256:4c995086a022da250f49553ab1252d517d8962e66d4158e0cff5cc50e41842ee\n\
+             size 127168512\n",
+        )
+        .unwrap();
+
+        let error = count_i18n_dict_entries(&db_path).unwrap_err();
+        assert!(error.contains("file is not a database"));
     }
 }
