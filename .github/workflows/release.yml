@@ -71,6 +71,11 @@ jobs:
             throw "Signature file not found: $sigPath`nCheck: 1) createUpdaterArtifacts: true in tauri.conf.json 2) TAURI_SIGNING_PRIVATE_KEY Secret is configured"
           }
           $sig = Get-Content $sigPath -Raw
+          $releaseInstallerName = $installerName -replace '\s+', '.'
+          if ($releaseInstallerName -ne $installerName) {
+            Rename-Item -LiteralPath $installerPath -NewName $releaseInstallerName
+            $installerName = $releaseInstallerName
+          }
 
           $updateJson = @"
           {

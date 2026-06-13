@@ -15,6 +15,9 @@ const apiMocks = vi.hoisted(() => ({
   loadLatestTranslationJobMeta: vi.fn(),
   markJobReviewed: vi.fn(),
   generatePackFromJob: vi.fn(),
+  checkUpdate: vi.fn((): Promise<{ version: string; body?: string } | null> => Promise.resolve(null)),
+  downloadAndInstallUpdate: vi.fn(() => Promise.resolve()),
+  relaunchApp: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock("../src/api/tauri", async (importOriginal) => {
@@ -28,6 +31,9 @@ vi.mock("../src/api/tauri", async (importOriginal) => {
     loadLatestTranslationJobMeta: apiMocks.loadLatestTranslationJobMeta,
     markJobReviewed: apiMocks.markJobReviewed,
     generatePackFromJob: apiMocks.generatePackFromJob,
+    checkUpdate: apiMocks.checkUpdate,
+    downloadAndInstallUpdate: apiMocks.downloadAndInstallUpdate,
+    relaunchApp: apiMocks.relaunchApp,
   };
 });
 
@@ -67,6 +73,9 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.clearAllMocks();
+  apiMocks.checkUpdate.mockResolvedValue(null);
+  apiMocks.downloadAndInstallUpdate.mockResolvedValue(undefined);
+  apiMocks.relaunchApp.mockResolvedValue(undefined);
 });
 
 describe("app shell", () => {
@@ -90,6 +99,28 @@ describe("app shell", () => {
       </AppProvider>,
     );
     expect(screen.getByText("API 设置")).toBeTruthy();
+  });
+
+  it("shows about intro above update controls without an empty update progress bar", async () => {
+    apiMocks.checkUpdate.mockResolvedValue({ version: "9.9.9", body: "test notes" });
+
+    render(
+      <AppProvider>
+        <SettingsPage
+          settings={settings}
+          onSettingsChange={() => {}}
+        />
+      </AppProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "关于" }));
+
+    expect(await screen.findByText("发现新版本 v9.9.9")).toBeTruthy();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+
+    const intro = screen.getByText(/Aaalice Minecraft Translator/);
+    const checkButton = screen.getByRole("button", { name: "检查更新" });
+    expect(Boolean(intro.compareDocumentPosition(checkButton) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 
   it("hands auto mode to the app shell after scanning", async () => {

@@ -125,6 +125,7 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
     updaterCheck()
       .then((info) => {
         if (info) {
+          setDownloadProgress(0);
           setUpdateInfo(info);
           setUpdateStatus("available");
         }
@@ -282,6 +283,54 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
     } catch (err) {
       setI18nDictError(toErrorMessage(err));
       setI18nDictStatus("error");
+    }
+  }
+
+  async function handleCheckAppUpdate() {
+    setUpdateStatus("checking");
+    setUpdateError("");
+    setDownloadProgress(0);
+    try {
+      const info = await updaterCheck();
+      if (info) {
+        setUpdateInfo(info);
+        setUpdateStatus("available");
+      } else {
+        setUpdateInfo(null);
+        setUpdateStatus("uptodate");
+      }
+    } catch (err) {
+      setUpdateError(toErrorMessage(err));
+      setUpdateStatus("error");
+    }
+  }
+
+  async function handleInstallUpdate() {
+    setUpdateStatus("downloading");
+    setUpdateError("");
+    setDownloadProgress(0);
+    try {
+      await downloadAndInstallUpdate((p) => setDownloadProgress(p), updateInfo?.version);
+      setUpdateStatus("downloaded");
+    } catch (err) {
+      setUpdateError(toErrorMessage(err));
+      setUpdateStatus("error");
+      return;
+    }
+    try {
+      await relaunchApp();
+    } catch (err) {
+      setUpdateError(toErrorMessage(err));
+    }
+  }
+
+  async function handleRelaunchApp() {
+    setUpdateError("");
+    try {
+      await relaunchApp();
+    } catch (err) {
+      setUpdateError(toErrorMessage(err));
+      setUpdateStatus("error");
     }
   }
 
@@ -664,58 +713,36 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
             {activeTab === "about" && (
               <div className="settings-card">
                 <h3 className="settings-card-header">{t(language, "settings.aboutAndUpdate")}</h3>
-                <div className="settings-card-body">
-                  <div className="field">
-                    <span>{t(language, "settings.currentVersion")}</span>
-                    <span style={{ fontWeight: 600 }}>v{appVersion}</span>
+                <div className="settings-card-body about-update-layout">
+                  <div className="about-overview">
+                    <div className="about-icon" aria-hidden="true">
+                      <Info size={22} />
+                    </div>
+                    <div className="about-copy">
+                      <p>{t(language, "settings.aboutIntro")}</p>
+                      <div className="about-action-row">
+                        <button className="text-button" type="button" onClick={() => openPath("https://github.com/Aaalice233/Aaalice_Minecraft_Translator").catch((err) => setUpdateError(toErrorMessage(err)))}>
+                          <ExternalLink size={14} />
+                          {t(language, "settings.projectHome")}
+                        </button>
+                        <button className="text-button" type="button" onClick={() => openPath("https://space.bilibili.com/169187367?spm_id_from=333.1007.0.0").catch((err) => setUpdateError(toErrorMessage(err)))}>
+                          <ExternalLink size={14} />
+                          {t(language, "settings.bilibiliHome")}
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="inline-control update-actions">
-                    <button className="ghost-button stable-action" disabled={updateStatus === "checking" || updateStatus === "downloading"} onClick={async () => {
-                        setUpdateStatus("checking");
-                        setUpdateError("");
-                        try {
-                          const info = await updaterCheck();
-                          if (info) {
-                            setUpdateInfo(info);
-                            setUpdateStatus("available");
-                          } else {
-                            setUpdateStatus("uptodate");
-                          }
-                        } catch (err) {
-                          setUpdateError(toErrorMessage(err));
-                          setUpdateStatus("error");
-                        }
-                      }} type="button">
-                      <RefreshCcw size={16} className={updateStatus === "checking" ? "spinning" : undefined} />
-                      {updateStatus === "checking" ? t(language, "settings.checkingUpdate") : t(language, "settings.checkUpdate")}
-                    </button>
-                    <button className="ghost-button stable-action" onClick={() => openPath(releaseNotesUrl).catch((err) => setUpdateError(toErrorMessage(err)))} type="button">
-                      <ExternalLink size={16} />
-                      {t(language, "settings.viewReleaseNotes")}
-                    </button>
-                  </div>
-
-                  {updateStatus === "checking" && <span>{t(language, "settings.checkUpdate")}…</span>}
-
-                  {updateStatus === "available" && updateInfo && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <span>{t(language, "settings.updateAvailable", { version: updateInfo.version })}</span>
-                      {updateInfo.body && <small>{t(language, "settings.updateReleaseNotes")}: {updateInfo.body}</small>}
-                      <progress value={downloadProgress} max={100} style={{ width: "100%" }} />
-                      <div className="inline-control update-actions">
-                        <button className="ghost-button" onClick={async () => {
-                          setUpdateStatus("downloading");
-                          setDownloadProgress(0);
-                          try {
-                            await downloadAndInstallUpdate((p) => setDownloadProgress(p));
-                            setUpdateStatus("downloaded");
-                          } catch (err) {
-                            setUpdateError(toErrorMessage(err));
-                            setUpdateStatus("error");
-                          }
-                        }} type="button">
-                          {t(language, "settings.installNow")}
+                  <div className="update-section">
+                    <div className="update-section-header">
+                      <div className="version-summary">
+                        <span>{t(language, "settings.currentVersion")}</span>
+                        <strong>v{appVersion}</strong>
+                      </div>
+                      <div className="update-action-row">
+                        <button className="ghost-button stable-action" disabled={updateStatus === "checking" || updateStatus === "downloading"} onClick={handleCheckAppUpdate} type="button">
+                          <RefreshCcw size={16} className={updateStatus === "checking" ? "spinning" : undefined} />
+                          {updateStatus === "checking" ? t(language, "settings.checkingUpdate") : t(language, "settings.checkUpdate")}
                         </button>
                         <button className="ghost-button stable-action" onClick={() => openPath(releaseNotesUrl).catch((err) => setUpdateError(toErrorMessage(err)))} type="button">
                           <ExternalLink size={16} />
@@ -723,41 +750,42 @@ export function SettingsPage({ settings, onSettingsChange }: Props) {
                         </button>
                       </div>
                     </div>
-                  )}
 
-                  {updateStatus === "downloading" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <span>{t(language, "settings.downloading", { percent: downloadProgress })}</span>
-                      <progress value={downloadProgress} max={100} style={{ width: "100%" }} />
-                    </div>
-                  )}
+                    {updateStatus === "checking" && <span className="update-status-text">{t(language, "settings.checkUpdate")}...</span>}
 
-                  {updateStatus === "downloaded" && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      <span>{t(language, "settings.downloadComplete")}</span>
-                      <button className="ghost-button" onClick={async () => {
-                        try { await relaunchApp(); } catch (err) { setUpdateError(toErrorMessage(err)); }
-                      }}>
-                        {t(language, "settings.installNow")}
-                      </button>
-                    </div>
-                  )}
+                    {updateStatus === "available" && updateInfo && (
+                      <div className="update-status-block">
+                        <span>{t(language, "settings.updateAvailable", { version: updateInfo.version })}</span>
+                        {updateInfo.body && <small>{t(language, "settings.updateReleaseNotes")}: {updateInfo.body}</small>}
+                        <div className="update-action-row">
+                          <button className="ghost-button stable-action" onClick={handleInstallUpdate} type="button">
+                            {t(language, "settings.installNow")}
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
-                  {updateStatus === "uptodate" && <span>{t(language, "settings.upToDate")}</span>}
+                    {updateStatus === "downloading" && (
+                      <div className="update-status-block">
+                        <span>{t(language, "settings.downloading", { percent: downloadProgress })}</span>
+                        <progress value={downloadProgress} max={100} />
+                      </div>
+                    )}
 
-                  {updateStatus === "error" && updateError && (
-                    <div className="alert error" style={{ marginTop: 8 }}>{updateError}</div>
-                  )}
-                  <div className="about-links">
-                    <p>{t(language, "settings.aboutIntro")}</p>
-                    <button className="text-button" type="button" onClick={() => openPath("https://github.com/Aaalice233/Aaalice_Minecraft_Translator").catch((err) => setUpdateError(toErrorMessage(err)))}>
-                      <ExternalLink size={14} />
-                      {t(language, "settings.projectHome")}
-                    </button>
-                    <button className="text-button" type="button" onClick={() => openPath("https://space.bilibili.com/169187367?spm_id_from=333.1007.0.0").catch((err) => setUpdateError(toErrorMessage(err)))}>
-                      <ExternalLink size={14} />
-                      {t(language, "settings.bilibiliHome")}
-                    </button>
+                    {updateStatus === "downloaded" && (
+                      <div className="update-status-block">
+                        <span>{t(language, "settings.downloadComplete")}</span>
+                        <button className="ghost-button stable-action" onClick={handleRelaunchApp} type="button">
+                          {t(language, "settings.installNow")}
+                        </button>
+                      </div>
+                    )}
+
+                    {updateStatus === "uptodate" && <span className="update-status-text">{t(language, "settings.upToDate")}</span>}
+
+                    {updateError && (
+                      <div className="alert error">{updateError}</div>
+                    )}
                   </div>
                 </div>
               </div>

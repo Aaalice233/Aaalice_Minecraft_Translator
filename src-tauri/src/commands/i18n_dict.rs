@@ -104,18 +104,7 @@ fn check_i18n_dict_update_blocking(app: &tauri::AppHandle) -> Result<I18nDictUpd
         }
         None => None,
     };
-    let reference_entries = match dictionary::get_metadata(&conn, META_ENTRY_COUNT)
-        .map_err(|e| e.to_string())?
-        .and_then(|value| value.parse::<usize>().ok())
-    {
-        Some(count) => count,
-        None => count_i18n_dict_entries(&active_i18n_dict_path(app)?).unwrap_or_else(|_| {
-            bundled
-                .as_ref()
-                .and_then(|item| count_i18n_dict_entries(&item.db_path).ok())
-                .unwrap_or(0)
-        }),
-    };
+    let reference_entries = reference_entries_for_check(&conn, app, bundled.as_ref())?;
     let update_available = current_tag.as_deref() != Some(available.tag.as_str());
 
     Ok(I18nDictUpdateInfo {
@@ -206,6 +195,43 @@ pub(crate) fn active_i18n_dict_path(app: &tauri::AppHandle) -> Result<PathBuf, S
         return Ok(active_path);
     }
     Ok(bundled_i18n_dict(app)?.db_path)
+}
+
+fn reference_entries_for_check(
+    conn: &Connection,
+    app: &tauri::AppHandle,
+    bundled: Option<&BundledI18nDict>,
+) -> Result<usize, String> {
+    let cached_count = dictionary::get_metadata(conn, META_ENTRY_COUNT)
+        .map_err(|e| e.to_string())?
+        .and_then(|value| value.parse::<usize>().ok());
+    if let Some(count) = cached_count {
+        if count > 0 {
+            return Ok(count);
+        }
+    }
+
+    let counted = count_active_or_bundled_i18n_dict_entries(app, bundled)?;
+    dictionary::set_metadata(conn, META_ENTRY_COUNT, &counted.to_string())
+        .map_err(|e| e.to_string())?;
+    Ok(counted)
+}
+
+fn count_active_or_bundled_i18n_dict_entries(
+    app: &tauri::AppHandle,
+    bundled: Option<&BundledI18nDict>,
+) -> Result<usize, String> {
+    match active_i18n_dict_path(app).and_then(|path| count_i18n_dict_entries(&path)) {
+        Ok(count) => Ok(count),
+        Err(active_error) => match bundled {
+            Some(item) => count_i18n_dict_entries(&item.db_path).map_err(|bundled_error| {
+                format!(
+                    "统计当前 i18n 模组词典失败: {active_error}; 统计内置词典也失败: {bundled_error}"
+                )
+            }),
+            None => Err(active_error),
+        },
+    }
 }
 
 impl From<LatestI18nDict> for AvailableI18nDict {
@@ -329,11 +355,54 @@ fn active_i18n_dict_db_path(root: &Path) -> PathBuf {
 fn count_i18n_dict_entries(source_db_path: &Path) -> Result<usize, String> {
     let source = Connection::open_with_flags(source_db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("打开 i18n 词典失败: {e}"))?;
-    source
+    let count = source
         .query_row(
             "SELECT COUNT(*) FROM dict WHERE TRIM(ORIGIN_NAME) <> '' AND TRIM(TRANS_NAME) <> ''",
             [],
-            |row| row.get::<_, usize>(0),
+            |row| row.get::<_, i64>(0),
         )
-        .map_err(|e| format!("统计 i18n 词典条目失败: {e}"))
+        .map_err(|e| format!("统计 i18n 词典条目失败: {e}"))?;
+    usize::try_from(count).map_err(|e| format!("统计 i18n 词典条目数异常: {e}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn count_i18n_dict_entries_filters_blank_terms() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("Dict-Sqlite.db");
+        let conn = Connection::open(&db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE dict(
+                ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                ORIGIN_NAME TEXT NOT NULL,
+                TRANS_NAME TEXT NOT NULL,
+                MODID TEXT NOT NULL,
+                KEY TEXT NOT NULL,
+                VERSION TEXT NOT NULL,
+                CURSEFORGE TEXT NOT NULL
+            );
+            INSERT INTO dict (ORIGIN_NAME, TRANS_NAME, MODID, KEY, VERSION, CURSEFORGE)
+                VALUES ('Energy Cell', '能量单元', 'examplemod', 'item.example.energy_cell', '', '');
+            INSERT INTO dict (ORIGIN_NAME, TRANS_NAME, MODID, KEY, VERSION, CURSEFORGE)
+                VALUES (' ', '空原文', 'examplemod', 'item.example.blank_origin', '', '');
+            INSERT INTO dict (ORIGIN_NAME, TRANS_NAME, MODID, KEY, VERSION, CURSEFORGE)
+                VALUES ('Blank Translation', '', 'examplemod', 'item.example.blank_translation', '', '');",
+        )
+        .unwrap();
+
+        assert_eq!(count_i18n_dict_entries(&db_path).unwrap(), 1);
+    }
+
+    #[test]
+    fn count_bundled_i18n_dict_entries() {
+        let db_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("i18n-dict")
+            .join("Dict-Sqlite.db");
+
+        assert!(count_i18n_dict_entries(&db_path).unwrap() > 800_000);
+    }
 }

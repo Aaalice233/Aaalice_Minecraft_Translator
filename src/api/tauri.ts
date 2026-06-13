@@ -1,7 +1,9 @@
+import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
 import type { CopyResult, DictionaryEntry, DictionaryStats, I18nDictUpdateInfo, I18nDictUpdateResult, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanDiffResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
 import packageJson from "../../package.json";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
+let pendingAppUpdate: Update | null = null;
 
 const defaultSettings: Settings = {
   appLanguage: "zh_cn",
@@ -433,6 +435,7 @@ export async function checkUpdate(): Promise<{ version: string; body?: string } 
   const { check } = await import("@tauri-apps/plugin-updater");
   try {
     const update = await check();
+    pendingAppUpdate = update;
     if (!update) return null;
     return { version: update.version, body: update.body };
   } catch (err) {
@@ -452,16 +455,21 @@ export async function checkUpdate(): Promise<{ version: string; body?: string } 
  */
 export async function downloadAndInstallUpdate(
   onProgress?: (progress: number) => void,
+  expectedVersion?: string,
 ): Promise<void> {
   if (!isTauriRuntime()) {
     throw new Error("Not available in browser preview mode");
   }
   const { check } = await import("@tauri-apps/plugin-updater");
-  const update = await check();
+  let update = pendingAppUpdate;
+  if (!update || (expectedVersion && update.version !== expectedVersion)) {
+    update = await check();
+    pendingAppUpdate = update;
+  }
   if (!update) return;
   let totalBytes = 0;
   let downloadedBytes = 0;
-  await update.downloadAndInstall((event) => {
+  const handleProgress = (event: DownloadEvent) => {
     if (event.event === "Started" && event.data.contentLength) {
       totalBytes = event.data.contentLength;
     }
@@ -471,7 +479,17 @@ export async function downloadAndInstallUpdate(
         onProgress(Math.min(99, Math.round((downloadedBytes / totalBytes) * 100)));
       }
     }
-  });
+  };
+  try {
+    await update.downloadAndInstall(handleProgress);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("404") || msg.toLowerCase().includes("not found")) {
+      throw new Error("下载更新失败：远程安装包地址无效或发布资产缺失，请稍后重试。");
+    }
+    throw err;
+  }
+  pendingAppUpdate = null;
   onProgress?.(100);
 }
 

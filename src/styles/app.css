@@ -2171,26 +2171,108 @@ th.sorted-default .sort-indicator {
   min-width: 142px;
 }
 
-.about-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 18px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+.about-update-layout {
+  gap: 0;
 }
 
-.about-links p {
-  flex-basis: 100%;
-  margin: 0 0 2px;
+.about-overview {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  padding: 2px 2px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.about-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 6px;
+  color: var(--accent-text);
+  background: var(--accent-bg);
+}
+
+.about-copy {
+  min-width: 0;
+}
+
+.about-copy p {
+  margin: 0;
+  color: var(--text-secondary);
   line-height: 1.7;
 }
 
-.about-links .text-button {
+.about-action-row,
+.update-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.about-action-row {
+  margin-top: 8px;
+}
+
+.about-action-row .text-button {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+
+.update-section {
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.update-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.version-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.version-summary span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.version-summary strong {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 4px;
+  background: var(--bg-muted);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.update-status-block {
+  display: grid;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.update-status-block small,
+.update-status-text {
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+.update-status-block progress {
+  width: 100%;
 }
 
 .text-button {
