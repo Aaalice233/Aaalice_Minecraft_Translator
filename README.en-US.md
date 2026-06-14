@@ -14,7 +14,7 @@
 
 ## Project Focus
 
-Aaalice MC Translator is built for localizing large Minecraft modpacks. It scans mod language resources at high speed, reuses existing resource packs, the local dictionary, and the i18n reference dictionary, then sends only the remaining gaps to an LLM. The final output is a standard Minecraft resource pack, so original mod JARs stay untouched.
+Aaalice MC Translator is built for localizing large Minecraft modpacks. It scans mod language resources, reuses existing resource packs, the local dictionary, and the i18n reference dictionary, then sends the remaining gaps to an LLM. The final output is a standard Minecraft resource pack, so original mod JARs stay untouched.
 
 It is useful when:
 
@@ -25,15 +25,15 @@ It is useful when:
 
 ## Core Features
 
-- **Accelerated mod scanning**: scan instance folders and mod JARs in parallel, extract `.json` / `.lang` language files, and summarize translatable entries, existing resource-pack matches, and remaining gaps.
-- **Translation concurrency pool**: maintain LLM request throughput with concurrency, `Batch size`, timeout, retry count, and RPM limits for DeepSeek, OpenAI, or OpenAI-compatible APIs.
-- **Translation cache dictionary**: hit previous translations from the local dictionary first to reduce repeated requests and cost; new results can be reused by later projects.
-- **Dictionary management**: search, edit, delete, import, export, and clear dictionary entries from the built-in dictionary page.
-- **LLM role settings**: configure model, request parameters, and role prompts so output better fits Minecraft wording and the target modpack style.
-- **i18n dictionary reference**: use CFPATools/i18n-dict as a CFPA reference dictionary for `zh_cn` localization consistency.
-- **Placeholder protection**: protect Minecraft formatting codes, variables, `String.format` placeholders, `{player}`, `{{...}}`, `<item:...>`, and similar runtime-sensitive fragments before and after translation.
-- **Fully automatic mode**: chain scanning, translation, validation, and packaging with progress, logs, and failed-entry retry support.
-- **Dark mode**: switch between light and dark themes, with the preference saved locally for longer review sessions.
+- **Instance scanning and entry counts**: scan instance folders and mod JARs in parallel, extract `.json` / `.lang` language files, and summarize translatable entries, existing resource-pack hits, and remaining gaps.
+- **LLM request scheduling**: control translation requests with concurrency, `Batch size`, timeout, retry count, and RPM limits across DeepSeek, OpenAI, or OpenAI-compatible APIs.
+- **Local translation cache**: reuse previous translations from the local dictionary first; new translation results are written back so later scans and translation jobs can use them.
+- **Dictionary maintenance**: search, edit, delete, import, export, and clear entries for mod terminology, review edits, and cached translations.
+- **Model and prompt configuration**: configure model, request parameters, and role prompts for item names, block names, quest text, and other Minecraft-specific translation cases.
+- **i18n reference dictionary**: use CFPATools/i18n-dict as a `zh_cn` reference source to align common mod terms and reduce differences between mods.
+- **Placeholder and format protection**: preserve Minecraft formatting codes, variables, `String.format` placeholders, `{player}`, `{{...}}`, `<item:...>`, and similar runtime-sensitive fragments before and after translation.
+- **Automatic workflow**: fully automatic mode chains scanning, translation, validation, and packaging while preserving progress, logs, and failed-entry retry points.
+- **Theme and UI preferences**: switch between light and dark themes, with the preference saved to local settings.
 
 ## Screenshots
 
@@ -42,7 +42,7 @@ It is useful when:
     <td width="50%">
       <img src="docs/readme/screenshots/01-scan-overview.png" alt="Scan overview" width="100%" />
       <br />
-      <sub>Scan overview: scan large instances quickly and summarize mods, language resources, pending entries, and dictionary-cache hits.</sub>
+      <sub>Scan overview: summarizes mods, language resources, pending entries, and dictionary-cache hits.</sub>
     </td>
     <td width="50%">
       <img src="docs/readme/screenshots/02-translation-jobs.png" alt="Translation jobs" width="100%" />
