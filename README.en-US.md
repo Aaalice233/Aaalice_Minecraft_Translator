@@ -26,12 +26,17 @@ It is useful when:
 ## Core Features
 
 - **Instance scanning and entry counts**: scan instance folders and mod JARs in parallel, extract `.json` / `.lang` language files, and summarize translatable entries, existing resource-pack hits, and remaining gaps.
-- **LLM request scheduling**: control translation requests with concurrency, `Batch size`, timeout, retry count, and RPM limits across DeepSeek, OpenAI, or OpenAI-compatible APIs.
+- **Translation concurrency pool**: maintain the LLM request pool through concurrency, `Batch size`, timeout, retry count, and RPM limits across DeepSeek, OpenAI, or OpenAI-compatible APIs.
 - **Local translation cache**: reuse previous translations from the local dictionary first; new translation results are written back so later scans and translation jobs can use them.
 - **Dictionary maintenance**: search, edit, delete, import, export, and clear entries for mod terminology, review edits, and cached translations.
 - **Model and prompt configuration**: configure model, request parameters, and role prompts for item names, block names, quest text, and other Minecraft-specific translation cases.
 - **i18n reference dictionary**: use CFPATools/i18n-dict as a `zh_cn` reference source to align common mod terms and reduce differences between mods.
 - **Placeholder and format protection**: preserve Minecraft formatting codes, variables, `String.format` placeholders, `{player}`, `{{...}}`, `<item:...>`, and similar runtime-sensitive fragments before and after translation.
+- **Translation result validation**: check missing translations, missing placeholders, and format issues; failed entries stay in the failure queue for retry or manual handling.
+- **Review and single-entry retranslation**: review source and translated text entry by entry, save manual edits, and rerun the LLM for a single entry when needed.
+- **Task cancellation and resume**: scanning and translation tasks can be cancelled; translation progress and result files are persisted so later runs can reuse existing results.
+- **Resource-pack generation and updates**: generate a standard resource pack zip with `pack.mcmeta` based on the Minecraft version; output names are fixed or configurable, and copying to an instance updates the existing pack with the same name.
+- **Logs and error diagnostics**: keep main logs, job logs, and error details for troubleshooting; debug logging is controlled by settings.
 - **Automatic workflow**: fully automatic mode chains scanning, translation, validation, and packaging while preserving progress, logs, and failed-entry retry points.
 - **Theme and UI preferences**: switch between light and dark themes, with the preference saved to local settings.
 
