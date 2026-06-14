@@ -12,14 +12,76 @@
 
 ---
 
-## Features
+## Project Focus
 
-- Scan a Minecraft instance and extract `.json` / `.lang` language files from mod JARs.
-- Reuse existing resource packs, the local dictionary, and CFPA reference translations.
-- Batch-translate missing entries through DeepSeek, OpenAI, or any OpenAI-compatible API.
-- Protect Minecraft formatting codes, variables, item tags, and Java format placeholders.
-- Track translation jobs, logs, retries, failed entries, and review edits.
-- Package translations into a standard Minecraft resource pack zip without modifying original mod JARs.
+Aaalice MC Translator is built for localizing large Minecraft modpacks. It scans mod language resources at high speed, reuses existing resource packs, the local dictionary, and the i18n reference dictionary, then sends only the remaining gaps to an LLM. The final output is a standard Minecraft resource pack, so original mod JARs stay untouched.
+
+It is useful when:
+
+- A modpack contains many mods, and manually finding language files or missing entries is too expensive.
+- You already have partial localization resources and want to reuse them before translating the gaps.
+- You need to maintain translation cache, review edits, and reuse previous work across repeated scans.
+- You need to control LLM concurrency, batch size, RPM, timeout, and retries for large translation jobs.
+
+## Core Features
+
+- **Accelerated mod scanning**: scan instance folders and mod JARs in parallel, extract `.json` / `.lang` language files, and summarize translatable entries, existing resource-pack matches, and remaining gaps.
+- **Translation concurrency pool**: maintain LLM request throughput with concurrency, `Batch size`, timeout, retry count, and RPM limits for DeepSeek, OpenAI, or OpenAI-compatible APIs.
+- **Translation cache dictionary**: hit previous translations from the local dictionary first to reduce repeated requests and cost; new results can be reused by later projects.
+- **Dictionary management**: search, edit, delete, import, export, and clear dictionary entries from the built-in dictionary page.
+- **LLM role settings**: configure model, request parameters, and role prompts so output better fits Minecraft wording and the target modpack style.
+- **i18n dictionary reference**: use CFPATools/i18n-dict as a CFPA reference dictionary for `zh_cn` localization consistency.
+- **Placeholder protection**: protect Minecraft formatting codes, variables, `String.format` placeholders, `{player}`, `{{...}}`, `<item:...>`, and similar runtime-sensitive fragments before and after translation.
+- **Fully automatic mode**: chain scanning, translation, validation, and packaging with progress, logs, and failed-entry retry support.
+- **Dark mode**: switch between light and dark themes, with the preference saved locally for longer review sessions.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/readme/screenshots/01-scan-overview.png" alt="Scan overview" width="100%" />
+      <br />
+      <sub>Scan overview: scan large instances quickly and summarize mods, language resources, pending entries, and dictionary-cache hits.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/readme/screenshots/02-translation-jobs.png" alt="Translation jobs" width="100%" />
+      <br />
+      <sub>Translation jobs: track throughput, dictionary hits, existing translations, skipped entries, and LLM results.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/readme/screenshots/03-review-editor.png" alt="Review editor" width="100%" />
+      <br />
+      <sub>Review workspace: compare source and translated text, copy source, retranslate with LLM, and save manual edits.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/readme/screenshots/04-packaging.png" alt="Resource-pack packaging" width="100%" />
+      <br />
+      <sub>Packaging: group output by mod and generate a resource pack that can be placed in <code>resourcepacks/</code>.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/readme/screenshots/05-dictionary-management.png" alt="Dictionary management" width="100%" />
+      <br />
+      <sub>Dictionary management: search, edit, delete, import, and export translation cache for long-term terminology maintenance.</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/readme/screenshots/06-performance-settings.png" alt="Performance settings" width="100%" />
+      <br />
+      <sub>Performance settings: tune the translation concurrency pool, batch size, timeout, retries, and rate limits.</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/readme/screenshots/07-resource-reuse.png" alt="Resource reuse settings" width="100%" />
+      <br />
+      <sub>Resource reuse: manage the i18n reference dictionary, existing localization resource packs, and output resource-pack naming.</sub>
+    </td>
+  </tr>
+</table>
 
 ## Quick Start
 
@@ -45,6 +107,8 @@ Select MC instance -> Scan mods -> Configure LLM API -> Translate -> Review -> P
 ```
 
 The generated resource pack can be copied into the instance `resourcepacks/` directory.
+
+When fully automatic mode is enabled, the app chains scanning, translation, validation, and packaging with the current settings. If a stage fails, the real error, logs, and current progress are preserved for debugging.
 
 ## Development
 

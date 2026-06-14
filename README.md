@@ -12,14 +12,76 @@
 
 ---
 
-## 功能概览
+## 项目定位
 
-- 扫描 Minecraft 实例目录，从 mod JAR 中提取 `.json` / `.lang` 语言文件。
-- 复用已有资源包、本地词典和 CFPA 参考翻译，减少重复请求。
-- 通过 DeepSeek、OpenAI 或其他 OpenAI-compatible API 批量翻译剩余条目。
-- 在翻译前后保护 Minecraft 格式代码、变量、物品标签和 Java format 占位符。
-- 支持翻译作业进度、日志、失败项重试和结果校对。
-- 打包生成标准 Minecraft 资源包 zip，不直接修改原始 mod JAR。
+Aaalice MC Translator 面向大型 Minecraft 整合包的本地化流程：先高速扫描实例中的 mod 语言资源，再复用已有资源包、本地词典和 i18n 参考词典，最后只把缺口交给 LLM 翻译。生成结果会打包为标准资源包，不直接修改原始 mod JAR。
+
+适合这些场景：
+
+- 整合包包含大量 mod，手工定位语言文件和缺失条目成本太高。
+- 已经有一部分汉化资源，希望优先复用并只补齐缺口。
+- 需要持续维护翻译缓存、人工校对结果，并在多次扫描/翻译之间复用已有成果。
+- 需要控制 LLM 并发、批大小、RPM、超时和重试，避免一次性翻译大包时失控。
+
+## 核心能力
+
+- **mod 扫描加速**：并行扫描实例目录和 mod JAR，提取 `.json` / `.lang` 语言文件，统计可汉化条目、已有资源包命中和待翻译缺口。
+- **翻译并发池维护**：通过并发请求数、`Batch size`、超时、重试次数和 RPM 限速控制 LLM 请求池，适配 DeepSeek、OpenAI 以及 OpenAI-compatible API。
+- **翻译缓存词典**：本地词典会优先命中历史翻译结果，减少重复请求和费用；翻译完成后可沉淀为后续项目可复用的缓存。
+- **词典管理**：内置词典页支持搜索、编辑、删除、导入、导出和清空词库，便于持续维护 mod 术语与人工校对结果。
+- **LLM 角色设定**：API 与翻译设置支持配置模型、请求参数和角色提示词，让输出更贴合 Minecraft 语境和整合包风格。
+- **i18n 词典参考**：可接入 CFPATools/i18n-dict 作为 CFPA 参考词库，目标语言为 `zh_cn` 时用于提升常见 mod 术语一致性。
+- **占位符保护**：翻译前后保护 Minecraft 格式码、变量、`String.format` 占位符、`{player}`、`{{...}}`、`<item:...>` 等特殊片段，避免 LLM 破坏运行时文本。
+- **全自动模式**：可从扫描、翻译、校验到打包串联执行，长流程期间保留进度、日志和失败项重试能力。
+- **暗黑模式**：界面支持浅色/暗色主题切换，并会保存到本地设置，长时间校对时更舒服。
+
+## 界面截图
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/readme/screenshots/01-scan-overview.png" alt="项目扫描概览" width="100%" />
+      <br />
+      <sub>扫描概览：秒级扫描大型实例，统计模组、资源文件、待翻译条目和词典缓存命中。</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/readme/screenshots/02-translation-jobs.png" alt="翻译任务" width="100%" />
+      <br />
+      <sub>翻译任务：展示翻译吞吐、词典命中、已有翻译、跳过条目和 LLM 调用结果。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/readme/screenshots/03-review-editor.png" alt="校对编辑器" width="100%" />
+      <br />
+      <sub>校对工作台：逐条查看原文和译文，支持复制原文、调用 LLM 重译和人工保存。</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/readme/screenshots/04-packaging.png" alt="资源包打包" width="100%" />
+      <br />
+      <sub>资源包打包：按 mod 汇总可输出条目，生成可直接放入 <code>resourcepacks/</code> 的资源包。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/readme/screenshots/05-dictionary-management.png" alt="词典管理" width="100%" />
+      <br />
+      <sub>词典管理：搜索、编辑、删除、导入和导出翻译缓存，维护整合包长期术语资产。</sub>
+    </td>
+    <td width="50%">
+      <img src="docs/readme/screenshots/06-performance-settings.png" alt="性能设置" width="100%" />
+      <br />
+      <sub>性能设置：维护翻译并发池、批大小、超时、重试和速率限制。</sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2">
+      <img src="docs/readme/screenshots/07-resource-reuse.png" alt="资源复用设置" width="100%" />
+      <br />
+      <sub>资源复用：管理 i18n 参考词典、已有汉化资源包和输出资源包命名规则。</sub>
+    </td>
+  </tr>
+</table>
 
 ## 快速开始
 
@@ -45,6 +107,8 @@
 ```
 
 生成的资源包可以复制到实例的 `resourcepacks/` 目录中使用。
+
+如果启用全自动模式，应用会按当前设置自动串联扫描、翻译、校验和打包；任一阶段失败时会保留真实错误、日志和当前进度，便于继续排查。
 
 ## 开发
 
