@@ -207,6 +207,7 @@ See [docs/00-index.md](docs/00-index.md) for the full documentation index.
 ## Acknowledgements
 
 - The bundled i18n mod dictionary comes from [CFPATools/i18n-dict](https://github.com/CFPATools/i18n-dict). Original releases are available at [i18n-dict releases](https://github.com/CFPATools/i18n-dict/releases).
+- Thanks to the [LINUX DO](https://linux.do/) community for supporting open-source project sharing and discussion.
 
 ## License
 

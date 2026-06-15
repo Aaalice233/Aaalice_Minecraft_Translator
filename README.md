@@ -207,6 +207,7 @@ Aaalice_Minecraft_Translator/
 ## 致谢
 
 - 内置 i18n 模组词典来自 [CFPATools/i18n-dict](https://github.com/CFPATools/i18n-dict)，原始发布页见 [i18n-dict releases](https://github.com/CFPATools/i18n-dict/releases)。
+- 感谢 [LINUX DO](https://linux.do/) 社区对开源项目交流与分享的支持。
 
 ## 许可证
 
