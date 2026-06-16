@@ -7,6 +7,7 @@
 .omc/
 src-tauri/.omc/
 .playwright-mcp/
+.agents/
 
 # Build outputs
 dist/
@@ -27,6 +28,9 @@ data/
 .env.*
 !.env.example
 *.local
+
+# Temporary/project notes
+brainstorms/
 
 # OS/editor files
 .DS_Store
