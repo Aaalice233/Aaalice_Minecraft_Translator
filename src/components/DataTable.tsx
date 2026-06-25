@@ -29,6 +29,8 @@ export interface DataTableProps<T> {
   followOutput?: boolean;
   /** Ref forwarded to the underlying TableVirtuoso instance */
   virtuosoRef?: React.Ref<any>;
+  /** Called when the user reaches the rendered end of the virtual table. */
+  endReached?: () => void;
 }
 
 /**
@@ -60,6 +62,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
     RowWrapper,
     followOutput,
     virtuosoRef,
+    endReached,
   } = props;
 
   // Stable refs for useMemo'd Table/TableRow (avoids forcing re-initialization)
@@ -145,6 +148,7 @@ export function DataTable<T>(props: DataTableProps<T>) {
       components={tableComponents}
       fixedHeaderContent={fixedHeaderContent}
       itemContent={itemContent}
+      endReached={endReached}
     />
   );
 }

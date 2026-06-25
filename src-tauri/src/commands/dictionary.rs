@@ -1,9 +1,13 @@
 use crate::core::{dictionary, paths};
-use tracing::info;
+use tracing::{info, warn};
 
 #[tauri::command]
 pub fn search_dictionary(
     search: Option<String>,
+    source_text: Option<String>,
+    target_text: Option<String>,
+    translation_key: Option<String>,
+    mod_query: Option<String>,
     source_type: Option<String>,
     mod_id: Option<String>,
     source_lang: Option<String>,
@@ -17,8 +21,15 @@ pub fn search_dictionary(
     );
     let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(|e| e.to_string())?;
+    if let Err(err) = dictionary::backfill_mod_names_from_jobs(&conn, &paths::jobs_dir(&root)) {
+        warn!("search_dictionary: backfill_mod_names_from_jobs failed: {err}");
+    }
     let query = dictionary::DictionaryQuery {
         search,
+        source_text,
+        target_text,
+        translation_key,
+        mod_query,
         source_type,
         mod_id,
         source_lang,
@@ -27,6 +38,24 @@ pub fn search_dictionary(
         offset,
     };
     dictionary::search(&conn, &query).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn count_dictionary(query: dictionary::DictionaryQuery) -> Result<usize, String> {
+    info!("count_dictionary");
+    let root = paths::runtime_root().map_err(|e| e.to_string())?;
+    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(|e| e.to_string())?;
+    dictionary::count_matching(&conn, &query).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_dictionary_selection(
+    request: dictionary::DictionarySelectionDeleteRequest,
+) -> Result<dictionary::DictionarySelectionDeleteResult, String> {
+    info!("delete_dictionary_selection: mode={:?}", request.mode);
+    let root = paths::runtime_root().map_err(|e| e.to_string())?;
+    let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(|e| e.to_string())?;
+    dictionary::delete_selection(&conn, &request)
 }
 
 #[tauri::command]
@@ -54,7 +83,12 @@ pub fn clear_dictionary() -> Result<usize, String> {
     info!("clear_dictionary");
     let root = paths::runtime_root().map_err(|e| e.to_string())?;
     let conn = dictionary::open(&paths::dictionary_db_path(&root)).map_err(|e| e.to_string())?;
-    dictionary::clear_local_entries(&conn).map_err(|e| e.to_string())
+    let removed = dictionary::clear_local_entries(&conn).map_err(|e| e.to_string())?;
+    let remaining = dictionary::count_local_entries(&conn).map_err(|e| e.to_string())?;
+    if remaining != 0 {
+        return Err(format!("清空词库后仍剩余 {remaining} 条本地词库条目"));
+    }
+    Ok(removed)
 }
 
 #[tauri::command]

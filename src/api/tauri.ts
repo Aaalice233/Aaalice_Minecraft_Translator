@@ -1,5 +1,5 @@
 import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
-import type { CopyResult, DictionaryEntry, DictionaryStats, I18nDictUpdateInfo, I18nDictUpdateResult, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanDiffResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
+import type { CopyResult, DictionaryEntry, DictionaryQueryParams, DictionarySelectionDeleteRequest, DictionarySelectionDeleteResult, DictionaryStats, I18nDictUpdateInfo, I18nDictUpdateResult, ImportResult, InstanceValidation, LlmModelsResponse, LogEntry, ModTranslationSummary, PackEntry, PackResult, ReadLogsResult, ScanDiffResult, ScanSummary, Settings, TranslateProgress, TranslationJobListItem, TranslationJobState, TranslationResult, ValidationReport } from "../types";
 import packageJson from "../../package.json";
 
 const settingsStorageKey = "aaalice-mc-translator-settings";
@@ -136,21 +136,27 @@ function loadBrowserSettings(): Settings {
 
 // ── P2: Dictionary API ────────────────────────────────────────────
 
-export async function searchDictionary(
-  search?: string,
-  sourceType?: string,
-  modId?: string,
-  sourceLang?: string,
-  targetLang?: string,
-  limit?: number,
-  offset?: number,
-): Promise<DictionaryEntry[]> {
+export async function searchDictionary(params: DictionaryQueryParams = {}): Promise<DictionaryEntry[]> {
   if (!isTauriRuntime()) {
     return [];
   }
-  return tauriInvoke<DictionaryEntry[]>("search_dictionary", {
-    search, sourceType, modId, sourceLang, targetLang, limit, offset,
-  });
+  return tauriInvoke<DictionaryEntry[]>("search_dictionary", params as Record<string, unknown>);
+}
+
+export async function countDictionary(query: DictionaryQueryParams = {}): Promise<number> {
+  if (!isTauriRuntime()) {
+    return 0;
+  }
+  return tauriInvoke<number>("count_dictionary", { query });
+}
+
+export async function deleteDictionarySelection(
+  request: DictionarySelectionDeleteRequest,
+): Promise<DictionarySelectionDeleteResult> {
+  if (!isTauriRuntime()) {
+    return { removed: 0, remainingLocal: 0 };
+  }
+  return tauriInvoke<DictionarySelectionDeleteResult>("delete_dictionary_selection", { request });
 }
 
 export async function updateDictionaryEntry(id: number, targetText: string): Promise<boolean> {

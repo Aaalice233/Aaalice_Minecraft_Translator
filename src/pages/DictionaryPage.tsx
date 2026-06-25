@@ -2,7 +2,7 @@ import { Download, Trash2, Upload } from "lucide-react";
 import { SearchInput } from "../components/SearchInput";
 import { DataTable } from "../components/DataTable";
 import { PageHeader } from "../components/PageHeader";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useSortFilter } from "../hooks/useSortFilter";
 import { useDebouncedValue } from "../hooks/useDebouncedValue";
@@ -10,7 +10,9 @@ import { type ColumnConfig } from "../components/SortableTableHeader";
 import { TranslationEditPanel, type EditPanelEntry } from "../components/TranslationEditPanel";
 import {
   clearDictionary,
+  countDictionary,
   deleteDictionaryEntry,
+  deleteDictionarySelection,
   getDictionaryStats,
   searchDictionary,
   translateSingleEntry,
@@ -18,10 +20,20 @@ import {
 } from "../api/tauri";
 import { t } from "../i18n/translations";
 import { getSettings } from "../api/tauri";
-import type { AppLanguage, DictionaryEntry, DictionaryStats, Settings } from "../types";
+import type { AppLanguage, DictionaryEntry, DictionaryQueryParams, DictionarySelectionDeleteRequest, DictionaryStats, Settings } from "../types";
 
 interface Props {
   language: AppLanguage;
+}
+
+const DICTIONARY_PAGE_SIZE = 1000;
+
+type DictionarySelection =
+  | { mode: "ids"; ids: Set<number> }
+  | { mode: "query"; query: DictionaryQueryParams; excludedIds: Set<number>; total: number };
+
+function emptySelection(): DictionarySelection {
+  return { mode: "ids", ids: new Set<number>() };
 }
 
 function typeLabel(st: string, lang: AppLanguage): string {
@@ -37,16 +49,31 @@ const DictionaryRow = React.memo(function DictionaryRow({
   onOpenPanel,
   highlighted,
   onDelete,
+  selected,
+  onToggleSelected,
   language,
 }: {
   entry: DictionaryEntry;
   onOpenPanel?: () => void;
   highlighted?: boolean;
   onDelete: (id: number) => void;
+  selected: boolean;
+  onToggleSelected: (id: number) => void;
   language: AppLanguage;
 }) {
+  const modLabel = entry.modName || entry.modId || "-";
   return (
     <>
+      <td className="selection-cell">
+        {entry.id != null && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={() => onToggleSelected(entry.id!)}
+            aria-label={t(language, "dictionary.selectRow")}
+          />
+        )}
+      </td>
       <td title={entry.sourceText}>{entry.sourceText}</td>
       <td
         style={{ cursor: entry.id != null ? "pointer" : "default" }}
@@ -57,7 +84,9 @@ const DictionaryRow = React.memo(function DictionaryRow({
           {entry.targetText}
         </span>
       </td>
-      <td>{entry.modId ?? "-"}</td>
+      <td title={entry.modName && entry.modId ? `${entry.modName} · ${entry.modId}` : modLabel}>
+        {modLabel}
+      </td>
       <td className="mono">{entry.translationKey ?? "-"}</td>
       <td>
         <span className={`badge ${entry.sourceType}`}>
@@ -83,44 +112,158 @@ const DictionaryRow = React.memo(function DictionaryRow({
 export function DictionaryPage({ language }: Props) {
   const [entries, setEntries] = useState<DictionaryEntry[]>([]);
   const [stats, setStats] = useState<DictionaryStats | null>(null);
+  const [matchingCount, setMatchingCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [selection, setSelection] = useState<DictionarySelection>(() => emptySelection());
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const debouncedSearch = useDebouncedValue(globalSearch, 300);
+  const selectAllLoadedRef = useRef<HTMLInputElement>(null);
 
   // Edit panel state
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelKey, setPanelKey] = useState<string | null>(null);
 
   const sf = useSortFilter();
+  const activeSearch = useMemo(() => debouncedSearch.trim(), [debouncedSearch]);
+  const dictionaryQuery = useMemo<DictionaryQueryParams>(() => {
+    const filters = sf.filters as Record<string, string>;
+    return {
+      search: activeSearch || undefined,
+      sourceText: filters.sourceText || undefined,
+      targetText: filters.targetText || undefined,
+      modQuery: filters.modId || undefined,
+      translationKey: filters.translationKey || undefined,
+      sourceType: filters.sourceType || undefined,
+    };
+  }, [activeSearch, sf.filters]);
+  const querySignature = useMemo(() => JSON.stringify(dictionaryQuery), [dictionaryQuery]);
+
+  const loadedIds = useMemo(
+    () => entries.map((entry) => entry.id).filter((id): id is number => id != null),
+    [entries],
+  );
+
+  const isSelected = useCallback((id: number) => {
+    if (selection.mode === "ids") {
+      return selection.ids.has(id);
+    }
+    return !selection.excludedIds.has(id);
+  }, [selection]);
+
+  const selectedCount = useMemo(() => {
+    if (selection.mode === "ids") {
+      return selection.ids.size;
+    }
+    return Math.max(selection.total - selection.excludedIds.size, 0);
+  }, [selection]);
+
+  const loadedSelectedCount = useMemo(
+    () => loadedIds.filter((id) => isSelected(id)).length,
+    [loadedIds, isSelected],
+  );
+  const allLoadedSelected = loadedIds.length > 0 && loadedSelectedCount === loadedIds.length;
+  const someLoadedSelected = loadedSelectedCount > 0 && !allLoadedSelected;
+  const filterSummary = useMemo(() => {
+    const filters = sf.filters as Record<string, string>;
+    const parts: string[] = [];
+    if (activeSearch) {
+      parts.push(`${t(language, "dictionary.search")}: ${activeSearch}`);
+    }
+    if (filters.sourceText) {
+      parts.push(`${t(language, "dictionary.col.source")}: ${filters.sourceText}`);
+    }
+    if (filters.targetText) {
+      parts.push(`${t(language, "dictionary.col.target")}: ${filters.targetText}`);
+    }
+    if (filters.modId) {
+      parts.push(`${t(language, "dictionary.col.mod")}: ${filters.modId}`);
+    }
+    if (filters.translationKey) {
+      parts.push(`${t(language, "dictionary.col.key")}: ${filters.translationKey}`);
+    }
+    if (filters.sourceType) {
+      parts.push(`${t(language, "dictionary.col.type")}: ${typeLabel(filters.sourceType, language)}`);
+    }
+    return parts.length > 0 ? parts.join(" / ") : t(language, "dictionary.bulkFilterAll");
+  }, [activeSearch, language, sf.filters]);
+  const selectionSummary = selection.mode === "query"
+    ? t(language, "dictionary.bulkSelectionQuery", { selected: selectedCount, total: matchingCount })
+    : t(language, "dictionary.bulkSelectionIds", { selected: selectedCount, total: matchingCount });
 
   // ── Data loading ──
 
   // ── Silent fetch: skip setLoading to avoid UI flicker during polling ──
   const fetchEntriesSilent = useCallback(async () => {
     try {
-      const results = await searchDictionary(undefined, undefined, undefined, undefined, undefined, 1000);
-      setEntries(results);
+      const [results, total] = await Promise.all([
+        searchDictionary({ ...dictionaryQuery, limit: DICTIONARY_PAGE_SIZE, offset: 0 }),
+        countDictionary(dictionaryQuery),
+      ]);
+      setEntries((prev) => {
+        if (prev.length <= DICTIONARY_PAGE_SIZE) {
+          return results;
+        }
+        const refreshedIds = new Set(results.map((entry) => entry.id).filter((id) => id != null));
+        return [
+          ...results,
+          ...prev.slice(DICTIONARY_PAGE_SIZE).filter((entry) => entry.id == null || !refreshedIds.has(entry.id)),
+        ];
+      });
+      setHasMore((prev) => prev || results.length === DICTIONARY_PAGE_SIZE);
+      setMatchingCount(total);
     } catch {
       // silent — ignore polling errors
     }
-  }, []);
+  }, [dictionaryQuery]);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const results = await searchDictionary(undefined, undefined, undefined, undefined, undefined, 1000);
+      const [results, total] = await Promise.all([
+        searchDictionary({ ...dictionaryQuery, limit: DICTIONARY_PAGE_SIZE, offset: 0 }),
+        countDictionary(dictionaryQuery),
+      ]);
       setEntries(results);
+      setHasMore(results.length === DICTIONARY_PAGE_SIZE);
+      setMatchingCount(total);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [dictionaryQuery]);
+
+  const loadMoreEntries = useCallback(async () => {
+    if (loading || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const results = await searchDictionary({
+        ...dictionaryQuery,
+        limit: DICTIONARY_PAGE_SIZE,
+        offset: entries.length,
+      });
+      setEntries((prev) => {
+        const seen = new Set(prev.map((entry) => entry.id).filter((id) => id != null));
+        const next = results.filter((entry) => entry.id == null || !seen.has(entry.id));
+        return [...prev, ...next];
+      });
+      setHasMore(results.length === DICTIONARY_PAGE_SIZE);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [dictionaryQuery, entries.length, hasMore, loading, loadingMore]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -135,6 +278,50 @@ export function DictionaryPage({ language }: Props) {
     fetchEntries();
     fetchStats();
   }, [fetchEntries, fetchStats]);
+
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => setMessage(""), 4500);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+
+  useEffect(() => {
+    setSelection(emptySelection());
+  }, [querySignature]);
+
+  useEffect(() => {
+    if (selectAllLoadedRef.current) {
+      selectAllLoadedRef.current.indeterminate = someLoadedSelected;
+    }
+  }, [someLoadedSelected]);
+
+  const selectAllMatching = useCallback(() => {
+    if (matchingCount <= 0) return;
+    setSelection({
+      mode: "query",
+      query: dictionaryQuery,
+      excludedIds: new Set<number>(),
+      total: matchingCount,
+    });
+  }, [dictionaryQuery, matchingCount]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "a") return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target instanceof HTMLElement &&
+        (target.closest("input, textarea, select") || target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      selectAllMatching();
+    };
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [selectAllMatching]);
 
   // ── Auto-refresh: poll every 5s while page is visible ──
   useEffect(() => {
@@ -183,6 +370,122 @@ export function DictionaryPage({ language }: Props) {
     };
   }, [fetchEntriesSilent, fetchStats]);
 
+  const toggleEntrySelected = useCallback((id: number) => {
+    setSelection((prev) => {
+      if (prev.mode === "query") {
+        const excludedIds = new Set(prev.excludedIds);
+        if (excludedIds.has(id)) {
+          excludedIds.delete(id);
+        } else {
+          excludedIds.add(id);
+        }
+        return { ...prev, excludedIds };
+      }
+
+      const ids = new Set(prev.ids);
+      if (ids.has(id)) {
+        ids.delete(id);
+      } else {
+        ids.add(id);
+      }
+      return { mode: "ids", ids };
+    });
+  }, []);
+
+  const toggleLoadedSelection = useCallback(() => {
+    if (loadedIds.length === 0) return;
+    setSelection((prev) => {
+      if (prev.mode === "query") {
+        const excludedIds = new Set(prev.excludedIds);
+        if (allLoadedSelected) {
+          loadedIds.forEach((id) => excludedIds.add(id));
+        } else {
+          loadedIds.forEach((id) => excludedIds.delete(id));
+        }
+        return { ...prev, excludedIds };
+      }
+
+      const ids = new Set(prev.ids);
+      if (allLoadedSelected) {
+        loadedIds.forEach((id) => ids.delete(id));
+      } else {
+        loadedIds.forEach((id) => ids.add(id));
+      }
+      return { mode: "ids", ids };
+    });
+  }, [allLoadedSelected, loadedIds]);
+
+  const invertLoadedSelection = useCallback(() => {
+    if (loadedIds.length === 0) return;
+    setSelection((prev) => {
+      if (prev.mode === "query") {
+        const excludedIds = new Set(prev.excludedIds);
+        loadedIds.forEach((id) => {
+          if (excludedIds.has(id)) {
+            excludedIds.delete(id);
+          } else {
+            excludedIds.add(id);
+          }
+        });
+        return { ...prev, excludedIds };
+      }
+
+      const ids = new Set(prev.ids);
+      loadedIds.forEach((id) => {
+        if (ids.has(id)) {
+          ids.delete(id);
+        } else {
+          ids.add(id);
+        }
+      });
+      return { mode: "ids", ids };
+    });
+  }, [loadedIds]);
+
+  const clearSelection = useCallback(() => {
+    setSelection(emptySelection());
+  }, []);
+
+  const openBulkConfirm = useCallback(() => {
+    if (selectedCount <= 0) return;
+    setError("");
+    setMessage("");
+    setBulkConfirmOpen(true);
+  }, [selectedCount]);
+
+  const buildDeleteRequest = useCallback((): DictionarySelectionDeleteRequest => {
+    if (selection.mode === "query") {
+      return {
+        mode: "query",
+        query: selection.query,
+        excludedIds: Array.from(selection.excludedIds),
+      };
+    }
+    return {
+      mode: "ids",
+      ids: Array.from(selection.ids),
+    };
+  }, [selection]);
+
+  const handleDeleteSelection = useCallback(async () => {
+    if (selectedCount <= 0) return;
+    setError("");
+    setMessage("");
+    setBulkDeleting(true);
+    try {
+      const result = await deleteDictionarySelection(buildDeleteRequest());
+      setMessage(t(language, "dictionary.bulkDeleted", { count: result.removed }));
+      setSelection(emptySelection());
+      setBulkConfirmOpen(false);
+      setPanelOpen(false);
+      await Promise.all([fetchEntries(), fetchStats()]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBulkDeleting(false);
+    }
+  }, [buildDeleteRequest, fetchEntries, fetchStats, language, selectedCount]);
+
   // ── Edit handlers ──
 
   const handleSave = useCallback(async (entry: EditPanelEntry, newText: string) => {
@@ -224,6 +527,19 @@ export function DictionaryPage({ language }: Props) {
       setMessage("");
       try {
         await deleteDictionaryEntry(id);
+        setSelection((prev) => {
+          if (prev.mode === "query") {
+            const excludedIds = new Set(prev.excludedIds);
+            if (excludedIds.has(id)) {
+              excludedIds.delete(id);
+              return { ...prev, excludedIds };
+            }
+            return { ...prev, excludedIds, total: Math.max(prev.total - 1, 0) };
+          }
+          const ids = new Set(prev.ids);
+          ids.delete(id);
+          return { mode: "ids", ids };
+        });
         setMessage(t(language, "dictionary.deleted"));
         fetchEntries();
       } catch (err) {
@@ -246,6 +562,11 @@ export function DictionaryPage({ language }: Props) {
     try {
       const removed = await clearDictionary();
       setEntries([]);
+      setHasMore(false);
+      setLoadingMore(false);
+      setMatchingCount(0);
+      setSelection(emptySelection());
+      setBulkConfirmOpen(false);
       setStats({ total: 0, modIds: [] });
       setMessage(t(language, "dictionary.cleared", { count: removed }));
       setClearConfirmOpen(false);
@@ -263,42 +584,6 @@ export function DictionaryPage({ language }: Props) {
   const filteredEntries = useMemo(() => {
     let result = entries;
 
-    // Global search (debounced)
-    if (debouncedSearch) {
-      const q = debouncedSearch.toLowerCase();
-      result = result.filter(
-        (e) =>
-          e.sourceText.toLowerCase().includes(q) ||
-          e.targetText.toLowerCase().includes(q) ||
-          (e.modId ?? "").toLowerCase().includes(q) ||
-          (e.translationKey ?? "").toLowerCase().includes(q),
-      );
-    }
-
-    // Column-level filters
-    const f = sf.filters as Record<string, string>;
-    for (const key of Object.keys(f)) {
-      const val = f[key];
-      if (!val) continue;
-      const v = val.toLowerCase();
-      result = result.filter((e) => {
-        switch (key) {
-          case "sourceText":
-            return e.sourceText.toLowerCase().includes(v);
-          case "targetText":
-            return e.targetText.toLowerCase().includes(v);
-          case "modId":
-            return (e.modId ?? "").toLowerCase().includes(v);
-          case "translationKey":
-            return (e.translationKey ?? "").toLowerCase().includes(v);
-          case "sourceType":
-            return e.sourceType === val;
-          default:
-            return true;
-        }
-      });
-    }
-
     // Sort
     if (sf.sortConfig) {
       const { key, direction } = sf.sortConfig;
@@ -307,7 +592,7 @@ export function DictionaryPage({ language }: Props) {
         switch (key) {
           case "sourceText": return x.sourceText;
           case "targetText": return x.targetText;
-          case "modId": return x.modId ?? "";
+          case "modId": return x.modName || x.modId || "";
           case "translationKey": return x.translationKey ?? "";
           case "sourceType": return x.sourceType;
           default: return "";
@@ -319,12 +604,28 @@ export function DictionaryPage({ language }: Props) {
     }
 
     return result;
-  }, [entries, debouncedSearch, sf.filters, sf.sortConfig]);
+  }, [entries, sf.sortConfig]);
 
   // ── Column config ──
 
   const dictColumnsMemo: ColumnConfig[] = useMemo(
     () => [
+      {
+        key: "selection",
+        label: "",
+        sortable: false,
+        filterType: "none",
+        renderHeaderContent: () => (
+          <input
+            ref={selectAllLoadedRef}
+            type="checkbox"
+            checked={allLoadedSelected}
+            disabled={loadedIds.length === 0}
+            onChange={toggleLoadedSelection}
+            aria-label={t(language, "dictionary.selectLoaded")}
+          />
+        ),
+      },
       { key: "sourceText", label: t(language, "dictionary.col.source"), filterType: "text" },
       { key: "targetText", label: t(language, "dictionary.col.target"), filterType: "text" },
       { key: "modId", label: t(language, "dictionary.col.mod"), filterType: "text" },
@@ -340,7 +641,7 @@ export function DictionaryPage({ language }: Props) {
       },
       { key: "actions", label: t(language, "dictionary.col.actions"), sortable: false, filterType: "none" },
     ],
-    [language],
+    [allLoadedSelected, language, loadedIds.length, toggleLoadedSelection],
   );
 
   // ── Stable renderRow to avoid DataTable re-initialization ──
@@ -358,10 +659,12 @@ export function DictionaryPage({ language }: Props) {
         }}
         highlighted={panelOpen && panelKey === `dict::${entry.id}`}
         onDelete={handleDelete}
+        selected={entry.id != null && isSelected(entry.id)}
+        onToggleSelected={toggleEntrySelected}
         language={language}
       />
     ),
-    [panelOpen, panelKey, handleDelete, language],
+    [panelOpen, panelKey, handleDelete, isSelected, toggleEntrySelected, language],
   );
 
   // ── Render ──
@@ -429,12 +732,86 @@ export function DictionaryPage({ language }: Props) {
         document.body,
       )}
 
+      {bulkConfirmOpen && createPortal(
+        <div className="confirm-overlay" role="presentation" onClick={() => !bulkDeleting && setBulkConfirmOpen(false)}>
+          <div
+            className="confirm-modal dictionary-bulk-confirm"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dictionary-bulk-confirm-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-modal-icon danger">
+              <Trash2 size={22} />
+            </div>
+            <div className="confirm-modal-body">
+              <h2 id="dictionary-bulk-confirm-title">{t(language, "dictionary.bulkConfirmTitle")}</h2>
+              <p>{t(language, "dictionary.bulkConfirm", { count: selectedCount })}</p>
+              <p className="dictionary-bulk-confirm-filter">
+                {t(language, "dictionary.bulkConfirmFilter", { filter: filterSummary })}
+              </p>
+            </div>
+            <div className="confirm-modal-actions">
+              <button className="ghost-button" type="button" disabled={bulkDeleting} onClick={() => setBulkConfirmOpen(false)}>
+                {t(language, "common.cancel")}
+              </button>
+              <button className="primary-button danger" type="button" disabled={bulkDeleting} onClick={handleDeleteSelection}>
+                {bulkDeleting ? t(language, "common.loading") : t(language, "dictionary.bulkConfirmAction")}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
       <div style={{ marginBottom: 16 }}>
         <SearchInput
           value={globalSearch}
           onChange={setGlobalSearch}
           placeholder={t(language, "dictionary.searchPlaceholder")}
         />
+      </div>
+
+      <div className="dictionary-bulk-toolbar">
+        <div className="dictionary-bulk-summary">
+          <strong>{selectionSummary}</strong>
+          <span title={filterSummary}>{filterSummary}</span>
+        </div>
+        <div className="dictionary-bulk-actions">
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={!isTauriRuntime() || matchingCount === 0}
+            onClick={selectAllMatching}
+          >
+            {t(language, "dictionary.bulkSelectMatching")}
+          </button>
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={loadedIds.length === 0}
+            onClick={invertLoadedSelection}
+          >
+            {t(language, "dictionary.bulkInvertLoaded")}
+          </button>
+          <button
+            className="ghost-button"
+            type="button"
+            disabled={selectedCount === 0}
+            onClick={clearSelection}
+          >
+            {t(language, "dictionary.bulkClearSelection")}
+          </button>
+          <button
+            className="ghost-button danger"
+            type="button"
+            disabled={!isTauriRuntime() || selectedCount === 0}
+            onClick={openBulkConfirm}
+          >
+            <Trash2 size={16} />
+            {t(language, "dictionary.bulkDeleteSelected")}
+          </button>
+        </div>
       </div>
 
       {/* Loading state */}
@@ -457,8 +834,10 @@ export function DictionaryPage({ language }: Props) {
               defaultSortKey="sourceText"
               language={language}
               renderRow={dictRenderRow}
-              colWidths={["25%", "25%", "15%", "20%", "7%", "8%"]}
+              colWidths={["4%", "24%", "24%", "15%", "18%", "7%", "8%"]}
+              endReached={loadMoreEntries}
             />
+            {loadingMore && <div className="empty-state">{t(language, "common.loading")}</div>}
           </div>
         </div>
       )}
@@ -477,7 +856,7 @@ export function DictionaryPage({ language }: Props) {
                 sourceText: e.sourceText,
                 targetText: e.targetText,
                 modId: e.modId ?? "",
-                modName: e.modId ?? undefined,
+                modName: e.modName ?? e.modId ?? undefined,
                 sourceType: e.sourceType,
                 id: e.id,
                 translationKey: e.translationKey,

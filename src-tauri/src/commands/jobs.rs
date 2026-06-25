@@ -122,6 +122,7 @@ pub fn save_translation_entry(
         target_lang: job.target_language,
         source_type: "reviewed".to_string(),
         mod_id: Some(mod_id),
+        mod_name: Some(mod_name),
         translation_key: Some(key),
         context: None,
         confidence: 1.0,

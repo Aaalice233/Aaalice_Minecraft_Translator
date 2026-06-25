@@ -149,11 +149,45 @@ export interface DictionaryEntry {
   targetLang: string;
   sourceType: string;
   modId?: string;
+  modName?: string;
   translationKey?: string;
   context?: string;
   confidence: number;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface DictionaryQueryParams {
+  search?: string;
+  sourceText?: string;
+  targetText?: string;
+  translationKey?: string;
+  modQuery?: string;
+  sourceType?: string;
+  modId?: string;
+  sourceLang?: string;
+  targetLang?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export type DictionarySelectionDeleteRequest =
+  | {
+      mode: "ids";
+      ids: number[];
+      query?: DictionaryQueryParams;
+      excludedIds?: number[];
+    }
+  | {
+      mode: "query";
+      query: DictionaryQueryParams;
+      ids?: number[];
+      excludedIds?: number[];
+    };
+
+export interface DictionarySelectionDeleteResult {
+  removed: number;
+  remainingLocal: number;
 }
 
 export interface DictionaryStats {

@@ -10,6 +10,7 @@ export type NumberRange = { min?: number; max?: number };
 export interface ColumnConfig {
   key: string;
   label: string;
+  renderHeaderContent?: () => ReactNode;
   sortable?: boolean;
   /** Default sort direction when clicked first time (default "asc"). */
   defaultSort?: "asc" | "desc";
@@ -89,7 +90,7 @@ export function SortableTableHeader({
         if (col.sortable === false && col.filterType === "none") {
           return (
             <th key={col.key} style={col.thStyle}>
-              {col.label}
+              {col.renderHeaderContent ? col.renderHeaderContent() : col.label}
             </th>
           );
         }
@@ -112,7 +113,7 @@ export function SortableTableHeader({
             style={col.thStyle}
           >
             <span className="th-filter-wrap">
-              {col.label}
+              {col.renderHeaderContent ? col.renderHeaderContent() : col.label}
               {(isActiveSort || isDefaultSort) && (
                 <span className="sort-indicator">
                   {isActiveSort ? (sortConfig!.direction === "asc" ? "↑" : "↓") : "↕"}

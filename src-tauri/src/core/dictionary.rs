@@ -14,6 +14,7 @@ const SCHEMA_SQL: &str = "CREATE TABLE IF NOT EXISTS dictionary_entries (
     target_lang TEXT NOT NULL DEFAULT 'zh_cn',
     source_type TEXT NOT NULL DEFAULT 'manual',
     mod_id TEXT,
+    mod_name TEXT,
     translation_key TEXT,
     context TEXT,
     source_hash TEXT NOT NULL,
@@ -43,11 +44,12 @@ fn map_row(row: &Row) -> SqlResult<DictionaryEntry> {
         target_lang: row.get(4)?,
         source_type: row.get(5)?,
         mod_id: row.get(6)?,
-        translation_key: row.get(7)?,
-        context: row.get(8)?,
-        confidence: row.get(9)?,
-        created_at: row.get(10)?,
-        updated_at: row.get(11)?,
+        mod_name: row.get(7)?,
+        translation_key: row.get(8)?,
+        context: row.get(9)?,
+        confidence: row.get(10)?,
+        created_at: row.get(11)?,
+        updated_at: row.get(12)?,
     })
 }
 
@@ -71,6 +73,7 @@ pub struct DictionaryEntry {
     pub target_lang: String,
     pub source_type: String,
     pub mod_id: Option<String>,
+    pub mod_name: Option<String>,
     pub translation_key: Option<String>,
     pub context: Option<String>,
     pub confidence: f64,
@@ -105,12 +108,53 @@ pub struct CfpaMatch {
 #[serde(rename_all = "camelCase")]
 pub struct DictionaryQuery {
     pub search: Option<String>,
+    pub source_text: Option<String>,
+    pub target_text: Option<String>,
+    pub translation_key: Option<String>,
+    pub mod_query: Option<String>,
     pub source_type: Option<String>,
     pub mod_id: Option<String>,
     pub source_lang: Option<String>,
     pub target_lang: Option<String>,
     pub limit: Option<usize>,
     pub offset: Option<usize>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DictionarySelectionMode {
+    Ids,
+    Query,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictionarySelectionDeleteRequest {
+    pub mode: DictionarySelectionMode,
+    #[serde(default)]
+    pub query: Option<DictionaryQuery>,
+    #[serde(default)]
+    pub ids: Vec<i64>,
+    #[serde(default)]
+    pub excluded_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DictionarySelectionDeleteResult {
+    pub removed: usize,
+    pub remaining_local: usize,
+}
+
+impl Default for DictionarySelectionDeleteRequest {
+    fn default() -> Self {
+        Self {
+            mode: DictionarySelectionMode::Ids,
+            query: None,
+            ids: Vec::new(),
+            excluded_ids: Vec::new(),
+        }
+    }
 }
 
 /// Open or create the dictionary database, initializing schema and WAL mode.
@@ -124,19 +168,38 @@ pub fn open(db_path: &Path) -> SqlResult<Connection> {
         "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;",
     )?;
     conn.execute_batch(SCHEMA_SQL)?;
+    migrate_schema(&conn)?;
     Ok(conn)
 }
 
 /// Apply schema to an in-memory connection (for tests and temp operations).
 pub fn open_in_memory(conn: &Connection) -> SqlResult<()> {
     tracing::debug!("初始化内存词典");
-    conn.execute_batch(SCHEMA_SQL)
+    conn.execute_batch(SCHEMA_SQL)?;
+    migrate_schema(conn)
+}
+
+fn migrate_schema(conn: &Connection) -> SqlResult<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(dictionary_entries)")?;
+    let columns = stmt.query_map([], |row| row.get::<_, String>(1))?;
+    let mut has_mod_name = false;
+    for column in columns {
+        if column? == "mod_name" {
+            has_mod_name = true;
+            break;
+        }
+    }
+    if !has_mod_name {
+        conn.execute_batch("ALTER TABLE dictionary_entries ADD COLUMN mod_name TEXT;")?;
+    }
+    conn.execute_batch("CREATE INDEX IF NOT EXISTS idx_mod_name ON dictionary_entries(mod_name);")?;
+    Ok(())
 }
 
 /// Shared column list for SELECT queries returning full DictionaryEntry rows.
 const SELECT_COLS: &str =
     "SELECT id, source_text, target_text, source_lang, target_lang, source_type, \
-    mod_id, translation_key, context, confidence, created_at, updated_at \
+    mod_id, mod_name, translation_key, context, confidence, created_at, updated_at \
     FROM dictionary_entries";
 
 /// Compute a stable deterministic hash for a text string (16 hex chars).
@@ -164,8 +227,8 @@ pub fn insert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<i64> {
     conn.execute(
         "INSERT INTO dictionary_entries
             (source_text, target_text, source_lang, target_lang, source_type,
-             mod_id, translation_key, context, source_hash, target_hash, confidence)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+             mod_id, mod_name, translation_key, context, source_hash, target_hash, confidence)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
         params![
             entry.source_text,
             entry.target_text,
@@ -173,6 +236,7 @@ pub fn insert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<i64> {
             entry.target_lang,
             entry.source_type,
             entry.mod_id,
+            entry.mod_name,
             entry.translation_key,
             entry.context,
             source_hash,
@@ -228,14 +292,15 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
             conn.execute(
                 "UPDATE dictionary_entries
                  SET target_text = ?1, target_hash = ?2, source_type = ?3,
-                     mod_id = ?4, translation_key = ?5, context = ?6,
-                     confidence = ?7, updated_at = datetime('now')
-                 WHERE id = ?8",
+                     mod_id = ?4, mod_name = ?5, translation_key = ?6, context = ?7,
+                     confidence = ?8, updated_at = datetime('now')
+                 WHERE id = ?9",
                 params![
                     entry.target_text,
                     target_hash,
                     entry.source_type,
                     entry.mod_id,
+                    entry.mod_name,
                     entry.translation_key,
                     entry.context,
                     entry.confidence,
@@ -250,37 +315,126 @@ pub fn upsert(conn: &Connection, entry: &DictionaryEntry) -> SqlResult<(i64, boo
     }
 }
 
+fn push_like_param(
+    sql: &mut String,
+    param_values: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    column: &str,
+    value: &Option<String>,
+) {
+    let Some(term) = value.as_deref().map(str::trim).filter(|v| !v.is_empty()) else {
+        return;
+    };
+    sql.push_str(&format!(" AND {column} LIKE ?"));
+    param_values.push(Box::new(format!("%{term}%")));
+}
+
+fn append_query_filters(
+    sql: &mut String,
+    param_values: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    query: &DictionaryQuery,
+    force_local_only: bool,
+) {
+    if let Some(term) = query.search.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        sql.push_str(
+            " AND (source_text LIKE ? OR target_text LIKE ? OR translation_key LIKE ? OR mod_id LIKE ? OR mod_name LIKE ?)",
+        );
+        let pattern = format!("%{term}%");
+        param_values.push(Box::new(pattern.clone()));
+        param_values.push(Box::new(pattern.clone()));
+        param_values.push(Box::new(pattern.clone()));
+        param_values.push(Box::new(pattern.clone()));
+        param_values.push(Box::new(pattern));
+    }
+
+    push_like_param(sql, param_values, "source_text", &query.source_text);
+    push_like_param(sql, param_values, "target_text", &query.target_text);
+    push_like_param(sql, param_values, "translation_key", &query.translation_key);
+
+    if let Some(term) = query.mod_query.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        sql.push_str(" AND (mod_id LIKE ? OR mod_name LIKE ?)");
+        let pattern = format!("%{term}%");
+        param_values.push(Box::new(pattern.clone()));
+        param_values.push(Box::new(pattern));
+    }
+
+    if force_local_only {
+        sql.push_str(" AND source_type <> 'cfpa'");
+    }
+
+    if let Some(source_type) = query
+        .source_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        sql.push_str(" AND source_type = ?");
+        param_values.push(Box::new(source_type.to_string()));
+    } else if !force_local_only {
+        sql.push_str(" AND source_type <> 'cfpa'");
+    }
+
+    if let Some(mod_id) = query.mod_id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        sql.push_str(" AND mod_id = ?");
+        param_values.push(Box::new(mod_id.to_string()));
+    }
+    if let Some(source_lang) = query
+        .source_lang
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        sql.push_str(" AND source_lang = ?");
+        param_values.push(Box::new(source_lang.to_string()));
+    }
+    if let Some(target_lang) = query
+        .target_lang
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        sql.push_str(" AND target_lang = ?");
+        param_values.push(Box::new(target_lang.to_string()));
+    }
+}
+
+fn unique_ids(ids: &[i64]) -> Vec<i64> {
+    let mut seen = HashSet::new();
+    ids.iter()
+        .copied()
+        .filter(|id| *id > 0 && seen.insert(*id))
+        .collect()
+}
+
+fn append_id_list_filter(
+    sql: &mut String,
+    param_values: &mut Vec<Box<dyn rusqlite::types::ToSql>>,
+    ids: &[i64],
+    negated: bool,
+) {
+    if ids.is_empty() {
+        return;
+    }
+    let placeholders = std::iter::repeat("?")
+        .take(ids.len())
+        .collect::<Vec<_>>()
+        .join(",");
+    if negated {
+        sql.push_str(&format!(" AND id NOT IN ({placeholders})"));
+    } else {
+        sql.push_str(&format!(" AND id IN ({placeholders})"));
+    }
+    for id in ids {
+        param_values.push(Box::new(*id));
+    }
+}
+
 /// Search dictionary entries with optional filters.
 pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<DictionaryEntry>> {
     tracing::debug!(?query, "Searching dictionary entries");
     let mut sql = format!("{SELECT_COLS} WHERE 1=1");
     let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
-    if let Some(ref search) = query.search {
-        sql.push_str(" AND (source_text LIKE ? OR target_text LIKE ? OR translation_key LIKE ?)");
-        let pattern = format!("%{}%", search);
-        param_values.push(Box::new(pattern.clone()));
-        param_values.push(Box::new(pattern.clone()));
-        param_values.push(Box::new(pattern));
-    }
-    if let Some(ref source_type) = query.source_type {
-        sql.push_str(" AND source_type = ?");
-        param_values.push(Box::new(source_type.clone()));
-    } else {
-        sql.push_str(" AND source_type <> 'cfpa'");
-    }
-    if let Some(ref mod_id) = query.mod_id {
-        sql.push_str(" AND mod_id = ?");
-        param_values.push(Box::new(mod_id.clone()));
-    }
-    if let Some(ref source_lang) = query.source_lang {
-        sql.push_str(" AND source_lang = ?");
-        param_values.push(Box::new(source_lang.clone()));
-    }
-    if let Some(ref target_lang) = query.target_lang {
-        sql.push_str(" AND target_lang = ?");
-        param_values.push(Box::new(target_lang.clone()));
-    }
+    append_query_filters(&mut sql, &mut param_values, query, false);
 
     sql.push_str(" ORDER BY updated_at DESC");
 
@@ -301,6 +455,32 @@ pub fn search(conn: &Connection, query: &DictionaryQuery) -> SqlResult<Vec<Dicti
     }
     tracing::info!(count = results.len(), "Dictionary search completed");
     Ok(results)
+}
+
+pub fn count_matching(conn: &Connection, query: &DictionaryQuery) -> SqlResult<usize> {
+    let mut sql = "SELECT COUNT(*) FROM dictionary_entries WHERE 1=1".to_string();
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    append_query_filters(&mut sql, &mut param_values, query, true);
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
+    conn.query_row(&sql, param_refs.as_slice(), |row| {
+        row.get::<_, i64>(0).map(|v| v as usize)
+    })
+}
+
+fn count_matching_ids(conn: &Connection, query: &DictionaryQuery, ids: &[i64]) -> SqlResult<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let mut sql = "SELECT COUNT(*) FROM dictionary_entries WHERE 1=1".to_string();
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+    append_query_filters(&mut sql, &mut param_values, query, true);
+    append_id_list_filter(&mut sql, &mut param_values, ids, false);
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+        param_values.iter().map(|p| p.as_ref()).collect();
+    conn.query_row(&sql, param_refs.as_slice(), |row| {
+        row.get::<_, i64>(0).map(|v| v as usize)
+    })
 }
 
 /// Search dictionary entries by source_hash (exact match against the indexed hash column).
@@ -473,6 +653,67 @@ pub fn clear_local_entries(conn: &Connection) -> SqlResult<usize> {
     Ok(affected)
 }
 
+pub fn delete_selection(
+    conn: &Connection,
+    request: &DictionarySelectionDeleteRequest,
+) -> Result<DictionarySelectionDeleteResult, String> {
+    match request.mode {
+        DictionarySelectionMode::Ids => {
+            let ids = unique_ids(&request.ids);
+            if ids.is_empty() {
+                return Ok(DictionarySelectionDeleteResult {
+                    removed: 0,
+                    remaining_local: count_local_entries(conn).map_err(|e| e.to_string())?,
+                });
+            }
+
+            let mut sql =
+                "DELETE FROM dictionary_entries WHERE source_type <> 'cfpa'".to_string();
+            let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+            append_id_list_filter(&mut sql, &mut param_values, &ids, false);
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                param_values.iter().map(|p| p.as_ref()).collect();
+            let removed = conn
+                .execute(&sql, param_refs.as_slice())
+                .map_err(|e| e.to_string())?;
+
+            Ok(DictionarySelectionDeleteResult {
+                removed,
+                remaining_local: count_local_entries(conn).map_err(|e| e.to_string())?,
+            })
+        }
+        DictionarySelectionMode::Query => {
+            let query = request.query.clone().unwrap_or_default();
+            let excluded_ids = unique_ids(&request.excluded_ids);
+            let expected_remaining =
+                count_matching_ids(conn, &query, &excluded_ids).map_err(|e| e.to_string())?;
+
+            let mut sql = "DELETE FROM dictionary_entries WHERE 1=1".to_string();
+            let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+            append_query_filters(&mut sql, &mut param_values, &query, true);
+            append_id_list_filter(&mut sql, &mut param_values, &excluded_ids, true);
+            let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+                param_values.iter().map(|p| p.as_ref()).collect();
+            let removed = conn
+                .execute(&sql, param_refs.as_slice())
+                .map_err(|e| e.to_string())?;
+
+            let remaining_matching = count_matching(conn, &query).map_err(|e| e.to_string())?;
+            if remaining_matching > expected_remaining {
+                return Err(format!(
+                    "批量删除后仍剩余 {} 条目标词库条目",
+                    remaining_matching - expected_remaining
+                ));
+            }
+
+            Ok(DictionarySelectionDeleteResult {
+                removed,
+                remaining_local: count_local_entries(conn).map_err(|e| e.to_string())?,
+            })
+        }
+    }
+}
+
 /// Get total count of entries.
 pub fn count(conn: &Connection) -> SqlResult<usize> {
     let count = conn.query_row("SELECT COUNT(*) FROM dictionary_entries", [], |row| {
@@ -517,6 +758,76 @@ pub fn set_metadata(conn: &Connection, key: &str, value: &str) -> SqlResult<()> 
         params![key, value],
     )?;
     Ok(())
+}
+
+pub fn backfill_mod_names_from_jobs(conn: &Connection, jobs_dir: &Path) -> Result<usize, String> {
+    const META_KEY: &str = "dictionary_mod_name_backfill_v1";
+    if get_metadata(conn, META_KEY)
+        .map_err(|e| e.to_string())?
+        .as_deref()
+        == Some("done")
+    {
+        return Ok(0);
+    }
+
+    if !jobs_dir.is_dir() {
+        set_metadata(conn, META_KEY, "done").map_err(|e| e.to_string())?;
+        return Ok(0);
+    }
+
+    let mut updated = 0usize;
+    let entries = std::fs::read_dir(jobs_dir).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "UPDATE dictionary_entries
+             SET mod_name = ?1, updated_at = updated_at
+             WHERE (mod_name IS NULL OR mod_name = '')
+               AND source_hash = ?2
+               AND mod_id = ?3
+               AND translation_key = ?4
+               AND source_type <> 'cfpa'",
+        )
+        .map_err(|e| e.to_string())?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+        if !name.starts_with("translate_") || !name.ends_with("_results.jsonl") {
+            continue;
+        }
+
+        let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+        for (line_index, line) in content.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let result: crate::core::jobs::TranslationResult =
+                serde_json::from_str(line).map_err(|e| {
+                    format!(
+                        "解析历史任务结果失败: {}:{}: {e}",
+                        path.display(),
+                        line_index + 1
+                    )
+                })?;
+            if result.mod_name.trim().is_empty() {
+                continue;
+            }
+            updated += stmt
+                .execute(params![
+                    result.mod_name,
+                    hash_text(&result.source_text),
+                    result.mod_id,
+                    result.key,
+                ])
+                .map_err(|e| e.to_string())?;
+        }
+    }
+
+    set_metadata(conn, META_KEY, "done").map_err(|e| e.to_string())?;
+    Ok(updated)
 }
 
 pub fn export_jsonl(conn: &Connection) -> SqlResult<Vec<String>> {
@@ -1130,6 +1441,7 @@ impl MemoryDictionary {
             target_lang: target_lang.to_string(),
             source_type: result.source_type.clone(),
             mod_id: Some(result.mod_id.clone()),
+            mod_name: Some(result.mod_name.clone()),
             translation_key: Some(result.key.clone()),
             context: None,
             confidence: 1.0,
@@ -1144,6 +1456,7 @@ impl MemoryDictionary {
         if let Some(existing) = bucket.iter_mut().find(|e| e.target_lang == target_lang) {
             existing.target_text = result.target_text.clone();
             existing.source_type = result.source_type.clone();
+            existing.mod_name = Some(result.mod_name.clone());
         } else {
             bucket.push(DictionaryEntry {
                 id: Some(id),
@@ -1153,6 +1466,7 @@ impl MemoryDictionary {
                 target_lang: target_lang.to_string(),
                 source_type: result.source_type.clone(),
                 mod_id: Some(result.mod_id.clone()),
+                mod_name: Some(result.mod_name.clone()),
                 translation_key: Some(result.key.clone()),
                 context: None,
                 confidence: 1.0,
@@ -1481,6 +1795,7 @@ mod tests {
             target_lang: "zh_cn".to_string(),
             source_type: "manual".to_string(),
             mod_id: Some("examplemod".to_string()),
+            mod_name: Some("examplemod-1.0.jar".to_string()),
             translation_key: Some("examplemod.hello".to_string()),
             context: None,
             confidence: 1.0,
@@ -1507,6 +1822,8 @@ mod tests {
                 source_lang: "en_us".into(),
                 target_lang: "zh_cn".into(),
                 source_type: "manual".into(),
+                mod_id: Some("orchid".into()),
+                mod_name: Some("Orchid-Mod-1.21.1.jar".into()),
                 ..Default::default()
             },
         )
@@ -1522,6 +1839,57 @@ mod tests {
         .unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].target_text, "苹果");
+
+        let by_file_name = search(
+            &conn,
+            &DictionaryQuery {
+                search: Some("orchid-mod".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(by_file_name.len(), 1);
+        assert_eq!(by_file_name[0].mod_name.as_deref(), Some("Orchid-Mod-1.21.1.jar"));
+    }
+
+    #[test]
+    fn backfills_mod_name_from_job_results() {
+        let conn = test_conn();
+        let id = insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Copper Gear".into(),
+                target_text: "铜齿轮".into(),
+                source_lang: "en_us".into(),
+                target_lang: "zh_cn".into(),
+                source_type: "llm".into(),
+                mod_id: Some("gearbox".into()),
+                translation_key: Some("item.gearbox.copper_gear".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let temp = tempfile::tempdir().unwrap();
+        let result = crate::core::jobs::TranslationResult {
+            key: "item.gearbox.copper_gear".into(),
+            source_text: "Copper Gear".into(),
+            target_text: "铜齿轮".into(),
+            mod_id: "gearbox".into(),
+            mod_name: "Gearbox-1.21.1.jar".into(),
+            source_type: "llm".into(),
+        };
+        std::fs::write(
+            temp.path().join("translate_test_results.jsonl"),
+            serde_json::to_string(&result).unwrap(),
+        )
+        .unwrap();
+
+        let updated = backfill_mod_names_from_jobs(&conn, temp.path()).unwrap();
+        assert_eq!(updated, 1);
+
+        let retrieved = get_by_id(&conn, id).unwrap().unwrap();
+        assert_eq!(retrieved.mod_name.as_deref(), Some("Gearbox-1.21.1.jar"));
     }
 
     #[test]
@@ -2155,6 +2523,198 @@ mod tests {
         assert_eq!(clear_all(&conn).unwrap(), 2);
         assert_eq!(count(&conn).unwrap(), 0);
     }
+
+    #[test]
+    fn clear_local_entries_removes_all_visible_dictionary_entries() {
+        let conn = test_conn();
+
+        for source_type in ["manual", "llm", "resourcepack", "reviewed", "cfpa"] {
+            insert(
+                &conn,
+                &DictionaryEntry {
+                    source_text: format!("{source_type} source"),
+                    target_text: format!("{source_type} target"),
+                    source_lang: "en_us".into(),
+                    target_lang: "zh_cn".into(),
+                    source_type: source_type.into(),
+                    mod_id: Some("testmod".into()),
+                    translation_key: Some(format!("item.testmod.{source_type}")),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+
+        assert_eq!(count_local_entries(&conn).unwrap(), 4);
+        assert_eq!(clear_local_entries(&conn).unwrap(), 4);
+        assert_eq!(count_local_entries(&conn).unwrap(), 0);
+        assert_eq!(count_by_source_type(&conn, "cfpa").unwrap(), 1);
+    }
+
+    #[test]
+    fn count_matching_uses_same_filters_as_search() {
+        let conn = test_conn();
+        for (source, target, mod_name) in [
+            ("Copper Gear", "铜齿轮", "Gearbox-1.21.1.jar"),
+            ("Iron Gear", "铁齿轮", "Gearbox-1.21.1.jar"),
+            ("Copper Pipe", "铜管", "Pipeworks-1.21.1.jar"),
+        ] {
+            insert(
+                &conn,
+                &DictionaryEntry {
+                    source_text: source.into(),
+                    target_text: target.into(),
+                    source_lang: "en_us".into(),
+                    target_lang: "zh_cn".into(),
+                    source_type: "llm".into(),
+                    mod_id: Some("gearbox".into()),
+                    mod_name: Some(mod_name.into()),
+                    translation_key: Some(format!("item.test.{}", source.replace(' ', "_"))),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        }
+
+        let query = DictionaryQuery {
+            source_text: Some("Gear".into()),
+            mod_query: Some("Gearbox".into()),
+            ..Default::default()
+        };
+        let rows = search(&conn, &query).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(count_matching(&conn, &query).unwrap(), rows.len());
+    }
+
+    #[test]
+    fn delete_selection_by_ids_removes_only_requested_local_entries() {
+        let conn = test_conn();
+        let keep = insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Keep".into(),
+                target_text: "保留".into(),
+                source_type: "manual".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let remove = insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Remove".into(),
+                target_text: "删除".into(),
+                source_type: "manual".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let cfpa = insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Reference".into(),
+                target_text: "参考".into(),
+                source_type: "cfpa".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let result = delete_selection(
+            &conn,
+            &DictionarySelectionDeleteRequest {
+                mode: DictionarySelectionMode::Ids,
+                ids: vec![remove, cfpa],
+                ..DictionarySelectionDeleteRequest::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.removed, 1);
+        assert!(get_by_id(&conn, remove).unwrap().is_none());
+        assert!(get_by_id(&conn, keep).unwrap().is_some());
+        assert!(get_by_id(&conn, cfpa).unwrap().is_some());
+    }
+
+    #[test]
+    fn delete_selection_by_query_matches_mod_name_and_respects_exclusions() {
+        let conn = test_conn();
+        let excluded = insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Copper Gear".into(),
+                target_text: "铜齿轮".into(),
+                source_type: "llm".into(),
+                mod_id: Some("gearbox".into()),
+                mod_name: Some("Gearbox-1.21.1.jar".into()),
+                translation_key: Some("item.gearbox.copper_gear".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let removed = insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Iron Gear".into(),
+                target_text: "铁齿轮".into(),
+                source_type: "reviewed".into(),
+                mod_id: Some("gearbox".into()),
+                mod_name: Some("Gearbox-1.21.1.jar".into()),
+                translation_key: Some("item.gearbox.iron_gear".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "Copper Pipe".into(),
+                target_text: "铜管".into(),
+                source_type: "llm".into(),
+                mod_id: Some("pipeworks".into()),
+                mod_name: Some("Pipeworks-1.21.1.jar".into()),
+                translation_key: Some("item.pipeworks.copper_pipe".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        insert(
+            &conn,
+            &DictionaryEntry {
+                source_text: "CFPA Gear".into(),
+                target_text: "CFPA 齿轮".into(),
+                source_type: "cfpa".into(),
+                mod_id: Some("gearbox".into()),
+                mod_name: Some("Gearbox-1.21.1.jar".into()),
+                translation_key: Some("item.gearbox.cfpa".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let query = DictionaryQuery {
+            mod_query: Some("Gearbox-1.21.1.jar".into()),
+            ..Default::default()
+        };
+        assert_eq!(count_matching(&conn, &query).unwrap(), 2);
+
+        let result = delete_selection(
+            &conn,
+            &DictionarySelectionDeleteRequest {
+                mode: DictionarySelectionMode::Query,
+                query: Some(query.clone()),
+                excluded_ids: vec![excluded],
+                ..DictionarySelectionDeleteRequest::default()
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.removed, 1);
+        assert!(get_by_id(&conn, removed).unwrap().is_none());
+        assert!(get_by_id(&conn, excluded).unwrap().is_some());
+        assert_eq!(count_matching(&conn, &query).unwrap(), 1);
+        assert_eq!(count_by_source_type(&conn, "cfpa").unwrap(), 1);
+    }
 }
 
 impl Default for DictionaryEntry {
@@ -2167,6 +2727,7 @@ impl Default for DictionaryEntry {
             target_lang: "zh_cn".to_string(),
             source_type: "manual".to_string(),
             mod_id: None,
+            mod_name: None,
             translation_key: None,
             context: None,
             confidence: 1.0,

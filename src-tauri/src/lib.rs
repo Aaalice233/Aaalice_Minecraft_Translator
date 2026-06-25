@@ -112,8 +112,10 @@ pub fn run() {
             commands::read_logs,
             // P2: Dictionary
             commands::search_dictionary,
+            commands::count_dictionary,
             commands::update_dictionary_entry,
             commands::delete_dictionary_entry,
+            commands::delete_dictionary_selection,
             commands::clear_dictionary,
             commands::export_dictionary,
             commands::import_dictionary,
