@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -239,7 +240,7 @@ pub async fn retry_failed_entries(
 ) -> Result<usize, String> {
     let root = paths::runtime_root().map_err(|err| err.to_string())?;
 
-    logging::append_main(format!("重试失败条目开始，任务 ID: {job_id}"))
+    logging::append_main(format!("重试失败或缺失条目开始，任务 ID: {job_id}"))
         .map_err(|err| err.to_string())?;
 
     pipeline::register_translation_task(&job_id);
@@ -252,14 +253,12 @@ pub async fn retry_failed_entries(
 
     let retried_success = tauri::async_runtime::spawn_blocking(move || {
         let manager = jobs::JobManager::new(root.clone());
+        let job = manager.refresh_counts_from_results(&job_id)?;
         let all_results = manager.load_results(&job_id)?;
-        let failed_count = all_results
-            .iter()
-            .filter(|r| r.source_type == "failed")
-            .count();
+        let retryable_count = job.failed_entries;
 
-        if failed_count == 0 {
-            logging::append_main("重试失败条目: 没有需要重试的条目").ok();
+        if retryable_count == 0 {
+            logging::append_main("重试失败或缺失条目: 没有需要重试的条目").ok();
             return Ok::<usize, String>(0);
         }
 
@@ -302,23 +301,29 @@ pub async fn retry_failed_entries(
         let succ = retried.iter().filter(|r| r.source_type == "llm").count();
         let failed = retried.iter().filter(|r| r.source_type == "failed").count();
 
-        // Merge retried results back into JSONL so validation picks up the changes
-        let merged: Vec<jobs::TranslationResult> = all_results
-            .into_iter()
-            .map(|r| {
-                if r.source_type == "failed" {
-                    retried
-                        .iter()
-                        .find(|nr| {
-                            nr.key == r.key && nr.mod_id == r.mod_id && nr.mod_name == r.mod_name
-                        })
-                        .cloned()
-                        .unwrap_or(r)
-                } else {
-                    r
+        // Merge retried results back into JSONL so validation picks up both
+        // replaced failed lines and newly recovered missing lines.
+        let mut replaced: HashSet<(String, String, String)> = HashSet::new();
+        let mut merged: Vec<jobs::TranslationResult> =
+            Vec::with_capacity(all_results.len() + retried.len());
+        for r in all_results {
+            if r.source_type == "failed" {
+                if let Some(nr) = retried.iter().find(|nr| {
+                    nr.key == r.key && nr.mod_id == r.mod_id && nr.mod_name == r.mod_name
+                }) {
+                    replaced.insert((nr.key.clone(), nr.mod_id.clone(), nr.mod_name.clone()));
+                    merged.push(nr.clone());
+                    continue;
                 }
-            })
-            .collect();
+            }
+            merged.push(r);
+        }
+        for r in &retried {
+            let id = (r.key.clone(), r.mod_id.clone(), r.mod_name.clone());
+            if !replaced.contains(&id) {
+                merged.push(r.clone());
+            }
+        }
 
         let out_path = paths::translate_job_results_path(&root, &job_id);
         if let Some(parent) = out_path.parent() {
@@ -366,7 +371,10 @@ pub async fn retry_failed_entries(
         drop(progress_tx);
         drop(entry_progress_tx);
 
-        logging::append_main(format!("重试失败条目完成: 成功 {succ}, 仍然失败 {failed}")).ok();
+        logging::append_main(format!(
+            "重试失败或缺失条目完成: 成功 {succ}, 仍然失败 {failed}"
+        ))
+        .ok();
 
         Ok::<usize, String>(succ)
     })

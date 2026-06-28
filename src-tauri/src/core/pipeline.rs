@@ -1551,7 +1551,7 @@ fn build_llm_client(llm_cfg: &LlmConfig, effective_concurrency: usize) -> LlmCli
 
 /// Retry failed entries from a previous translation job.
 /// Skips scan/extract/dictionary phases, runs only LLM translation on
-/// entries whose `source_type == "failed"`, and returns the new results.
+/// entries whose result is failed or missing, and returns the new results.
 pub fn retry_failed_entries(
     root: &std::path::Path,
     job_id: &str,
@@ -1564,12 +1564,11 @@ pub fn retry_failed_entries(
     i18n_reference_db_path: Option<&std::path::Path>,
 ) -> Result<Vec<jobs::TranslationResult>, String> {
     let manager = jobs::JobManager::new(root.to_path_buf());
+    let job = manager
+        .load(job_id)?
+        .ok_or_else(|| format!("翻译任务 {job_id} 未找到"))?;
     let all_results = manager.load_results(job_id)?;
-
-    let failed: Vec<&jobs::TranslationResult> = all_results
-        .iter()
-        .filter(|r| r.source_type == "failed")
-        .collect();
+    let failed = retry_candidates_for_job(&job, &all_results);
 
     if failed.is_empty() {
         return Ok(Vec::new());
@@ -1715,6 +1714,53 @@ pub fn retry_failed_entries(
     }
 
     Ok(retried)
+}
+
+fn retry_candidates_for_job(
+    job: &jobs::TranslationJobState,
+    all_results: &[jobs::TranslationResult],
+) -> Vec<jobs::TranslationResult> {
+    let mut candidates: Vec<jobs::TranslationResult> = all_results
+        .iter()
+        .filter(|r| r.source_type == "failed")
+        .cloned()
+        .collect();
+
+    let mut result_counts: HashMap<(String, String, String), usize> = HashMap::new();
+    for result in all_results {
+        *result_counts
+            .entry((
+                result.key.clone(),
+                result.mod_id.clone(),
+                result.mod_name.clone(),
+            ))
+            .or_insert(0) += 1;
+    }
+
+    for entry in &job.entries {
+        let id = (
+            entry.key.clone(),
+            entry.mod_id.clone(),
+            entry.mod_name.clone(),
+        );
+        if let Some(count) = result_counts.get_mut(&id) {
+            if *count > 0 {
+                *count -= 1;
+                continue;
+            }
+        }
+
+        candidates.push(jobs::TranslationResult {
+            key: entry.key.clone(),
+            source_text: entry.source_text.clone(),
+            target_text: entry.source_text.clone(),
+            mod_id: entry.mod_id.clone(),
+            mod_name: entry.mod_name.clone(),
+            source_type: "failed".to_string(),
+        });
+    }
+
+    candidates
 }
 
 /// Translate a single entry using the LLM, with shield protection and cancel support.
@@ -1881,5 +1927,53 @@ mod tests {
             .find(|(e, _, _)| e.key == "item.test.two")
             .unwrap();
         assert_eq!(two.2, None);
+    }
+
+    #[test]
+    fn retry_candidates_include_missing_results() {
+        let job = jobs::TranslationJobState {
+            job_id: "translate_test".into(),
+            scan_job_id: "scan_test".into(),
+            status: jobs::TranslationStatus::Completed,
+            source_language: "en_us".into(),
+            target_language: "zh_cn".into(),
+            entries: vec![
+                jobs::PendingEntry {
+                    key: "item.test.done".into(),
+                    source_text: "Done".into(),
+                    mod_id: "testmod".into(),
+                    mod_name: "testmod.jar".into(),
+                },
+                jobs::PendingEntry {
+                    key: "item.test.missing".into(),
+                    source_text: "Missing".into(),
+                    mod_id: "testmod".into(),
+                    mod_name: "testmod.jar".into(),
+                },
+            ],
+            completed_entries: 1,
+            failed_entries: 1,
+            token_usage: TokenUsage::default(),
+            created_at: "2026-01-01T00:00:00+08:00".into(),
+            completed_at: Some("2026-01-01T00:00:10+08:00".into()),
+            reviewed: Some(false),
+            reviewed_at: None,
+        };
+        let results = vec![jobs::TranslationResult {
+            key: "item.test.done".into(),
+            source_text: "Done".into(),
+            target_text: "完成".into(),
+            mod_id: "testmod".into(),
+            mod_name: "testmod.jar".into(),
+            source_type: "llm".into(),
+        }];
+
+        let candidates = retry_candidates_for_job(&job, &results);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].key, "item.test.missing");
+        assert_eq!(candidates[0].source_text, "Missing");
+        assert_eq!(candidates[0].target_text, "Missing");
+        assert_eq!(candidates[0].source_type, "failed");
     }
 }
