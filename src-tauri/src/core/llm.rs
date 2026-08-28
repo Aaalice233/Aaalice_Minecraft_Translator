@@ -167,10 +167,8 @@ impl LlmClient {
             body["max_tokens"] = serde_json::json!(self.max_tokens);
         }
 
-        let url = format!(
-            "{}/v1/chat/completions",
-            self.base_url.trim_end_matches('/')
-        );
+        let url = build_chat_url(&self.base_url);
+
 
         let mut last_error = String::new();
         let max_retries = self.retry_count.max(1);
