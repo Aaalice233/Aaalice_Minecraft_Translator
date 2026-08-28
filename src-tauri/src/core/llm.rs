@@ -11,6 +11,31 @@ use std::time::Duration;
 
 use crate::core::logging::HTTP_LOG_ENABLED;
 use std::sync::{atomic::Ordering, OnceLock};
+/// 根据 base URL 构造 chat/completions 完整请求地址。
+///
+/// 规则：
+/// - 若用户已填写完整端点（以 /chat/completions 结尾），原样返回；
+/// - 若 base 已包含版本路径段（如 /v1、/v4），直接追加 /chat/completions，
+///   避免智谱等 API 被错误拼成 `/v4/v1/chat/completions`；
+/// - 否则按 OpenAI 标准追加 /v1/chat/completions。
+pub(crate) fn build_chat_url(base_url: &str) -> String {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.ends_with("/chat/completions") {
+        return trimmed.to_string();
+    }
+    // 取最后一段路径，判断是否形如 v1 / v4 / v4beta 的版本号
+    let last_segment = trimmed.rsplit('/').next().unwrap_or("");
+    let mut seg = last_segment.chars();
+    let is_version = matches!(seg.next(), Some('v'))
+        && seg.next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+        && seg.all(|c| c.is_ascii_alphanumeric());
+    if is_version {
+        format!("{trimmed}/chat/completions")
+    } else {
+        format!("{trimmed}/v1/chat/completions")
+    }
+}
+
 
 // ── Data types ──────────────────────────────────────────────────────────
 
